@@ -4,11 +4,14 @@ package server
 
 import (
 	"context"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/sandcorporation/switchboard/internal/term/conpty"
+	"github.com/sandcorporation/switchboard/internal/winjob"
 )
 
 // e2eBackendFor is the ConPTY keeper up starts; the cleanup asks it to shut
@@ -19,8 +22,14 @@ func e2eBackendFor(t *testing.T) e2eBackend {
 		e2eSkip(t, "ConPTY unavailable: %v", err)
 	}
 	return e2eBackend{
-		// No console signal reaches a process without one; terminate it.
-		stop: func(c *exec.Cmd) { _ = c.Process.Kill() },
+		// No console signal reaches a process without one: the stop
+		// file, as sbstop writes it (#388).
+		stop: func(_ *exec.Cmd, dir string) {
+			if err := os.WriteFile(filepath.Join(dir, upStopFile), nil, 0o600); err != nil {
+				t.Logf("stop file: %v", err)
+			}
+		},
+		alive: winjob.Alive,
 		end: func(instance string) {
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()

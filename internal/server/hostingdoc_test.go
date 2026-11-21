@@ -785,6 +785,11 @@ func TestE2E_HostingDocWindows(t *testing.T) {
 	if want := []string{"builtin", "oidc (public client, PKCE)", "builtin", "builtin"}; !slices.Equal(modes, want) {
 		t.Errorf("up.log admin auth lines %q, want %q\nup.log:\n%s", modes, want, upLog)
 	}
+	// Every sbstop before a new start stopped up its own way (#388): the
+	// stop file, not Stop-Process.
+	if n := strings.Count(string(upLog), "exit 0: stopped by "+upStopFile); n != len(modes)-1 {
+		t.Errorf("up.log has %d exit lines of the stop file for %d starts, want %d\nup.log:\n%s", n, len(modes), len(modes)-1, upLog)
+	}
 	// sbstarted: the mode line and /health's version (e2eBinary's "e2e").
 	for _, want := range []string{"admin auth: builtin", "admin auth: oidc (public client, PKCE)", "version e2e"} {
 		if !hasLine(string(out), want) {

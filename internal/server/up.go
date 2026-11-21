@@ -38,8 +38,8 @@ const (
 // (hostingStart). The listener is bound before the
 // node's backend (tmux server, keeper) is touched, so a port held by
 // another process ends up at once with nothing left running. It returns
-// only when start-up fails; otherwise it serves until SIGINT or SIGTERM.
-// Every way it ends leaves its exit line in the log (exit.go).
+// only when start-up fails; otherwise it serves until SIGINT, SIGTERM or
+// its stop file in dataDir (stopfile.go). Every way it ends leaves its exit line in the log (exit.go).
 func Up(v, dataDir string, port int, nodeName string) (err error) {
 	// From the first moment: an event before run's signal.Notify still
 	// ends up (STATUS_CONTROL_C_EXIT), and now leaves its line.
@@ -57,6 +57,9 @@ func Up(v, dataDir string, port int, nodeName string) (err error) {
 	}
 	if err = os.MkdirAll(dir, 0o700); err != nil {
 		return fmt.Errorf("up: data directory: %w", err)
+	}
+	if err = clearStopFile(filepath.Join(dir, upStopFile)); err != nil {
+		return err
 	}
 	addr := net.JoinHostPort("127.0.0.1", strconv.Itoa(port))
 	for k, val := range map[string]string{

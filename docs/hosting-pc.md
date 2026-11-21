@@ -102,7 +102,12 @@ function sbwait([int]$seconds, [scriptblock]$ok) {
   throw "timed out after ${seconds}s: $ok"
 }
 function sbstop {
-  Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force }
+  $ups = @(Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue | ForEach-Object { $_.OwningProcess } | Select-Object -Unique)
+  if ($ups.Count -gt 0) {
+    Set-Content "$data\up.stop" ''
+    Wait-Process -Id $ups -Timeout 40 -ErrorAction SilentlyContinue
+    $ups | Where-Object { Get-Process -Id $_ -ErrorAction SilentlyContinue } | ForEach-Object { Write-Warning "up ($_) still runs 40 s after up.stop; ending it"; Stop-Process -Id $_ -Force }
+  }
   $upcmd = [regex]::Escape("$data\up.cmd")
   for ($i = 0; $i -lt 60; $i++) {
     $task = Get-ScheduledTask -TaskName 'switchboard-pc' -ErrorAction SilentlyContinue
@@ -254,7 +259,7 @@ Set-Content "$([Environment]::GetFolderPath('Startup'))\switchboard-pc.cmd" "@st
 Start-Process -WindowStyle Minimized "$data\up.cmd"
 ```
 
-`up` stopped later on its own (health does not answer, the task is `Ready`) → read the end of `$data\up.log`. Every way `up` ends by itself leaves an `exit N: …` line there, after a `signal …`, `console event …` or `panic in …` line when that was the cause. No `exit` line after the last start means a program outside ended `switchboard.exe` (as `Stop-Process` does). The task does not start it again: Task Scheduler restarts a task only when it fails to start, not when its program exits with an error, so W6 sets no restart. Start it with `Start-ScheduledTask -TaskName 'switchboard-pc'`; it adopts the keeper and the sessions keep running (`node: keeper … (adopted)` in `up.log`).
+`up` stopped later on its own (health does not answer, the task is `Ready`) → read the end of `$data\up.log`. Every way `up` ends by itself leaves an `exit N: …` line there, after a `signal …`, `up.stop: …`, `console event …` or `panic in …` line when that was the cause. No `exit` line after the last start means a program outside ended `switchboard.exe` (as `Stop-Process` does). The task does not start it again: Task Scheduler restarts a task only when it fails to start, not when its program exits with an error, so W6 sets no restart. Start it with `Start-ScheduledTask -TaskName 'switchboard-pc'`; it adopts the keeper and the sessions keep running (`node: keeper … (adopted)` in `up.log`).
 
 (With the Startup folder, "Start-ScheduledTask" in W8 and W9 becomes `Start-Process -WindowStyle Minimized "$data\up.cmd"`.) Health times out → read the end of `$data\up.log` (`Get-Content "$data\up.log" -Tail 20`) and look the message up under [Refusals](#refusals).
 
@@ -319,7 +324,7 @@ If it fails: state `crashloop` → the agent exits right after start; open its t
 
 ### W9. Stop, update, uninstall
 
-Stop `up` only (sessions keep running in the keeper; the next start adopts them). `sbstop` ends `up` at once, so the session of a record removed just before keeps running until the next start stops it:
+Stop `up` only (sessions keep running in the keeper; the next start adopts them). `sbstop` writes `up.stop` in the data directory and waits for `up` to exit: `up` stops the way Ctrl-C stops it (`up.stop: shutting down` and `exit 0: stopped by up.stop` in `up.log`), and the session of a record removed just before stops with it. No console event reaches `up` started by the task, so a signal cannot do this. An `up` still running 40 s later (one that predates `up.stop`) is ended at once with a warning; the session of a record removed just before then runs until the next start stops it:
 
 ```powershell
 if (-not (Get-Command sbstop -ErrorAction SilentlyContinue)) { throw 'sbstop is missing: this env.ps1 predates it; run the helpers block of W3, then this block again' }
