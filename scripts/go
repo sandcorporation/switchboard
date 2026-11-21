@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # scripts/go <go args...>  runs like `go <go args...>`; `scripts/go gofmt <args...>` runs gofmt.
-# Uses the host go when present, otherwise docker run golang:<major.minor from go.mod>.
+# Uses the host go when present, otherwise runs in a local docker image built
+# from the official golang image (major.minor from go.mod) plus tmux, so the tmux
+# backend tests run under SWITCHBOARD_TEST_TMUX=require instead of skipping. The
+# image is built once per go version and Dockerfile content: switchboard-go:<ver>-<hash>.
 # The build and module caches live on disk (SWITCHBOARD_GO_CACHE, default
 # ${XDG_CACHE_HOME:-$HOME/.cache}/switchboard-go), never under /tmp or on tmpfs.
 set -euo pipefail
@@ -39,6 +42,14 @@ fi
 
 ver=$(sed -n 's/^go \([0-9][0-9]*\.[0-9][0-9]*\).*/\1/p' "$root/go.mod" | head -n1)
 top=$(git rev-parse --show-toplevel 2>/dev/null || echo "$root")
+dockerfile="FROM golang:$ver
+RUN apt-get update && apt-get install -y --no-install-recommends tmux && rm -rf /var/lib/apt/lists/*"
+hash=$(printf '%s\n' "$dockerfile" | sha256sum | cut -c1-12)
+image=switchboard-go:$ver-$hash
+if ! docker image inspect "$image" >/dev/null 2>&1; then
+  echo "scripts/go: building $image (go $ver + tmux, first run only)" >&2
+  printf '%s\n' "$dockerfile" | docker build -q -t "$image" - >/dev/null
+fi
 envs=()
 for name in GOOS GOARCH CGO_ENABLED $(compgen -e | grep '^SWITCHBOARD_TEST_' || true); do
   envs+=(-e "$name")
@@ -52,4 +63,4 @@ exec docker run --rm --init \
   -e HOME=/tmp/gohome -e GOCACHE=/gocache/build -e GOMODCACHE=/gocache/mod \
   -e "GOFLAGS=${GOFLAGS:+$GOFLAGS }-buildvcs=false" \
   ${envs[@]+"${envs[@]}"} \
-  "golang:$ver" "$tool" "$@"
+  "$image" "$tool" "$@"
