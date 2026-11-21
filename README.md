@@ -55,7 +55,7 @@ A thread's root ID is shared in `thread_id`; `reply_to` points at the immediate 
 
 ## Build and run locally
 
-On a machine without Go, run `scripts/go <go args>` (for example `scripts/go test ./...`): it uses docker and keeps the Go caches in `~/.cache/switchboard-go` (`SWITCHBOARD_GO_CACHE` overrides; under `/tmp` or on tmpfs it refuses). `bash scripts/go_test.sh` tests the script and the hook in `.claude/settings.json` that blocks hand-written `golang` containers and `/tmp` Go caches.
+On a machine without Go, run `scripts/go <go args>` (for example `scripts/go test ./...`): it uses docker (a local image of the Go toolchain plus tmux, built on first use, so `SWITCHBOARD_TEST_TMUX=require` runs the tmux tests without a skip) and keeps the Go caches in `~/.cache/switchboard-go` (`SWITCHBOARD_GO_CACHE` overrides; under `/tmp` or on tmpfs it refuses). `bash scripts/go_test.sh` tests the script and the hook in `.claude/settings.json` that blocks hand-written `golang` containers and `/tmp` Go caches.
 
 Requires Go 1.25+ for development. End users install a compiled release binary and do not need Go. Create distinct random tokens per role and set them in the environment (never commit token values):
 
