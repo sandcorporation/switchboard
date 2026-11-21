@@ -76,8 +76,9 @@ func Run(v string) {
 }
 
 // attachFunc starts more work on a server about to serve (up's node); ctx
-// ends at shutdown.
-type attachFunc func(ctx context.Context, s *Server) error
+// ends at shutdown. The process waits for done, when not nil, before it
+// exits.
+type attachFunc func(ctx context.Context, s *Server) (done <-chan struct{}, err error)
 
 // run is Run; ln, when set, is the listener already bound to LISTEN_ADDR
 // (up binds it first), setupDir, when set, is up's data directory, where the
@@ -206,8 +207,9 @@ func run(v string, ln net.Listener, setupDir string, attach attachFunc) {
 	if s.hosting {
 		goSafe("hosting hub", func() { s.hostingHub().Run(ctx, hosting.SyncInterval) })
 	}
+	var attached <-chan struct{}
 	if attach != nil {
-		if e = attach(ctx, s); e != nil {
+		if attached, e = attach(ctx, s); e != nil {
 			fatal(e)
 		}
 	}
@@ -230,6 +232,9 @@ func run(v string, ln net.Listener, setupDir string, attach attachFunc) {
 		fatal(e)
 	}
 	<-stopped
+	if attached != nil {
+		<-attached
+	}
 	waitSweeper()
 	_ = db.Close()
 	log.Printf("exit 0: %s", why)

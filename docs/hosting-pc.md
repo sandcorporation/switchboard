@@ -319,7 +319,7 @@ If it fails: state `crashloop` → the agent exits right after start; open its t
 
 ### W9. Stop, update, uninstall
 
-Stop `up` only (sessions keep running in the keeper; the next start adopts them):
+Stop `up` only (sessions keep running in the keeper; the next start adopts them). `sbstop` ends `up` at once, so the session of a record removed just before keeps running until the next start stops it:
 
 ```powershell
 if (-not (Get-Command sbstop -ErrorAction SilentlyContinue)) { throw 'sbstop is missing: this env.ps1 predates it; run the helpers block of W3, then this block again' }
@@ -630,7 +630,7 @@ If it fails: state `crashloop` → the agent exits right after start; open its t
 
 ### L9. Stop, update, uninstall
 
-Stop `up` only (sessions keep running in tmux; the next start adopts them):
+Stop `up` only (sessions keep running in tmux; the next start adopts them). The session of a record removed just before is stopped first: `up` waits for it to exit, at most 15 s:
 
 ```sh
 systemctl --user stop switchboard-pc.service

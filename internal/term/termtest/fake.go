@@ -43,6 +43,8 @@ type Fake struct {
 	launches  []term.Spec
 	stops     []Stop
 	responder Responder
+	// exitAfter is how long a stopped program takes to exit (SetExitDelay).
+	exitAfter time.Duration
 }
 
 type session struct {
@@ -69,6 +71,15 @@ func (f *Fake) SetClock(now func() time.Time) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.now = now
+}
+
+// SetExitDelay makes every later Stop wait d before the program exits, as a
+// real agent takes a moment after SIGTERM. Like the real backends, a Stop
+// whose ctx ends first returns ctx's error and leaves the program running.
+func (f *Fake) SetExitDelay(d time.Duration) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.exitAfter = d
 }
 
 // SetResponder installs r for every later Input; nil removes it.
@@ -187,15 +198,29 @@ func (f *Fake) Resize(_ context.Context, name string, cols, rows int) error {
 	return nil
 }
 
-// Stop implements term.Backend: the session exits with StopExitCode at once.
-func (f *Fake) Stop(_ context.Context, name string, grace time.Duration) error {
+// Stop implements term.Backend: the session exits with StopExitCode, at
+// once or after the exit delay (SetExitDelay).
+func (f *Fake) Stop(ctx context.Context, name string, grace time.Duration) error {
 	f.mu.Lock()
-	defer f.mu.Unlock()
 	s, err := f.get(name)
 	if err != nil {
+		f.mu.Unlock()
 		return err
 	}
 	f.stops = append(f.stops, Stop{Name: name, Grace: grace})
+	wait := f.exitAfter
+	f.mu.Unlock()
+	if wait > 0 {
+		t := time.NewTimer(wait)
+		defer t.Stop()
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-t.C:
+		}
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	if s.alive {
 		s.exit(StopExitCode)
 	}

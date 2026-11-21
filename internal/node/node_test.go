@@ -208,6 +208,45 @@ func TestOrphanSessionIsStoppedAndForgotten(t *testing.T) {
 	}
 }
 
+// DropUnassigned stops only what the last assign dropped: before any assign
+// nothing is known and every session stays; after one, an unnamed hosted
+// session goes and nothing launches (#361).
+func TestDropUnassignedOnlyAfterAnAssign(t *testing.T) {
+	r := newRig(t)
+	ctx := context.Background()
+	for _, name := range []string{"sb-a", "sb-gone", "other"} {
+		if err := r.fake.Launch(ctx, term.Spec{Name: name, Argv: []string{"x"}, Cols: 80, Rows: 24}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	n, err := node.New(r.cfg, r.fake)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := n.DropUnassigned(ctx); err != nil || len(r.fake.Stops()) != 0 {
+		t.Fatalf("before an assign: err %v, stops %+v", err, r.fake.Stops())
+	}
+	n.Assign([]node.Record{rec("a"), rec("b")})
+	if err := n.DropUnassigned(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if stops := r.fake.Stops(); len(stops) != 1 || stops[0].Name != "sb-gone" {
+		t.Fatalf("stops %+v", stops)
+	}
+	infos, err := r.fake.List(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, in := range infos {
+		names = append(names, in.Name)
+	}
+	slices.Sort(names)
+	if !slices.Equal(names, []string{"other", "sb-a"}) || len(r.fake.Launches()) != 3 {
+		t.Fatalf("sessions %q, launches %d", names, len(r.fake.Launches()))
+	}
+}
+
 func TestRestartPolicies(t *testing.T) {
 	cases := []struct {
 		policy   string
