@@ -147,7 +147,10 @@ type Node struct {
 
 	mu      sync.Mutex
 	records []Record
-	states  map[string]*state
+	// assigned is true once a list came in: before that records is empty
+	// because nothing is known yet, not because every record went.
+	assigned bool
+	states   map[string]*state
 	// relaunchAll clears failures at the next reconcile with records
 	// (RestartSessions before the first assign).
 	relaunchAll bool
@@ -228,6 +231,7 @@ func (n *Node) Assign(recs []Record) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	n.records = append([]Record(nil), recs...)
+	n.assigned = true
 	ids := map[string]bool{}
 	for _, r := range recs {
 		ids[r.ID] = true
@@ -436,11 +440,8 @@ func (n *Node) Reconcile(ctx context.Context) error {
 		if assigned[in.Name] && in.Alive {
 			n.active++
 		}
-		if !strings.HasPrefix(in.Name, NamePrefix) || assigned[in.Name] {
-			continue
-		}
-		errs = append(errs, n.drop(ctx, in))
 	}
+	errs = append(errs, n.dropOrphans(ctx, infos, assigned)...)
 	// Oldest-created first, so waiting records start in that order.
 	order := slices.Clone(n.records)
 	slices.SortStableFunc(order, func(a, b Record) int { return cmp.Compare(a.CreatedAt, b.CreatedAt) })
@@ -450,6 +451,40 @@ func (n *Node) Reconcile(ctx context.Context) error {
 	}
 	n.scanLimits(ctx, byName)
 	return errors.Join(errs...)
+}
+
+// DropUnassigned stops and forgets every hosted session the last assigned
+// list no longer names, and nothing else: no launch, no restart. Before the
+// first assign it does nothing. up calls it on its way out so a record
+// removed just before it stopped does not leave its session running until
+// the next start (#361); ctx bounds the stops.
+func (n *Node) DropUnassigned(ctx context.Context) error {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if !n.assigned {
+		return nil
+	}
+	infos, err := n.backend.List(ctx)
+	if err != nil {
+		return fmt.Errorf("node: list sessions: %w", err)
+	}
+	assigned := map[string]bool{}
+	for _, r := range n.records {
+		assigned[TerminalName(r.ID)] = true
+	}
+	return errors.Join(n.dropOrphans(ctx, infos, assigned)...)
+}
+
+// dropOrphans drops every hosted session in infos not in assigned.
+func (n *Node) dropOrphans(ctx context.Context, infos []term.Info, assigned map[string]bool) []error {
+	var errs []error
+	for _, in := range infos {
+		if !strings.HasPrefix(in.Name, NamePrefix) || assigned[in.Name] {
+			continue
+		}
+		errs = append(errs, n.drop(ctx, in))
+	}
+	return errs
 }
 
 // drop stops and forgets a backend session no record owns.

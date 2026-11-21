@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/sandcorporation/switchboard/internal/cli"
 	"github.com/sandcorporation/switchboard/internal/config"
@@ -80,27 +81,65 @@ func Up(v, dataDir string, port int, nodeName string) (err error) {
 		ln.Close()
 		return err
 	}
-	run(v, ln, dir, func(ctx context.Context, s *Server) error {
+	run(v, ln, dir, func(ctx context.Context, s *Server) (<-chan struct{}, error) {
 		token, err := node.EnsureTokenFile(tokenFile)
 		if err != nil {
-			return fmt.Errorf("up: node %s: %w", nodeName, err)
+			return nil, fmt.Errorf("up: node %s: %w", nodeName, err)
 		}
-		if err = s.hostingService().RegisterLocalNode(nodeName, token); err != nil {
-			return fmt.Errorf("up: node %s: %w", nodeName, err)
+		hs := s.hostingService()
+		if err = hs.RegisterLocalNode(nodeName, token); err != nil {
+			return nil, fmt.Errorf("up: node %s: %w", nodeName, err)
 		}
 		link, err := part.link(token)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		log.Printf("node %s: %s backend, socket %s", nodeName, part.backendName, part.socket)
+		done := make(chan struct{})
 		goSafe("node "+nodeName, func() {
-			if err := link.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
-				log.Printf("node %s: stopped: %v", nodeName, err)
-			}
+			defer close(done)
+			runLocalNode(ctx, link, nodeName, hs.List, log.Printf)
 		})
-		return nil
+		return done, nil
 	})
 	return nil
+}
+
+// localDropWait bounds the stops of a local node on its way out: one
+// session's grace and the kill after it.
+const localDropWait = node.StopGrace + 5*time.Second
+
+// runLocalNode runs up's node until ctx ends, then stops the sessions whose
+// records are gone before it returns (#361). Removing a record only takes
+// it out of the node's list; the node stops the session on its next pass,
+// and an agent takes a moment to exit. up stopping in between used to
+// cancel that stop and exit without waiting, leaving the session running
+// with no record until the next up. The list is the host's own records
+// when they still read (an assign still in flight counts), else the node's
+// last assign. A node the host revoked leaves its sessions as they are.
+// Remote nodes outlive their host and keep clearing on the next assign.
+func runLocalNode(ctx context.Context, link *node.Link, name string, records func() ([]wire.HostedSession, error), logf func(string, ...any)) {
+	err := link.Run(ctx)
+	if ctx.Err() == nil {
+		if err != nil {
+			logf("node %s: stopped: %v", name, err)
+		}
+		return
+	}
+	if recs, err := records(); err == nil {
+		mine := []wire.HostedSession{}
+		for _, r := range recs {
+			if r.Node == name {
+				mine = append(mine, r)
+			}
+		}
+		link.Node.Assign(mine)
+	}
+	dctx, cancel := context.WithTimeout(context.Background(), localDropWait)
+	defer cancel()
+	if err := link.Node.DropUnassigned(dctx); err != nil {
+		logf("node %s: stopping removed sessions: %v", name, err)
+	}
 }
 
 // Node is `switchboard node`: a node for this machine attached to the host at
