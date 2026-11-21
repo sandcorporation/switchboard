@@ -27,8 +27,9 @@ func e2eBackendFor(t *testing.T) e2eBackend {
 		t.Fatal(err)
 	}
 	return e2eBackend{
-		env:  []string{"TMUX_TMPDIR=" + d},
-		stop: func(c *exec.Cmd) { _ = c.Process.Signal(syscall.SIGTERM) },
+		env:   []string{"TMUX_TMPDIR=" + d},
+		stop:  func(c *exec.Cmd, _ string) { _ = c.Process.Signal(syscall.SIGTERM) },
+		alive: func(pid int) bool { return syscall.Kill(pid, 0) == nil },
 		end: func(instance string) {
 			kill := exec.Command("tmux", "-L", "switchboard-"+instance, "kill-server")
 			kill.Env = append(os.Environ(), "TMUX_TMPDIR="+d)

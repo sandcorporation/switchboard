@@ -103,9 +103,12 @@ type e2eUp struct {
 // e2eBackend is the per-OS part: the environment the backend needs, how up
 // is stopped, and how the backend's server (tmux server, keeper) is ended.
 type e2eBackend struct {
-	env  []string
-	stop func(*exec.Cmd)
+	env []string
+	// stop asks up, running from dir, to stop the way an operator does.
+	stop func(c *exec.Cmd, dir string)
 	end  func(instance string)
+	// alive reports whether the process pid runs.
+	alive func(pid int) bool
 }
 
 func newE2EUp(t *testing.T) *e2eUp {
@@ -263,7 +266,8 @@ func (r *e2eUp) kill() {
 	r.cmd = nil
 }
 
-// stop ends up (SIGTERM on Linux, as Ctrl-C; terminated on Windows).
+// stop ends up (SIGTERM on Linux, as Ctrl-C; its stop file on Windows, as
+// sbstop), killing it after 30 s.
 func (r *e2eUp) stop() {
 	if r.cmd == nil {
 		return
@@ -271,7 +275,7 @@ func (r *e2eUp) stop() {
 	select {
 	case <-r.done:
 	default:
-		r.backend.stop(r.cmd)
+		r.backend.stop(r.cmd, r.dir)
 		select {
 		case <-r.done:
 		case <-time.After(30 * time.Second):
@@ -413,7 +417,7 @@ func TestE2E_HostingUp(t *testing.T) {
 	if err := os.MkdirAll(work, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	var id, sessionID string
+	var id, second, sessionID string
 	var pid, runNo int
 	online := func(sid string) func() bool {
 		return func() bool {
@@ -488,7 +492,13 @@ func TestE2E_HostingUp(t *testing.T) {
 			tm.until("mail team/lead e2e-mail")
 		}},
 		{"UpRestartKeepsTheSession", func(t *testing.T) {
+			mark := len(r.log())
 			r.stop()
+			// A stop that runs up's own way out leaves its exit 0 line
+			// (#388: on Windows too, where it used to be terminated).
+			if since := r.log()[mark:]; !strings.Contains(since, "exit 0: stopped by ") {
+				t.Fatalf("up stopped without its exit 0 line:\n%s", since)
+			}
 			r.start()
 			r.wait("the session adopted", online(sessionID))
 			r.wait("the runtime reported", func() bool { return r.session(id).Runtime.State == "running" })
@@ -562,7 +572,7 @@ func TestE2E_HostingUp(t *testing.T) {
 			if got := adminCall(t, r.base(), "POST", "/api/admin/terminals", r.cookie, true, string(body)); got.code != http.StatusConflict || !strings.Contains(got.body, "SWITCHBOARD_HOSTING_MAX") {
 				t.Fatalf("add over the cap = %d %s", got.code, got.body)
 			}
-			second := r.add(other, "stopped")
+			second = r.add(other, "stopped")
 			if got := adminCall(t, r.base(), "PUT", "/api/admin/terminals/"+second, r.cookie, true, `{"desired":"running"}`); got.code != http.StatusConflict {
 				t.Fatalf("start over the cap = %d %s", got.code, got.body)
 			}
@@ -573,6 +583,19 @@ func TestE2E_HostingUp(t *testing.T) {
 			if got := adminCall(t, r.base(), "PUT", "/api/admin/terminals/"+id, r.cookie, true, `{"desired":"running"}`); got.code != http.StatusConflict {
 				t.Fatalf("restart the first over the cap = %d %s", got.code, got.body)
 			}
+		}},
+		{"SessionRemovedJustBeforeUpStopsIsStopped", func(t *testing.T) {
+			// #361, #388: up stopped right after a removal stops the
+			// session on its way out, not at the next start.
+			pid := r.session(second).Runtime.PID
+			if got := adminCall(t, r.base(), "DELETE", "/api/admin/terminals/"+second, r.cookie, true, ""); got.code != http.StatusOK {
+				t.Fatalf("remove = %d %s", got.code, got.body)
+			}
+			r.stop()
+			if r.backend.alive(pid) {
+				t.Fatalf("the removed session's process %d runs after up stopped:\n%s", pid, r.log())
+			}
+			r.start()
 		}},
 		{"RevokedNodeIsShutOut", func(t *testing.T) {
 			got := adminCall(t, r.base(), "DELETE", "/api/admin/nodes/local", r.cookie, true, "")

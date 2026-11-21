@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -82,8 +83,8 @@ type attachFunc func(ctx context.Context, s *Server) (done <-chan struct{}, err 
 
 // run is Run; ln, when set, is the listener already bound to LISTEN_ADDR
 // (up binds it first), setupDir, when set, is up's data directory, where the
-// first-run admin setup keeps its code, and attach, when set, runs after the
-// listener is bound.
+// first-run admin setup keeps its code and where its stop file asks it to
+// stop (stopfile.go), and attach, when set, runs after the listener is bound.
 func run(v string, ln net.Listener, setupDir string, attach attachFunc) {
 	version = v
 	hostingOn, e := hostingStart(os.Getenv)
@@ -213,11 +214,22 @@ func run(v string, ln net.Listener, setupDir string, attach attachFunc) {
 			fatal(e)
 		}
 	}
+	// up also stops on its stop file (stopfile.go); a nil channel never
+	// fires.
+	var stopFile <-chan struct{}
+	if setupDir != "" {
+		stopFile = watchStopFile(ctx, filepath.Join(setupDir, upStopFile), stopFilePoll)
+	}
 	var why string
 	goSafe("shutdown", func() {
-		sig := <-stop
-		why = "stopped by signal " + sig.String()
-		log.Printf("signal %s: shutting down", sig)
+		select {
+		case sig := <-stop:
+			why = "stopped by signal " + sig.String()
+			log.Printf("signal %s: shutting down", sig)
+		case <-stopFile:
+			why = "stopped by " + upStopFile
+			log.Printf("%s: shutting down", upStopFile)
+		}
 		cancel()
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
