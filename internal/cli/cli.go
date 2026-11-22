@@ -430,8 +430,9 @@ func runCLI(args []string) int {
 	code, err := dispatch(args)
 	var ue UsageError
 	if errors.As(err, &ue) {
-		fmt.Fprintln(os.Stderr, progName()+": "+ue.msg)
+		// The reason is the last line, where a reader of a long stderr looks.
 		fmt.Fprintln(os.Stderr, "Run '"+progName()+" --help' for usage.")
+		fmt.Fprintln(os.Stderr, progName()+": "+ue.msg)
 		return ExitUsage
 	}
 	if err != nil {

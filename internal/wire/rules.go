@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 // Rules ledger (#406 ①): the rules in force, by service and topic. A rule
@@ -37,13 +38,29 @@ const (
 // MaxRuleText is the longest rule text, in bytes.
 const MaxRuleText = 4000
 
-var nameRE = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,39}$`)
+var (
+	nameRE  = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,39}$`)
+	topicRE = regexp.MustCompile(`^[\p{L}\p{N}][\p{L}\p{M}\p{N}._-]*$`)
+)
 
-// CheckRuleName checks a topic or tag name: lower case letters, digits, '.',
-// '_' and '-', up to 40, starting with a letter or digit.
+// MaxTopicRunes is the longest topic name, in runes.
+const MaxTopicRunes = 40
+
+// CheckRuleName checks a tag name: lower case letters, digits, '.', '_' and
+// '-', up to 40, starting with a letter or digit. Tags stay ASCII because
+// they are typed in --scope tag:NAME.
 func CheckRuleName(what, v string) error {
 	if !nameRE.MatchString(v) {
 		return fmt.Errorf("%s %q: use lower-case letters, digits, '.', '_' or '-' (up to 40)", what, v)
+	}
+	return nil
+}
+
+// CheckTopicName checks a topic name: letters of any script, digits, '.',
+// '_' and '-', no spaces, up to 40 runes, starting with a letter or digit.
+func CheckTopicName(v string) error {
+	if !topicRE.MatchString(v) || utf8.RuneCountInString(v) > MaxTopicRunes {
+		return fmt.Errorf("topic %q: use letters, digits, '.', '_' or '-', no spaces (up to %d)", v, MaxTopicRunes)
 	}
 	return nil
 }
@@ -189,7 +206,7 @@ func (q *RuleRequest) Check() error {
 	if q.Text == "" || len(q.Text) > MaxRuleText {
 		return fmt.Errorf("text: 1-%d bytes", MaxRuleText)
 	}
-	if err := CheckRuleName("topic", q.Topic); err != nil {
+	if err := CheckTopicName(q.Topic); err != nil {
 		return err
 	}
 	s, err := q.Scope.Normal()

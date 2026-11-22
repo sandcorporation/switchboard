@@ -83,4 +83,19 @@ func TestRulesCLI(t *testing.T) {
 	if out = h.mustRun(worker, "rules"); out != "규칙 없음" {
 		t.Fatalf("worker list after void: %q", out)
 	}
+
+	// #408 T1: a Korean topic, a text of several lines (list shows the
+	// first, show the whole), and a usage error's reason as the last line.
+	h.mustRun(boss, "rules", "add", "--kind", "tip", "--scope", "service:b", "--topic", "배포", "--new-topic", "--source", "x", "green first\n- then tag\n- then notes")
+	if out = h.mustRun(worker, "rules", "list", "--topic", "배포"); out != "#5 요령 배포 green first" {
+		t.Fatalf("korean topic list: %q", out)
+	}
+	if out = h.mustRun(worker, "rules", "show", "5"); out != "#5 요령 배포\n\ngreen first\n- then tag\n- then notes" {
+		t.Fatalf("multi-line show: %q", out)
+	}
+	r = h.run(boss, "rules", "add", "--kind", "tip", "--scope", "all", "--topic", "배 포", "--source", "x", "y")
+	lines := strings.Split(strings.TrimSpace(r.stderr), "\n")
+	if r.code != 2 || len(lines) < 2 || !strings.Contains(lines[len(lines)-1], "topic \"배 포\"") || !strings.Contains(lines[0], "--help") {
+		t.Fatalf("usage error: %+v", r)
+	}
 }
