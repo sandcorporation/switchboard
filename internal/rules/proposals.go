@@ -99,10 +99,6 @@ func readReview(w http.ResponseWriter, r *http.Request) (wire.RuleReview, bool) 
 		return q, false
 	}
 	q.Reason = strings.TrimSpace(q.Reason)
-	if len(q.Replace) > 0 && q.Alongside {
-		http.Error(w, "replace and alongside: choose one", http.StatusBadRequest)
-		return q, false
-	}
 	if len(q.Reason) > wire.MaxRuleText {
 		http.Error(w, fmt.Sprintf("reason: up to %d bytes", wire.MaxRuleText), http.StatusBadRequest)
 		return q, false

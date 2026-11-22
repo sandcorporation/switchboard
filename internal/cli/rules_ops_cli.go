@@ -26,9 +26,6 @@ func rulesReview(c Config, id int64, action string, p parsedArgs, out io.Writer)
 			return 0, err
 		}
 	}
-	if len(q.Replace) > 0 && q.Alongside {
-		return 0, usagef("rules %s: --replace and --alongside: choose one", action)
-	}
 	if action == "reject" && (len(q.Replace) > 0 || q.Alongside) {
 		return 0, usagef("rules reject takes --reason only")
 	}
