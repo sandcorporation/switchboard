@@ -42,7 +42,6 @@ func TestProgressGroupsByServiceAndSortsByActivity(t *testing.T) {
 	mailAt(t, s, flowRow{sender: "team/reviewer", recipient: "ops/lead", at: now.Add(-2 * time.Hour)})
 	mailAt(t, s, flowRow{sender: "ops/lead", recipient: "team/worker", at: now.Add(-time.Hour)})
 	mailAt(t, s, flowRow{sender: identity.SystemSender, recipient: "team/worker", at: now})
-	mailAt(t, s, flowRow{sender: identity.LegacySystemSender, recipient: "team/worker", at: now})
 	mailAt(t, s, flowRow{sender: "solo", recipient: "ops/lead", at: now.Add(-5 * time.Hour)})
 
 	r := mustProgress(t, s)
@@ -220,14 +219,11 @@ func TestProgressDirectivesIgnoreSystemMail(t *testing.T) {
 	// System mail (old name and numbered form) is never a directive.
 	mailAt(t, s, flowRow{sender: identity.SystemSender, recipient: "sandcorp/boss", task: "alert:stall:team/worker:2026-11-17", at: now.Add(-time.Hour), status: "pending"})
 	mailAt(t, s, flowRow{sender: identity.SystemSender + "-2", recipient: "sandcorp/boss", task: "q_abc", at: now.Add(-time.Hour), status: "pending"})
-	mailAt(t, s, flowRow{sender: identity.LegacySystemSender, recipient: "sandcorp/boss", task: "alert:pending:x", at: now.Add(-time.Hour), status: "pending"})
-	mailAt(t, s, flowRow{sender: identity.LegacySystemSender + "-3", recipient: "sandcorp/boss", task: "q_old", at: now.Add(-time.Hour), status: "pending"})
 	// A real directive stays open; the system mail on its task id does not
 	// answer it.
 	s.bossRoles = map[string]bool{"sandcorp/boss": true}
 	mailAt(t, s, flowRow{sender: "sandcorp/boss", recipient: "team/worker", task: "REAL", at: now.Add(-2 * time.Hour), status: "pending"})
 	mailAt(t, s, flowRow{sender: identity.SystemSender, recipient: "sandcorp/boss", task: "REAL", at: now.Add(-time.Minute), status: "pending"})
-	mailAt(t, s, flowRow{sender: identity.LegacySystemSender, recipient: "team/worker", task: "REAL", at: now.Add(-time.Minute), status: "pending"})
 
 	if got := openDirectiveTasks(t, s); strings.Join(got, ",") != "team:REAL" {
 		t.Fatalf("open directives %v", got)

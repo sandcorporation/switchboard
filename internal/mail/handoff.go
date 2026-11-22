@@ -107,8 +107,8 @@ func HandOffUnread(tx *sql.Tx, base string, number int, now time.Time) (int, []s
 		return 0, nil, nil
 	}
 	rows, err := tx.Query(`SELECT m.id,COALESCE(m.task_id,''),m.sender,m.subject,h.message_id IS NOT NULL FROM messages m LEFT JOIN handoffs h ON h.message_id=m.id `+StatusJoin+
-		` WHERE m.recipient=? AND m.status='pending' AND COALESCE(rs.status,'pending')='pending' AND (h.message_id IS NOT NULL OR m.sender NOT IN (?,?)) ORDER BY m.id`,
-		box, identity.SystemSender, identity.LegacySystemSender)
+		` WHERE m.recipient=? AND m.status='pending' AND COALESCE(rs.status,'pending')='pending' AND (h.message_id IS NOT NULL OR m.sender<>?) ORDER BY m.id`,
+		box, identity.SystemSender)
 	if err != nil {
 		return 0, nil, err
 	}
@@ -309,8 +309,8 @@ func CurrentID(q identity.Queryer, id int64) int64 {
 // machine+directory, label) may take to that slot's mailbox. It returns that
 // mailbox and how many messages moved.
 func DeliverHandoff(tx *sql.Tx, base string, number int, machine, directory, label string, now time.Time) (string, int, error) {
-	rows, err := tx.Query(`SELECT h.message_id,h.machine,h.directory,h.label,(m.sender NOT IN (?,?) OR h.strict) FROM handoffs h JOIN messages m ON m.id=h.message_id WHERE h.base=? AND (h.machine=? OR h.label=?) AND m.status=? ORDER BY h.message_id`,
-		identity.SystemSender, identity.LegacySystemSender, base, machine, label, statusHeld)
+	rows, err := tx.Query(`SELECT h.message_id,h.machine,h.directory,h.label,(m.sender<>? OR h.strict) FROM handoffs h JOIN messages m ON m.id=h.message_id WHERE h.base=? AND (h.machine=? OR h.label=?) AND m.status=? ORDER BY h.message_id`,
+		identity.SystemSender, base, machine, label, statusHeld)
 	if err != nil {
 		return "", 0, err
 	}
@@ -346,8 +346,8 @@ func DeliverHandoff(tx *sql.Tx, base string, number int, machine, directory, lab
 // HandoffWaitingSQL is an SQL expression, true while held handed-off system
 // mail with task_id equal to the expression task waits for a session.
 func HandoffWaitingSQL(task string) string {
-	return `EXISTS(SELECT 1 FROM handoffs h JOIN messages hm ON hm.id=h.message_id WHERE hm.status='held' AND hm.sender IN ('` +
-		identity.SystemSender + `','` + identity.LegacySystemSender + `') AND hm.task_id=` + task + `)`
+	return `EXISTS(SELECT 1 FROM handoffs h JOIN messages hm ON hm.id=h.message_id WHERE hm.status='held' AND hm.sender='` +
+		identity.SystemSender + `' AND hm.task_id=` + task + `)`
 }
 
 // ExpireHandoffs ends mail a role sent that has been held for a session
@@ -357,8 +357,8 @@ func HandoffWaitingSQL(task string) string {
 func (s *Service) ExpireHandoffs(ctx context.Context, after time.Duration) (int, error) {
 	now := s.now()
 	limit := now.Add(-after)
-	rows, err := s.db.QueryContext(ctx, `SELECT m.id,m.sender,m.subject,COALESCE(m.addressed_to,''),COALESCE(m.task_id,''),COALESCE(m.held_at,'') FROM messages m JOIN handoffs h ON h.message_id=m.id WHERE m.status=? AND m.sender NOT IN (?,?) ORDER BY m.id`,
-		statusHeld, identity.SystemSender, identity.LegacySystemSender)
+	rows, err := s.db.QueryContext(ctx, `SELECT m.id,m.sender,m.subject,COALESCE(m.addressed_to,''),COALESCE(m.task_id,''),COALESCE(m.held_at,'') FROM messages m JOIN handoffs h ON h.message_id=m.id WHERE m.status=? AND m.sender<>? ORDER BY m.id`,
+		statusHeld, identity.SystemSender)
 	if err != nil {
 		return 0, err
 	}

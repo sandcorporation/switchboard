@@ -10,10 +10,9 @@ RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o /switchboard ./cmd/switchboard
 FROM alpine:3.22
-RUN addgroup -S agentmail && adduser -S -G agentmail agentmail && mkdir -p /data && chown agentmail:agentmail /data
+RUN addgroup -S switchboard && adduser -S -G switchboard switchboard && mkdir -p /data && chown switchboard:switchboard /data
 COPY --from=build /switchboard /usr/local/bin/switchboard
-RUN ln -s switchboard /usr/local/bin/agent-mail # old command name for scripts that exec into the container: 3단계에 제거
-USER agentmail
+USER switchboard
 ENV DB_PATH=/data/mail.db LISTEN_ADDR=:8080
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 CMD wget -q -O - http://127.0.0.1:8080/health || exit 1

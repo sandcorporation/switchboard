@@ -191,7 +191,7 @@ func ReplyCandidates(db *sql.DB, ds []FlowMail) ([]FlowMail, error) {
 	const chunk = 500
 	for i := 0; i < len(threads); i += chunk {
 		part := append([]any{}, threads[i:min(i+chunk, len(threads))]...)
-		rows, err := db.Query(`SELECT `+FlowCols+` FROM messages WHERE thread_id IN (`+placeholders(len(part))+`) AND sender NOT IN (?,?)`, append(part, identity.SystemSender, identity.LegacySystemSender)...)
+		rows, err := db.Query(`SELECT `+FlowCols+` FROM messages WHERE thread_id IN (`+placeholders(len(part))+`) AND sender<>?`, append(part, identity.SystemSender)...)
 		if err != nil {
 			return nil, err
 		}
@@ -233,7 +233,7 @@ func AnswerCandidates(db *sql.DB, ds []FlowMail, base func(string) string, isBos
 	seen := map[int64]bool{}
 	var out []FlowMail
 	query := func(where string, args ...any) error {
-		rows, err := db.Query(`SELECT `+FlowCols+` FROM messages WHERE `+where+` AND sender NOT IN (?,?)`, append(args, identity.SystemSender, identity.LegacySystemSender)...)
+		rows, err := db.Query(`SELECT `+FlowCols+` FROM messages WHERE `+where+` AND sender<>?`, append(args, identity.SystemSender)...)
 		if err != nil {
 			return err
 		}

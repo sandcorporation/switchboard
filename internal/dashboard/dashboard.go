@@ -1001,8 +1001,8 @@ function renderSessionStates(ss,t){
 }
 // renderAliases shows old-name use since the server started (#72).
 function renderAliases(a){
-  a=a||{};const h=Object.entries(a.old_headers||{}).sort().map(([k,v])=>k+' '+v),e=a.old_env||[];
-  $('mAliases').textContent='옛 이름 헤더: '+(h.join(', ')||'0')+' · 옛 이름 환경 변수: '+(e.join(', ')||'없음');
+  a=a||{};const e=a.old_env||[];
+  $('mAliases').textContent='옛 이름 환경 변수: '+(e.join(', ')||'없음');
 }
 async function loadMetrics(){
   const seq=++metricsSeq;

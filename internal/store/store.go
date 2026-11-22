@@ -134,6 +134,9 @@ func Init(db *sql.DB) error {
 	if e = migrateHostedEvents(db); e != nil {
 		return e
 	}
+	if e = migrateSystemSender(db); e != nil {
+		return e
+	}
 	if e = migrateMailboxViews(db); e != nil {
 		return e
 	}
@@ -1060,4 +1063,13 @@ func migrateSchedules(db *sql.DB) error {
 		return err
 	}
 	return addNoExtend(db, "schedules")
+}
+
+// migrateSystemSender renames the system sender's old stored name
+// (agent-mail/system and its numbered forms) to switchboard/system, so mail
+// sent under it keeps counting as system mail now that only one name is
+// reserved (#427). A row that would collide on (sender, idem) is left.
+func migrateSystemSender(db *sql.DB) error {
+	_, err := db.Exec(`UPDATE OR IGNORE messages SET sender='switchboard/'||substr(sender,12) WHERE sender='agent-mail/system' OR sender GLOB 'agent-mail/system-[0-9]*'`)
+	return err
 }

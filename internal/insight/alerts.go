@@ -61,8 +61,8 @@ const pendingListMax = 5
 // pendingList names the oldest pending non-system mail of box, at most max,
 // one line each: "#<id> <sender> — <subject>".
 func (s *Service) pendingList(box string, max int) (string, error) {
-	rows, err := s.db.Query(`SELECT m.id,m.sender,m.subject FROM messages m `+mail.StatusJoin+` WHERE m.recipient=? AND m.sender NOT IN (?,?) AND `+mail.StatusExpr+`='pending' ORDER BY m.id LIMIT ?`,
-		box, identity.SystemSender, identity.LegacySystemSender, max)
+	rows, err := s.db.Query(`SELECT m.id,m.sender,m.subject FROM messages m `+mail.StatusJoin+` WHERE m.recipient=? AND m.sender<>? AND `+mail.StatusExpr+`='pending' ORDER BY m.id LIMIT ?`,
+		box, identity.SystemSender, max)
 	if err != nil {
 		return "", err
 	}

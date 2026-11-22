@@ -306,7 +306,7 @@ func TestE2E_HostingDocLinux(t *testing.T) {
 			}
 			if strings.HasPrefix(b.step, "L5.") && !inherited {
 				// What an agent session's shell carries; L5 clears it.
-				script.WriteString("export SWITCHBOARD_PROFILE=elsewhere SWITCHBOARD_ROLE=team/other AGENT_MAIL_PROFILE=elsewhere\n")
+				script.WriteString("export SWITCHBOARD_PROFILE=elsewhere SWITCHBOARD_ROLE=team/other\n")
 				inherited = true
 			}
 			fmt.Fprintf(&script, "echo '>>> %s'\n%s\n", strings.ReplaceAll(b.lines[0], "'", ""), strings.Join(b.lines, "\n"))
@@ -398,7 +398,7 @@ func TestE2E_HostingDocLinux(t *testing.T) {
 	var env []string
 	for _, kv := range os.Environ() {
 		name, _, _ := strings.Cut(kv, "=")
-		if strings.HasPrefix(name, "SWITCHBOARD_") || strings.HasPrefix(name, "AGENT_MAIL_") || name == "DB_PATH" || name == "LISTEN_ADDR" ||
+		if strings.HasPrefix(name, "SWITCHBOARD_") || name == "DB_PATH" || name == "LISTEN_ADDR" ||
 			name == "HOME" || name == "PATH" || name == "TMUX" || strings.HasPrefix(name, "XDG_") || name == "TMUX_TMPDIR" {
 			continue
 		}
@@ -633,7 +633,7 @@ func TestE2E_HostingDocWindows(t *testing.T) {
 			pre := ""
 			if strings.HasPrefix(d.step, "W5.") && !strings.Contains(strings.Join(blocks, "\n"), ">>> W5.") {
 				// What an agent session's window carries; W5 clears it.
-				pre = "$env:SWITCHBOARD_PROFILE = 'elsewhere'; $env:SWITCHBOARD_ROLE = 'team/other'; $env:AGENT_MAIL_PROFILE = 'elsewhere'\n"
+				pre = "$env:SWITCHBOARD_PROFILE = 'elsewhere'; $env:SWITCHBOARD_ROLE = 'team/other'\n"
 			}
 			if strings.HasPrefix(d.step, "W4.") && strings.Contains(strings.Join(blocks, "\n"), ">>> W4.") {
 				pre = personAtSetupPagePS
@@ -748,7 +748,7 @@ func TestE2E_HostingDocWindows(t *testing.T) {
 		"$env:PATH = '" + agentDir + ";' + $env:PATH\n" +
 		"$dl = '" + dl + "'\n$asset = '" + asset + "'\n" +
 		body + "\n'TOTP ' + (Get-SbTotp '" + secret + "')\n" +
-		"'LEFT[' + ((Get-ChildItem Env: | Where-Object Name -match '^(SWITCHBOARD|AGENT_MAIL)_(PROFILE|ROLE)$').Name -join ',') + ']'\n" +
+		"'LEFT[' + ((Get-ChildItem Env: | Where-Object Name -match '^SWITCHBOARD_(PROFILE|ROLE)$').Name -join ',') + ']'\n" +
 		"Write-Output '>>> W3 of v0.16.0'\n" + strings.ReplaceAll(string(oldEnv), "\r\n", "\n")
 	file := filepath.Join(root, "doc.ps1")
 	if err := os.WriteFile(file, []byte(script), 0o600); err != nil {
@@ -757,7 +757,7 @@ func TestE2E_HostingDocWindows(t *testing.T) {
 	cmd := exec.Command(ps, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", file)
 	for _, kv := range os.Environ() {
 		name, _, _ := strings.Cut(kv, "=")
-		if n := strings.ToUpper(name); strings.HasPrefix(n, "SWITCHBOARD_") || strings.HasPrefix(n, "AGENT_MAIL_") || n == "DB_PATH" || n == "LISTEN_ADDR" {
+		if n := strings.ToUpper(name); strings.HasPrefix(n, "SWITCHBOARD_") || n == "DB_PATH" || n == "LISTEN_ADDR" {
 			continue
 		}
 		cmd.Env = append(cmd.Env, kv)

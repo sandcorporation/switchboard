@@ -271,7 +271,7 @@ func (s *Service) Progress(pending time.Duration, base func(string) string) (wir
 	}
 
 	// Last activity: the newest mail of every sender.
-	last, err := s.progressMailQuery(`m.id IN (SELECT MAX(id) FROM messages WHERE sender NOT IN (?,?) GROUP BY sender)`, identity.SystemSender, identity.LegacySystemSender)
+	last, err := s.progressMailQuery(`m.id IN (SELECT MAX(id) FROM messages WHERE sender<>? GROUP BY sender)`, identity.SystemSender)
 	if err != nil {
 		return out, err
 	}
@@ -295,7 +295,7 @@ func (s *Service) Progress(pending time.Duration, base func(string) string) (wir
 		}
 	}
 	if len(bossBoxes) > 0 {
-		reports, err := s.progressMailQuery(`m.id IN (SELECT MAX(id) FROM messages WHERE sender NOT IN (?,?) AND recipient IN (`+placeholders(len(bossBoxes))+`) GROUP BY sender)`, append([]any{identity.SystemSender, identity.LegacySystemSender}, anySlice(bossBoxes)...)...)
+		reports, err := s.progressMailQuery(`m.id IN (SELECT MAX(id) FROM messages WHERE sender<>? AND recipient IN (`+placeholders(len(bossBoxes))+`) GROUP BY sender)`, append([]any{identity.SystemSender}, anySlice(bossBoxes)...)...)
 		if err != nil {
 			return out, err
 		}

@@ -53,7 +53,6 @@ type Server struct {
 	rulesFooterOff bool                // SWITCHBOARD_RULES_FOOTER=off: no rules footer on directives (#408)
 	discord        *insight.Discord    // SWITCHBOARD_DISCORD_WEBHOOK; nil sends no question notices
 	alerts         *insight.Thresholds // SWITCHBOARD_ALERT_*; nil means insight.DefaultThresholds
-	oldHeaders     config.AliasCounter // requests that used an old-prefix header
 	groups         identity.Groups     // collaborator groups (internal/identity)
 	admin          adminauth.Config    // admin login settings (internal/adminauth)
 	loginLimits    adminauth.Limiter   // failed admin logins

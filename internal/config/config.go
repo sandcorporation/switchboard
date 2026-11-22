@@ -1,11 +1,11 @@
 // Package config reads the environment: both the new SWITCHBOARD_* and the
-// old AGENT_MAIL_* names, and the header and profile-directory names.
+// old AGENT_MAIL_* names, and the profile-directory names.
 package config
 
-// Switchboard is the product's name; LegacyConfigDir holds the old one. Until the
-// aliases are removed (#71 §5, phase P3), every environment variable, header
-// and the profile directory answer to both names. The new name wins when both
-// are set. Old-name use is counted so the removal can wait until it is zero.
+// Switchboard is the product's name; LegacyConfigDir holds the old one. Every
+// environment variable and the profile directory still answer to both names
+// (#427: callers outside this repository use them). The new name wins when
+// both are set. Old environment names read are listed so they can be removed.
 
 import (
 	"fmt"
@@ -17,12 +17,11 @@ import (
 )
 
 const (
-	EnvPrefix          = "SWITCHBOARD_"
-	legacyEnvPrefix    = "AGENT_MAIL_"
-	HeaderPrefix       = "X-Switchboard-"
-	LegacyHeaderPrefix = "X-Agent-Mail-" // remove in phase 3 (3단계에 제거): the admin proxy still sends it
-	ConfigDirName      = "switchboard"
-	LegacyConfigDir    = "agent-mail" // remove in phase 3 (3단계에 제거): old binary and profile directory name
+	EnvPrefix       = "SWITCHBOARD_"
+	legacyEnvPrefix = "AGENT_MAIL_"
+	HeaderPrefix    = "X-Switchboard-"
+	ConfigDirName   = "switchboard"
+	LegacyConfigDir = "agent-mail" // kept (#427): dev-kit plugins and shell setups still run the old binary name and use its profile directory
 )
 
 // VersionHeaderName is HeaderPrefix + this: the CLI build version every
@@ -81,31 +80,6 @@ func OldEnvNames() []string {
 		out = append(out, n)
 	}
 	sort.Strings(out)
-	return out
-}
-
-// AliasCounter counts requests that carried an old header, by header name.
-type AliasCounter struct {
-	mu   sync.Mutex
-	seen map[string]int64
-}
-
-func (c *AliasCounter) Add(name string) {
-	c.mu.Lock()
-	if c.seen == nil {
-		c.seen = map[string]int64{}
-	}
-	c.seen[name]++
-	c.mu.Unlock()
-}
-
-func (c *AliasCounter) Snapshot() map[string]int64 {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	out := make(map[string]int64, len(c.seen))
-	for k, v := range c.seen {
-		out[k] = v
-	}
 	return out
 }
 
