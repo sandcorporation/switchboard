@@ -191,7 +191,7 @@ var commands = []command{
 	{name: "progress", args: "[SERVICE]", nargs: 1, optArgs: true,
 		summary: "Show per-service progress: last report, live sessions, and open directives (! over the threshold) (boss roles only)",
 		options: []option{{"--json", "", "print the server's whole JSON response unchanged (SERVICE is ignored)"}, optProfile}},
-	{name: "report", args: "[list | show R<ID>]", nargs: 2, optArgs: true,
+	{name: "report", args: "[list | show ID]", nargs: 2, optArgs: true,
 		synopsis: "| --title TEXT [--request TEXT] [--mail ID[,ID...]]... (--body TEXT | --body-file PATH | stdin)",
 		summary:  "Post a report to the dashboard, linking the directive threads it covers; prints the report ID. `report list [--open]` lists the reports (with --open, each open one's open directive threads) and `report show R<ID>` one report's threads (boss roles only)",
 		options: []option{
