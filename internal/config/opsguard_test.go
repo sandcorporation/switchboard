@@ -216,3 +216,18 @@ func TestOperationsConfigNeverRunsUp(t *testing.T) {
 		}
 	}
 }
+
+// TestComposePublishesNodeListenerOnLoopbackByDefault: compose.yaml publishes
+// the node listener port 8091, and with REMOTE_BIND_ADDRESS unset only on
+// loopback (#422). The variable must not start with SWITCHBOARD_HOSTING, so
+// the address guard does not see it.
+func TestComposePublishesNodeListenerOnLoopbackByDefault(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join(repoRoot(t), "compose.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	const want = `- "${REMOTE_BIND_ADDRESS:-127.0.0.1}:8091:8091"`
+	if !strings.Contains(string(b), want) {
+		t.Errorf("compose.yaml lacks the node listener port %s", want)
+	}
+}

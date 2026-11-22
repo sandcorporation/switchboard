@@ -13,6 +13,12 @@ services:
       SWITCHBOARD_ADMIN_PROXY_TOKEN: ${SWITCHBOARD_ADMIN_PROXY_TOKEN:-}
       # Admin login (README): builtin, or empty for the proxy secret above / default deny.
       SWITCHBOARD_ADMIN_AUTH: ${SWITCHBOARD_ADMIN_AUTH:-}
+      SWITCHBOARD_OIDC_ISSUER: ${SWITCHBOARD_OIDC_ISSUER:-}
+      SWITCHBOARD_OIDC_CLIENT_ID: ${SWITCHBOARD_OIDC_CLIENT_ID:-}
+      # The client secret is a credential (keep it in the external .env); the _FILE form is not passed.
+      SWITCHBOARD_OIDC_CLIENT_SECRET: ${SWITCHBOARD_OIDC_CLIENT_SECRET:-}
+      SWITCHBOARD_OIDC_ADMINS: ${SWITCHBOARD_OIDC_ADMINS:-}
+      SWITCHBOARD_OIDC_SCOPES: ${SWITCHBOARD_OIDC_SCOPES:-}
       SWITCHBOARD_INSECURE_COOKIE: ${SWITCHBOARD_INSECURE_COOKIE:-}
       SWITCHBOARD_TRUST_FORWARDED: ${SWITCHBOARD_TRUST_FORWARDED:-}
       # Optional; empty means the built-in default (see README).
@@ -33,8 +39,16 @@ services:
       SWITCHBOARD_PUBLIC_URL: ${SWITCHBOARD_PUBLIC_URL:-}
       SWITCHBOARD_DISCORD_USERNAME: ${SWITCHBOARD_DISCORD_USERNAME:-}
       SWITCHBOARD_DISCORD_AVATAR_URL: ${SWITCHBOARD_DISCORD_AVATAR_URL:-}
+      # Terminal hosting (docs/hosting-server.md); all empty means off.
+      SWITCHBOARD_HOSTING: ${SWITCHBOARD_HOSTING:-}
+      SWITCHBOARD_HOSTING_TERMINAL: ${SWITCHBOARD_HOSTING_TERMINAL:-}
+      SWITCHBOARD_HOSTING_TERMINAL_ALLOW: ${SWITCHBOARD_HOSTING_TERMINAL_ALLOW:-}
+      SWITCHBOARD_HOSTING_REMOTE_LISTEN: ${SWITCHBOARD_HOSTING_REMOTE_LISTEN:-}
+      SWITCHBOARD_HOSTING_REMOTE_ALLOW: ${SWITCHBOARD_HOSTING_REMOTE_ALLOW:-}
     ports:
       - "${MAIL_BIND_ADDRESS:-127.0.0.1}:8097:8080"
+      # Node listener; the published address comes from the external .env. Nothing listens in the container unless the remote listener is set.
+      - "${REMOTE_BIND_ADDRESS:-127.0.0.1}:8091:8091"
     volumes:
       - switchboard_data:/data
     read_only: true

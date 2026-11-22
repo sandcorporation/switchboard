@@ -40,27 +40,23 @@ Start log: `terminal hosting is on`, `switchboard remote listener on 0.0.0.0:809
 
 ## Container
 
-`compose.yaml` stays as it is. Add a second file next to the deploy `.env` and start with both:
+`compose.yaml` passes the hosting settings through and publishes the node listener port. Put the values in the deploy `.env`; empty values leave hosting off.
 
-```yaml
-# compose.hosting.yaml
-services:
-  switchboard:
-    environment:
-      SWITCHBOARD_HOSTING: "on"
-      SWITCHBOARD_HOSTING_TERMINAL: "on"
-      SWITCHBOARD_HOSTING_REMOTE_LISTEN: "0.0.0.0:8091"
-      SWITCHBOARD_TRUST_FORWARDED: "1"
-    ports:
-      - "100.64.0.10:8091:8091" # leak-guard:allow
+```sh
+# .env next to the deploy
+SWITCHBOARD_HOSTING=on
+SWITCHBOARD_HOSTING_TERMINAL=on
+SWITCHBOARD_HOSTING_REMOTE_LISTEN=0.0.0.0:8091
+SWITCHBOARD_TRUST_FORWARDED=1
+REMOTE_BIND_ADDRESS=100.64.0.10 # leak-guard:allow
 ```
 
 ```sh
-docker compose -f compose.yaml -f compose.hosting.yaml up -d
-docker compose -f compose.yaml -f compose.hosting.yaml logs --tail 20 switchboard | grep -E 'terminal hosting|remote listener'
+docker compose up -d
+docker compose logs --tail 20 switchboard | grep -E 'terminal hosting|remote listener'
 ```
 
-Inside the container the address is not known, so the listener binds every interface; the published address in `ports` decides who reaches it. Add `SWITCHBOARD_HOSTING_TERMINAL_ALLOW` and `SWITCHBOARD_HOSTING_REMOTE_ALLOW` the same way to limit peers.
+`REMOTE_BIND_ADDRESS` (default `127.0.0.1`) is the published address of port 8091. Inside the container the address is not known, so the listener binds every interface; the published address in `ports` decides who reaches it. Add `SWITCHBOARD_HOSTING_TERMINAL_ALLOW` and `SWITCHBOARD_HOSTING_REMOTE_ALLOW` to `.env` the same way to limit peers.
 
 ## First admin
 
@@ -108,7 +104,7 @@ With `SWITCHBOARD_ADMIN_PROXY_TOKEN` as the admin gate, whoever reaches the serv
    ```sh
    curl -sS -m 5 -o /dev/null -w '%{http_code}\n' http://<server address>:8097/health
    ss -ltn | grep -E ':8097|:8091'
-   docker compose -f compose.yaml -f compose.hosting.yaml port switchboard 8080
+   docker compose port switchboard 8080
    ```
 
    Expected: `curl` cannot connect (exit 7 or 28), `ss` and `port` show `127.0.0.1:8097` for the dashboard port and only the intended address for `8091`. A published port on `0.0.0.0` or a firewall that admits it fails the check.
