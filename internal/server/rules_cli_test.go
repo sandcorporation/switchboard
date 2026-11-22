@@ -152,3 +152,20 @@ func TestRulesEditReplacesOnlyOne(t *testing.T) {
 		t.Fatalf("replaced rows still listed: %q", out)
 	}
 }
+
+// rules add --replace A --alongside replaces A only; B on the same topic stays.
+func TestRulesAddReplaceAndAlongside(t *testing.T) {
+	t.Parallel()
+	h := newCLIHarnessWith(t, func(s *Server) { s.bossRoles = map[string]bool{"a": true} })
+	h.configure([]string{"--profile", "boss"}, "a")
+	boss := []string{"DB_PATH=", "SWITCHBOARD_PROFILE=boss"}
+	h.mustRun(boss, "rules", "add", "--kind", "tip", "--scope", "service:b", "--topic", "ci", "--new-topic", "--source", "x", "A")
+	h.mustRun(boss, "rules", "add", "--kind", "tip", "--scope", "service:b", "--topic", "ci", "--source", "x", "--alongside", "B")
+	if out := h.mustRun(boss, "rules", "add", "--kind", "tip", "--scope", "service:b", "--topic", "ci", "--source", "x", "--replace", "1", "--alongside", "A2"); !strings.Contains(out, "#3 요령 ci") {
+		t.Fatalf("add: %q", out)
+	}
+	out := h.mustRun(boss, "rules", "list", "--kind", "tip", "--topic", "ci")
+	if strings.Contains(out, "#1 ") || !strings.Contains(out, "#2 ") || !strings.Contains(out, "#3 ") {
+		t.Fatalf("list: %q", out)
+	}
+}
