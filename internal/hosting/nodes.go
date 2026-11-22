@@ -2,8 +2,12 @@ package hosting
 
 import (
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/sandcorporation/switchboard/internal/agent"
+	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -215,8 +219,56 @@ func (s *Service) NodeByToken(token string) (string, error) {
 // nodeSeen records a node's hello (machine, OS, version) and when it was
 // last seen.
 func (s *Service) nodeSeen(name string, h wire.NodeHello) error {
-	_, err := s.db.Exec(`UPDATE nodes SET machine=?,os=?,version=?,max_sessions=?,last_seen_at=? WHERE name=?`, h.Machine, h.OS, h.Version, max(h.Max, 0), s.clock().UnixMilli(), name)
+	adapters := ""
+	if len(h.Adapters) > 0 {
+		b, _ := json.Marshal(h.Adapters)
+		adapters = string(b)
+	}
+	_, err := s.db.Exec(`UPDATE nodes SET machine=?,os=?,version=?,max_sessions=?,adapters=?,default_adapter=?,last_seen_at=? WHERE name=?`, h.Machine, h.OS, h.Version, max(h.Max, 0), adapters, h.DefaultAdapter, s.clock().UnixMilli(), name)
 	return err
+}
+
+// decodeList is a JSON string list column; empty or bad is nil.
+func decodeList(raw string) []string {
+	var out []string
+	if raw == "" || json.Unmarshal([]byte(raw), &out) != nil {
+		return nil
+	}
+	return out
+}
+
+// nodeDefaultAdapter is the adapter a record without one launches with on
+// node: what the node reported, else the host's default.
+func (s *Service) nodeDefaultAdapter(node string) string {
+	var name string
+	_ = s.db.QueryRow(`SELECT default_adapter FROM nodes WHERE name=?`, node).Scan(&name)
+	if name == "" {
+		return agent.Default().Name()
+	}
+	return name
+}
+
+// adapterPattern is an adapter name (agent.Register's rule).
+var adapterPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,31}$`)
+
+// checkAdapter refuses an adapter name that is malformed or, once the node
+// has reported its adapters, one the node does not have. Empty is the
+// node's default.
+func (s *Service) checkAdapter(node, name string) error {
+	if name == "" {
+		return nil
+	}
+	if !adapterPattern.MatchString(name) {
+		return invalidf("adapter: invalid name %q", name)
+	}
+	var raw string
+	if err := s.db.QueryRow(`SELECT adapters FROM nodes WHERE name=?`, node).Scan(&raw); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	if have := decodeList(raw); len(have) > 0 && !slices.Contains(have, name) {
+		return invalidf("adapter: %s is not installed on node %s (installed: %s)", name, node, strings.Join(have, ", "))
+	}
+	return nil
 }
 
 // checkNodeUsable refuses a record for a node that is not registered or is

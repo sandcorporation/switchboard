@@ -90,9 +90,12 @@ func profileDirs() []string {
 // checkRoleArgs holds a stored role record (#377) to the same flag
 // allow-list the host applied when it was added. Admin records have no
 // grant root and keep the deny-list the host applies to them.
-func checkRoleArgs(r Record) error {
+func checkRoleArgs(r Record) error { return checkRoleArgsFor(r, agent.Default()) }
+
+// checkRoleArgsFor is checkRoleArgs with the record's adapter's flags.
+func checkRoleArgsFor(r Record, a agent.Adapter) error {
 	if r.DirRoot == "" {
 		return nil
 	}
-	return agent.CheckRoleArgs(agent.Default(), r.Args)
+	return agent.CheckRoleArgs(a, r.Args)
 }

@@ -20,8 +20,16 @@ const DefaultHistory = 10000
 
 // Config is the node's launch settings.
 type Config struct {
-	// Agent is the resolved path of the agent CLI.
+	// Agent is the resolved path of the default adapter's agent CLI (or of
+	// SWITCHBOARD_HOSTING_AGENT).
 	Agent string
+	// DefaultAdapter is the adapter a record without one launches with
+	// (#434): the one whose executable Agent is, else the registry default.
+	// Empty: the registry default.
+	DefaultAdapter string
+	// Adapters maps every installed adapter (its executable found) to the
+	// CLI's path; the default adapter maps to Agent.
+	Adapters map[string]string
 	// Machine is SWITCHBOARD_MACHINE for every child, the same on every
 	// launch so a session's slot comes back.
 	Machine string
@@ -94,7 +102,23 @@ func Resolve(h Host) (Config, error) {
 			return Config{}, fmt.Errorf("node: %s=%q is not a session count (1 or more)", from, v)
 		}
 	}
-	return Config{Agent: path, Machine: machine, History: history, Max: max, Environ: h.Environ(), AllowChecks: config.HostingAllowChecks(h.Getenv)}, nil
+	def := agent.Default()
+	for _, a := range agent.All() {
+		if a.Executable() == agent.ExecName(path) {
+			def = a
+			break
+		}
+	}
+	adapters := map[string]string{def.Name(): path}
+	for _, a := range agent.All() {
+		if a.Name() == def.Name() {
+			continue
+		}
+		if p, err := h.LookPath(a.Executable()); err == nil {
+			adapters[a.Name()] = p
+		}
+	}
+	return Config{Agent: path, DefaultAdapter: def.Name(), Adapters: adapters, Machine: machine, History: history, Max: max, Environ: h.Environ(), AllowChecks: config.HostingAllowChecks(h.Getenv)}, nil
 }
 
 // Argv is the command for a record: the adapter's new-conversation
@@ -103,9 +127,12 @@ func Resolve(h Host) (Config, error) {
 // (#220) and the agent CLI is the adapter's executable, then the record's
 // args without the ones the adapter refuses.
 func (c Config) Argv(r Record, launched bool) []string {
-	a := c.adapterFor(r)
-	argv := append([]string{c.Agent}, a.LaunchArgs(r.AgentSessionID, launched)...)
-	if r.SkipPermissions && agent.ExecName(c.Agent) == a.Executable() {
+	a, exe, err := c.agentFor(r)
+	if err != nil { // launch refuses such a record first
+		a, exe = agent.Default(), c.Agent
+	}
+	argv := append([]string{exe}, a.LaunchArgs(r.AgentSessionID, launched)...)
+	if r.SkipPermissions && agent.ExecName(exe) == a.Executable() {
 		argv = append(argv, a.PermissionSkipArgs(r.Args)...)
 	}
 	for _, arg := range r.Args {
@@ -117,10 +144,61 @@ func (c Config) Argv(r Record, launched bool) []string {
 	return argv
 }
 
-// adapterFor is the adapter a record launches with.
-func (c Config) adapterFor(Record) agent.Adapter {
-	return agent.Default()
+// adapterFor is the adapter a record launches with (the default when the
+// record names one this node does not have).
+func (c Config) adapterFor(r Record) agent.Adapter {
+	a, _, err := c.agentFor(r)
+	if err != nil {
+		return agent.Default()
+	}
+	return a
 }
+
+// agentFor is the adapter a record launches with and the CLI's path: the
+// record's adapter, else the node's default (with Agent). A record naming an
+// adapter that is not registered or not installed here is an error.
+func (c Config) agentFor(r Record) (agent.Adapter, string, error) {
+	name := r.Adapter
+	if name == "" || name == c.DefaultAdapter || c.DefaultAdapter == "" && name == agent.Default().Name() {
+		if c.DefaultAdapter == "" {
+			return agent.Default(), c.Agent, nil
+		}
+		a, err := agent.Lookup(c.DefaultAdapter)
+		return a, c.Agent, err
+	}
+	a, err := agent.Lookup(name)
+	if err != nil {
+		return nil, "", fmt.Errorf("adapter: %w", err)
+	}
+	path := c.Adapters[name]
+	if path == "" {
+		return nil, "", fmt.Errorf("adapter: %s is not installed on this node (%s not found)", name, a.Executable())
+	}
+	return a, path, nil
+}
+
+// InstalledAdapters lists the adapters this node can launch, sorted.
+func (c Config) InstalledAdapters() []string {
+	if len(c.Adapters) == 0 {
+		return []string{c.defaultAdapterName()}
+	}
+	out := make([]string, 0, len(c.Adapters))
+	for n := range c.Adapters {
+		out = append(out, n)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func (c Config) defaultAdapterName() string {
+	if c.DefaultAdapter != "" {
+		return c.DefaultAdapter
+	}
+	return agent.Default().Name()
+}
+
+// DefaultAdapterName is the adapter a record without one launches with.
+func (c Config) DefaultAdapterName() string { return c.defaultAdapterName() }
 
 // SecretName reports whether an environment name looks like a credential.
 func SecretName(name string) bool {

@@ -295,6 +295,7 @@ var commands = []command{
 			{"--parent", "ROLE", "add: parent role (SWITCHBOARD_PARENT)"},
 			{"--restart", "POLICY", "add: always (default), on-failure or never"},
 			{"--class", "CLASS", "add: lead, coordinator, execute (default) or review"},
+			{"--adapter", "NAME", "add: agent adapter the session launches with (default: the node's); grant: adapters the role may choose (NAME[,NAME]; default: any)"},
 			{"--dir-root", "PATH[,PATH]", "grant: directory roots the role's sessions must be under (with --base ROLE[,ROLE] and --node NAME[,NAME])"},
 			{"--ask-permissions", "", "add: launch the agent in its normal permission mode (default: with its permission-skip arguments)"},
 			{"--skip-permissions", "on|off", "set: launch with (on) or without (off) the agent's permission-skip arguments, from the next launch or restart"},

@@ -41,13 +41,13 @@ func cliHostGrant(p parsedArgs, stdout io.Writer) (int, error) {
 	if len(p.extra) > 0 {
 		return 0, usagef("host %s: arguments after -- are for host add", action)
 	}
-	grantOpts := map[string]bool{"--base": true, "--node": true, "--dir-root": true, "--json": true}
+	grantOpts := map[string]bool{"--base": true, "--node": true, "--dir-root": true, "--adapter": true, "--json": true}
 	for o := range p.values {
 		if !grantOpts[o] || (o != "--json" && (action == "revoke-grant" || role == "list")) {
 			return 0, usagef("host %s: %s is not one of its options", action, o)
 		}
 	}
-	g := wire.HostGrant{Role: role, Bases: p.multi["--base"], Nodes: p.multi["--node"], DirRoots: p.multi["--dir-root"]}
+	g := wire.HostGrant{Role: role, Bases: p.multi["--base"], Nodes: p.multi["--node"], DirRoots: p.multi["--dir-root"], Adapters: p.multi["--adapter"]}
 	switch {
 	case role == "":
 		return 0, usagef("host %s requires ROLE", action)

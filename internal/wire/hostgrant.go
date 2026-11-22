@@ -11,10 +11,13 @@ import (
 // under one of DirRoots. The admin sets it (host grant) and removes it (host
 // revoke-grant); a role has at most one.
 type HostGrant struct {
-	Role      string   `json:"role"`
-	Bases     []string `json:"bases"`
-	Nodes     []string `json:"nodes"`
-	DirRoots  []string `json:"dir_roots"`
+	Role     string   `json:"role"`
+	Bases    []string `json:"bases"`
+	Nodes    []string `json:"nodes"`
+	DirRoots []string `json:"dir_roots"`
+	// Adapters are the agent adapters the role may choose (#434); empty
+	// allows every one.
+	Adapters  []string `json:"adapters,omitempty"`
 	CreatedAt int64    `json:"created_at"`
 	UpdatedAt int64    `json:"updated_at"`
 }

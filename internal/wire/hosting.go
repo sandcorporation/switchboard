@@ -23,6 +23,9 @@ type HostedSession struct {
 	// Class is what the session does: "lead", "coordinator", "execute"
 	// (default) or "review" (#190).
 	Class string `json:"class"`
+	// Adapter names the agent adapter the session launches with (#434);
+	// empty is the node's default.
+	Adapter string `json:"adapter,omitempty"`
 	// AcceptingWork is false for an execute or review session while the
 	// subscription limit holds (HostingLimit): it takes no new work items.
 	AcceptingWork bool `json:"accepting_work"`
@@ -104,6 +107,8 @@ type HostedSessionCreate struct {
 	Restart   string            `json:"restart"`
 	Desired   string            `json:"desired"`
 	Class     string            `json:"class"`
+	// Adapter is the agent adapter (#434); empty is the node's default.
+	Adapter string `json:"adapter,omitempty"`
 	// SkipPermissions is nil for the default (skip); `host add
 	// --ask-permissions` sends false. `host set --skip-permissions` sends it
 	// with the set action.
@@ -120,6 +125,8 @@ type HostedSessionChange struct {
 	Restart *string            `json:"restart,omitempty"`
 	Desired *string            `json:"desired,omitempty"`
 	Class   *string            `json:"class,omitempty"`
+	// Adapter applies at the next launch; "" is the node's default.
+	Adapter *string `json:"adapter,omitempty"`
 	// SkipPermissions applies at the next launch or restart.
 	SkipPermissions *bool `json:"skip_permissions,omitempty"`
 }
@@ -172,6 +179,11 @@ type NodeView struct {
 	CreatedAt  int64  `json:"created_at"`
 	LastSeenAt *int64 `json:"last_seen_at"`
 	RevokedAt  *int64 `json:"revoked_at"`
+	// Adapters are the agent adapters the node reported installed (#434):
+	// the ones whose executable it found. Default is the one a session
+	// without an adapter launches with.
+	Adapters       []string `json:"adapters,omitempty"`
+	DefaultAdapter string   `json:"default_adapter,omitempty"`
 }
 
 // NodeJoin is the body of POST /api/node/join: a one-time code from
@@ -358,6 +370,10 @@ type NodeHello struct {
 	Backend string `json:"backend"`
 	// Max is the node's running-session cap (SWITCHBOARD_HOSTING_MAX).
 	Max int `json:"max,omitempty"`
+	// Adapters are the agent adapters installed here (#434), sorted;
+	// DefaultAdapter is the one a session without an adapter launches with.
+	Adapters       []string `json:"adapters,omitempty"`
+	DefaultAdapter string   `json:"default_adapter,omitempty"`
 }
 
 // HostedNodeState is one record's observed state as its node reports it.
