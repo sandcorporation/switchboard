@@ -51,6 +51,7 @@ const (
 	maxQuestionLabel    = 100  // bytes
 	maxQuestionDesc     = 500  // bytes
 	maxQuestionPreview  = 4000 // bytes
+	maxQuestionRelay    = 8    // distinct relay_to addresses
 	maxQuestionOther    = 1000 // bytes
 	defaultQuestionList = 100
 	maxQuestionList     = 500
@@ -79,15 +80,20 @@ var (
 
 // questionColumns ends with whether the answer mail waits for a session
 // (internal/mail/handoff.go).
-var questionColumns = `id,asker,asker_base,questions,answers,status,answered_by,created_at,answered_at,withdrawn_at,seq,answerer,` + mail.HandoffWaitingSQL("questions.id")
+var questionColumns = `id,asker,asker_base,questions,answers,status,answered_by,created_at,answered_at,withdrawn_at,seq,answerer,relay_to,` + mail.HandoffWaitingSQL("questions.id")
 
 func scanQuestion(sc interface{ Scan(...any) error }) (wire.QuestionView, error) {
 	var v wire.QuestionView
-	var qs, as string
+	var qs, as, relay string
 	var created, answered, withdrawn int64
 	var waiting bool
-	if err := sc.Scan(&v.ID, &v.Asker, &v.AskerBase, &qs, &as, &v.Status, &v.AnsweredBy, &created, &answered, &withdrawn, &v.Seq, &v.Answerer, &waiting); err != nil {
+	if err := sc.Scan(&v.ID, &v.Asker, &v.AskerBase, &qs, &as, &v.Status, &v.AnsweredBy, &created, &answered, &withdrawn, &v.Seq, &v.Answerer, &relay, &waiting); err != nil {
 		return v, err
+	}
+	if relay != "" {
+		if err := json.Unmarshal([]byte(relay), &v.RelayTo); err != nil {
+			return v, err
+		}
 	}
 	if waiting {
 		v.Delivery = wire.DeliveryWaiting
@@ -332,6 +338,73 @@ func questionWatchers(tx *sql.Tx, asker, askerBase string) ([]string, error) {
 	return out, nil
 }
 
+// validateRelay checks a question's relay_to: at most maxQuestionRelay
+// distinct addresses, each one send takes from p (a role, alias or
+// <base>-N within p's reach). It returns the stored JSON, ” for none.
+func (s *Service) validateRelay(p identity.Principal, names []string) (string, error) {
+	var out []string
+	for _, name := range names {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			return "", badQuestion("relay_to: empty address")
+		}
+		if slices.Contains(out, name) {
+			continue
+		}
+		box, ok := identity.Mailbox(s.db, name)
+		if !ok {
+			return "", badQuestion("relay_to: unknown role %q", name)
+		}
+		if !s.ids.MaySend(p, identity.BaseOf(s.db, box)) {
+			return "", badQuestion("relay_to: %q is outside your group", name)
+		}
+		out = append(out, name)
+	}
+	if len(out) > maxQuestionRelay {
+		return "", badQuestion("relay_to: at most %d addresses (got %d)", maxQuestionRelay, len(out))
+	}
+	if len(out) == 0 {
+		return "", nil
+	}
+	encoded, _ := json.Marshal(out)
+	return string(encoded), nil
+}
+
+// relayAnswer mails the answer's text to each of v.RelayTo that still
+// resolves, once per mailbox: not to the asker's mailbox nor to one in
+// skip (the answer box and watchers already got it). Its idem key
+// <id>:relay:<mailbox> keeps a repeat to one mail. It returns the
+// mailboxes mailed.
+func relayAnswer(tx *sql.Tx, v wire.QuestionView, text string, skip []string, now time.Time) ([]string, error) {
+	if len(v.RelayTo) == 0 {
+		return nil, nil
+	}
+	if own, ok := identity.Mailbox(tx, v.Asker); ok {
+		skip = append(skip, own)
+	}
+	subject := fmt.Sprintf("[질문 답 원문] %s %s %s", v.ID, v.Asker, v.Questions[0].Header)
+	answeredAt := ""
+	if v.AnsweredAt != nil {
+		answeredAt = v.AnsweredAt.Format(time.RFC3339)
+	}
+	body := fmt.Sprintf("질문: %s\n묻는 역할: %s\n답한 곳: %s\n답한 시각: %s\n\n%s", v.ID, v.Asker, v.AnsweredBy, answeredAt, text)
+	var out []string
+	for _, name := range v.RelayTo {
+		box, ok := identity.Mailbox(tx, name)
+		if !ok || box == "" || slices.Contains(skip, box) || slices.Contains(out, box) {
+			continue
+		}
+		stored, err := mail.InsertSystemMailOnce(tx, box, subject, body, v.ID, "normal", v.ID+":relay:"+box, now)
+		if err != nil {
+			return nil, err
+		}
+		if stored {
+			out = append(out, box)
+		}
+	}
+	return out, nil
+}
+
 func (s *Service) askQuestion(w http.ResponseWriter, r *http.Request, p identity.Principal) {
 	settings, err := s.ResolveQuestionSettings(p.Role)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
@@ -350,12 +423,18 @@ func (s *Service) askQuestion(w http.ResponseWriter, r *http.Request, p identity
 	}
 	var req struct {
 		Questions []wire.QuestionItem `json:"questions"`
+		RelayTo   []string            `json:"relay_to"`
 	}
 	if json.NewDecoder(http.MaxBytesReader(w, r.Body, maxQuestionBody)).Decode(&req) != nil {
 		http.Error(w, fmt.Sprintf("invalid JSON (at most %d bytes)", maxQuestionBody), 400)
 		return
 	}
 	if err = validateQuestions(req.Questions); err != nil {
+		questionError(w, err)
+		return
+	}
+	relay, err := s.validateRelay(p, req.RelayTo)
+	if err != nil {
 		questionError(w, err)
 		return
 	}
@@ -388,8 +467,8 @@ func (s *Service) askQuestion(w http.ResponseWriter, r *http.Request, p identity
 		if e != nil {
 			return e
 		}
-		if _, e = tx.Exec(`INSERT INTO questions(id,asker,asker_base,questions,created_at,seq,answerer,asker_machine,asker_directory,asker_label) VALUES(?,?,?,?,?,?,?,?,?,?)`,
-			id, p.Role, p.Base, string(encoded), ms(now), seq, answerer, asking.Machine, asking.Directory, asking.Label); e != nil {
+		if _, e = tx.Exec(`INSERT INTO questions(id,asker,asker_base,questions,created_at,seq,answerer,asker_machine,asker_directory,asker_label,relay_to) VALUES(?,?,?,?,?,?,?,?,?,?,?)`,
+			id, p.Role, p.Base, string(encoded), ms(now), seq, answerer, asking.Machine, asking.Directory, asking.Label, relay); e != nil {
 			return e
 		}
 		if v, e = loadQuestion(tx, id); e != nil {
@@ -442,8 +521,8 @@ func (s *Service) publishQuestion(boxes []string) {
 // or the asker of an owner question; the latter is stored as
 // QuestionByPanel.
 // The question must still be pending; the check and the update run in one
-// transaction, so the first answer wins. It mails the asker and the
-// watchers. Errors: ErrQuestionNotFound, ErrQuestionForbidden,
+// transaction, so the first answer wins. It mails the asker, the watchers
+// and the question's relay_to addresses (relayAnswer). Errors: ErrQuestionNotFound, ErrQuestionForbidden,
 // ErrQuestionNotPending, QuestionInputError (bad answers), or a storage
 // error.
 func (s *Service) AnswerQuestion(ctx context.Context, id, by string, answers []wire.QuestionAnswer) (wire.QuestionView, error) {
@@ -520,6 +599,11 @@ func (s *Service) AnswerQuestion(ctx context.Context, id, by string, answers []w
 			}
 		}
 		told = append(told, watchers...)
+		relayed, e := relayAnswer(tx, v, body, append([]string{box}, watchers...), now)
+		if e != nil {
+			return e
+		}
+		told = append(told, relayed...)
 		return nil
 	})
 	if err != nil {

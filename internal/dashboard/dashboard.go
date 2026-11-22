@@ -1262,6 +1262,7 @@ registerDetail('questions',{
       return;
     }
     const pairs=[['묻는 쪽',q.asker],['시각',when(q.created_at)],['ID',q.id]];
+    if(q.relay_to&&q.relay_to.length)pairs.push(['중계',q.relay_to.join(', ')]);
     const marks=node('span','');questionPills(q,marks);
     if(marks.childNodes.length)pairs.push(['표시',marks]);
     box.append(dl(pairs));

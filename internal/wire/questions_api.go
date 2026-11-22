@@ -56,6 +56,9 @@ type QuestionView struct {
 	// Delivery is DeliveryWaiting while the answer mail waits for a session
 	// of the asker to register; empty (omitted) otherwise.
 	Delivery string `json:"delivery,omitempty"`
+	// RelayTo are the addresses named at ask time that also get the
+	// answer's text as mail; omitted when none.
+	RelayTo []string `json:"relay_to,omitempty"`
 
 	AskerBase string `json:"-"` // server-side only
 }
