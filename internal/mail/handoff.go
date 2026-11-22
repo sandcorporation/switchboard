@@ -187,7 +187,7 @@ func hold(tx *sql.Tx, u unread, box string, w *Handoff, now time.Time) (string, 
 		return "", nil
 	}
 	stored, err := InsertSystemMailOnce(tx, to, fmt.Sprintf("[미수신] %s 받는 세션 없음 — #%d %s", box, u.id, u.subject),
-		fmt.Sprintf("%s 앞으로 보낸 #%d 「%s」 를 읽을 세션이 없어 붙잡아 두었습니다. 받을 세션(같은 기계·폴더 또는 같은 라벨)이 다시 붙으면 전달됩니다. 다른 세션에 맡기려면 산 슬롯 이름으로 다시 보내세요.", box, u.id, u.subject),
+		fmt.Sprintf("%s 앞으로 보낸 #%d 「%s」 를 읽을 세션이 없어 붙잡아 두었습니다. 받을 세션(같은 기계·폴더 또는 같은 라벨)이 다시 붙으면 전달됩니다. 다른 세션에 맡기려면 산 슬롯 이름으로 다시 보내세요.\n세션에 넘겨질 때 새 번호를 받는다. 옛 번호로도 찾을 수 있다.", box, u.id, u.subject),
 		u.task, "normal", fmt.Sprintf("handoff-held:%d", u.id), now)
 	if err != nil || !stored {
 		return "", err
@@ -289,7 +289,8 @@ func InsertSessionMail(tx *sql.Tx, box string, w Handoff, subject, body, idem st
 }
 
 // CurrentID is the id mail id has now: delivering held mail stores it under
-// a new id that keeps the old one as held_id (moveHeld), maybe more than once.
+// a new id that keeps the ID its sender was given as held_id (moveHeld), maybe
+// more than once. An ID between the first and the last does not resolve.
 func CurrentID(q identity.Queryer, id int64) int64 {
 	for i := 0; i < 16; i++ {
 		var n int64

@@ -115,6 +115,15 @@ type Closed struct {
 	Withdrawn bool `json:"withdrawn,omitempty"`
 }
 
+// Asked is the ID the close was asked for: the answer when an answer closed
+// its directive (Completed), else the directive (ID).
+func (c Closed) Asked() int64 {
+	if c.Completed != 0 {
+		return c.Completed
+	}
+	return c.ID
+}
+
 // Withdrawn is the answer of POST /api/messages/{id}/withdraw (#354).
 type Withdrawn struct {
 	ID        int64 `json:"id"`

@@ -543,20 +543,26 @@ func dispatch(args []string) (int, error) {
 		return cliQuestion(c, p)
 	case "read", "ack", "complete":
 		method, u := "GET", endpoint(c, "/api/messages/"+p.pos[0])
+		moved := movedMessage(p.pos[0])
 		if name != "read" {
 			method, u = "POST", u+"/"+name
 			req, _ := http.NewRequest(method, u, nil)
-			return doRequest(c, req, p.bool("--json"))
+			return doRequestWith(c, req, p.bool("--json"), moved)
 		}
 		req, _ := http.NewRequest(method, u, nil)
 		if p.bool("--json") {
-			return doRequestWith(c, req, true, foreignNote())
+			return doRequestWith(c, req, true, both(moved, foreignNote()))
 		}
-		return doRequestWith(c, req, false, readNote(c.Role))
+		return doRequestWith(c, req, false, both(moved, readNote(c.Role)))
 	case "close":
 		if p.bool("--json") {
 			req, _ := http.NewRequest("POST", endpoint(c, "/api/messages/"+p.pos[0]+"/close"), nil)
-			return doRequest(c, req, true)
+			return doRequestWith(c, req, true, func(b []byte) {
+				var out wire.Closed
+				if json.Unmarshal(b, &out) == nil {
+					noteMoved(p.pos[0], out.Asked())
+				}
+			})
 		}
 		b, e := slotCall(c, "POST", "/api/messages/"+p.pos[0]+"/close", nil)
 		if e != nil {
@@ -566,6 +572,7 @@ func dispatch(args []string) (int, error) {
 		if e = json.Unmarshal(b, &out); e != nil {
 			return 0, fmt.Errorf("unexpected response from server: %v", e)
 		}
+		noteMoved(p.pos[0], out.Asked())
 		switch {
 		case out.Completed != 0:
 			fmt.Printf("#%d closed; #%d complete\n", out.ID, out.Completed)
@@ -578,12 +585,24 @@ func dispatch(args []string) (int, error) {
 	case "withdraw":
 		if p.bool("--json") {
 			req, _ := http.NewRequest("POST", endpoint(c, "/api/messages/"+p.pos[0]+"/withdraw"), nil)
-			return doRequest(c, req, true)
+			return doRequestWith(c, req, true, func(b []byte) {
+				var out wire.Withdrawn
+				if json.Unmarshal(b, &out) == nil {
+					noteMoved(p.pos[0], out.ID)
+				}
+			})
 		}
-		if _, e := slotCall(c, "POST", "/api/messages/"+p.pos[0]+"/withdraw", nil); e != nil {
+		b, e := slotCall(c, "POST", "/api/messages/"+p.pos[0]+"/withdraw", nil)
+		if e != nil {
 			return 0, e
 		}
-		fmt.Printf("#%s withdrawn\n", p.pos[0])
+		id := p.pos[0]
+		var out wire.Withdrawn
+		if json.Unmarshal(b, &out) == nil && out.ID != 0 {
+			noteMoved(id, out.ID)
+			id = strconv.FormatInt(out.ID, 10)
+		}
+		fmt.Printf("#%s withdrawn\n", id)
 		return ExitOK, nil
 	case "reply":
 		body, e := inputBody(p)
@@ -1008,6 +1027,9 @@ func cliReply(c Config, req *http.Request, id string, jsonMode bool) (int, error
 	var out wire.Message
 	if json.Unmarshal(b, &out) == nil {
 		out.NoSession = false // a reply prints only the #354 lines
+		if noteMoved(id, out.ReplyTo) {
+			id = strconv.FormatInt(out.ReplyTo, 10)
+		}
 		for _, line := range RecipientNotes(out.Recipient, out) {
 			fmt.Fprintln(os.Stderr, line)
 		}
@@ -1033,6 +1055,38 @@ func ReplyOpenNote(id string) string {
 // not complete (#327).
 func ReadNote(id int64) string {
 	return fmt.Sprintf("reply %d --complete answers and completes; complete %d ends it without an answer", id, id)
+}
+
+// MovedNote is the stderr line of a command given mail's old ID when the
+// server answered with the ID it has now: held mail gets a new ID when a
+// session takes it (#392).
+func MovedNote(asked string, now int64) string {
+	return fmt.Sprintf("#%s → #%d(넘겨지며 번호가 바뀜)", asked, now)
+}
+
+// noteMoved prints MovedNote on stderr when now is known and is not asked.
+func noteMoved(asked string, now int64) bool {
+	if old, err := wire.ParseID(asked); err != nil || now == 0 || old == now {
+		return false
+	}
+	fmt.Fprintln(os.Stderr, MovedNote(asked, now))
+	return true
+}
+
+// movedMessage is the response hook of read, ack and complete: MovedNote when
+// the message came back under another ID than asked.
+func movedMessage(asked string) func([]byte) {
+	return func(b []byte) {
+		var m wire.Message
+		if json.Unmarshal(b, &m) == nil {
+			noteMoved(asked, m.ID)
+		}
+	}
+}
+
+// both runs response hooks a then b.
+func both(a, b func([]byte)) func([]byte) {
+	return func(x []byte) { a(x); b(x) }
 }
 
 // foreign reports whether m is another mailbox's mail (a boss view). The
@@ -1301,6 +1355,10 @@ func prettyTo(w io.Writer, v any) {
 			mark = "[urgent] "
 		}
 		body, _ := x["body"].(string)
+		if old, _ := x["held_id"].(float64); old != 0 && old != x["id"] {
+			// held mail handed to a session got a new ID (#392)
+			mark = fmt.Sprintf("(옛 #%d) ", int64(old)) + mark
+		}
 		fmt.Fprintf(w, "#%v %s%v\n%v → %v · %s\n", x["id"], mark, x["subject"], x["sender"], x["recipient"], x["status"])
 		if ref, ok := x["answers_directive"].(map[string]any); ok && ref["state"] == wire.DirectiveOpen {
 			id, _ := ref["id"].(float64)

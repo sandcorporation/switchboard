@@ -30,7 +30,8 @@ import (
 //
 // A moved message gets a new ID, larger than every existing one, so event and
 // watch cursors (which only move forward) cannot skip it. held_id keeps the ID
-// the sender was given; addressed_to keeps the label address.
+// the sender was given, also when the message moves again (#392);
+// addressed_to keeps the label address.
 
 const (
 	labelPrefix = "label:"
@@ -137,7 +138,7 @@ func moveHeld(tx *sql.Tx, ids []int64, box string, now time.Time) error {
 	at := now.UTC().Format(time.RFC3339Nano)
 	for _, old := range ids {
 		next++
-		if _, err = tx.Exec(`UPDATE messages SET id=?,held_id=id,recipient=?,status='pending',delivered_at=? WHERE id=?`, next, box, at, old); err != nil {
+		if _, err = tx.Exec(`UPDATE messages SET id=?,held_id=COALESCE(held_id,id),recipient=?,status='pending',delivered_at=? WHERE id=?`, next, box, at, old); err != nil {
 			return err
 		}
 		for _, q := range []string{

@@ -307,7 +307,9 @@ func (s *Service) send(w http.ResponseWriter, r *http.Request, p identity.Princi
 	// otherwise nothing is stored.
 	complete := m.Complete
 	m.Complete = nil
-	for _, id := range complete {
+	for i, id := range complete {
+		id = CurrentID(s.db, id) // held mail handed to a session has a new ID (#392)
+		complete[i] = id
 		got, err := s.Get(id)
 		if err != nil {
 			http.Error(w, fmt.Sprintf("complete: no message %d", id), 404)

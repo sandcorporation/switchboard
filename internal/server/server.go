@@ -442,6 +442,9 @@ func (s *Server) serveAPI(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "invalid id", 400)
 			return
 		}
+		// Held mail moves to a new ID when a session takes it (#392): the
+		// old ID follows it, and every check below is on the mail it reaches.
+		id = mail.CurrentID(s.db, id)
 		if len(parts) == 2 && r.Method == "GET" && s.ids().IsGlobalBoss(who) && s.mail().ViewForeign(w, who, id) {
 			return
 		}
@@ -555,7 +558,7 @@ func (s *Server) adminAPI(w http.ResponseWriter, r *http.Request) {
 			http.NotFound(w, r)
 			return
 		}
-		s.mail().Close(w, r, "", id)
+		s.mail().Close(w, r, "", mail.CurrentID(s.db, id))
 		return
 	}
 	if r.Method != http.MethodGet {
