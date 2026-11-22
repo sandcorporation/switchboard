@@ -23,6 +23,7 @@ import (
 // adapter's status command; every other argument stays as before (#434).
 func TestStatusCommandJoinsLaunchArgs(t *testing.T) {
 	r := rec("a")
+	r.Profile = "" // no identity to pin: the status line alone
 	r.SkipPermissions = true
 	before := node.Config{Agent: "/opt/agent/claude"}.Argv(r, false)
 	cfg := node.Config{Agent: "/opt/agent/claude", Switchboard: "/opt/sb/switchboard", StatusDir: "/var/sb/status"}

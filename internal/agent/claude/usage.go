@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"math"
 	"path/filepath"
-	"slices"
 	"strings"
 	"time"
 
@@ -44,21 +43,7 @@ func (Adapter) ReportArgs(own, args []string, command string) []string {
 	if err != nil {
 		return own
 	}
-	line := string(b)
-	out := slices.Clone(own)
-	for i := 0; i+1 < len(out); i++ {
-		if out[i] != settingsFlag || !strings.HasPrefix(out[i+1], "{") || !strings.HasSuffix(out[i+1], "}") {
-			continue
-		}
-		body := strings.TrimSpace(strings.TrimSuffix(out[i+1], "}"))
-		if body == "{" {
-			out[i+1] = line
-		} else {
-			out[i+1] = body + "," + line[1:]
-		}
-		return out
-	}
-	return append(out, settingsFlag, line)
+	return joinSettings(own, string(b))
 }
 
 type window struct {

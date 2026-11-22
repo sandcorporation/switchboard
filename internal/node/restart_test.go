@@ -195,8 +195,8 @@ func TestRestartGenStopsAndResumesAtOnce(t *testing.T) {
 		t.Fatalf("stops %+v", stops)
 	}
 	want := [][]string{
-		{"/opt/agent/claude", "--session-id", "conv-a", "--model", "opus"},
-		{"/opt/agent/claude", "--resume", "conv-a", "--model", "opus"},
+		{"/opt/agent/claude", "--session-id", "conv-a", "--settings", rigSettings, "--model", "opus"},
+		{"/opt/agent/claude", "--resume", "conv-a", "--settings", rigSettings, "--model", "opus"},
 	}
 	if got := r.launches(); !slices.EqualFunc(got, want, slices.Equal) {
 		t.Fatalf("launches %q", got)
