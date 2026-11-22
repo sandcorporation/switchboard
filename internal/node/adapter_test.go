@@ -2,6 +2,9 @@ package node_test
 
 import (
 	"context"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
@@ -9,7 +12,9 @@ import (
 	"time"
 
 	"github.com/sandcorporation/switchboard/internal/agent"
+	"github.com/sandcorporation/switchboard/internal/config"
 	"github.com/sandcorporation/switchboard/internal/node"
+	"github.com/sandcorporation/switchboard/internal/node/fakeagent"
 )
 
 // stubAdapter is an agent made up for these tests: "--new ID" starts a
@@ -147,5 +152,75 @@ func TestResolveReportsInstalledAdapters(t *testing.T) {
 	}
 	if got := cfg.Argv(rec("a"), false); got[0] != "/x/other" || cfg.DefaultAdapterName() != def.Name() {
 		t.Fatalf("argv %q default %q", got, cfg.DefaultAdapterName())
+	}
+}
+
+// A configured adapter (SWITCHBOARD_HOSTING_ADAPTERS) launches the fake
+// agent: a first launch creates the conversation with its new_args, the next
+// resumes it with its resume_args, and its limit pattern reads the screen.
+func TestConfiguredAdapterRunsFakeAgent(t *testing.T) {
+	dir := t.TempDir()
+	file := filepath.Join(dir, "adapters.json")
+	body := `{"adapters":[{"name":"fakegen","executable":"fakegen-cli","new_args":["--session-id","{id}"],"resume_args":["--resume","{id}"],"limit_patterns":["(?i)limit reached"]}]}`
+	if err := os.WriteFile(file, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	def := agent.Default()
+	h := host(map[string]string{"SWITCHBOARD_HOSTING_ADAPTERS": file}, map[string]string{def.Executable(): "/usr/bin/" + def.Executable(), "fakegen-cli": os.Args[0]})
+	cfg, err := node.Resolve(h)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(cfg.InstalledAdapters(), "fakegen") {
+		t.Fatalf("installed %q", cfg.InstalledAdapters())
+	}
+	if _, err := node.Resolve(h); err != nil { // loading the same file again is fine
+		t.Fatal(err)
+	}
+
+	r := newRig(t)
+	r.cfg.DefaultAdapter, r.cfg.Adapters = cfg.DefaultAdapter, cfg.Adapters
+	r.cfg.Environ = append(config.WithoutOwnEnv(os.Environ()), fakeagent.Env(dir)...)
+	a := rec("a")
+	a.Adapter, a.Args = "fakegen", nil
+	n := r.node(a)
+	r.reconcile(n)
+	if err := r.fake.Exit("sb-a", 0); err != nil {
+		t.Fatal(err)
+	}
+	r.relaunch(n)
+	launches := r.fake.Launches()
+	if len(launches) != 2 || launches[0].Argv[1] != "--session-id" || launches[1].Argv[1] != "--resume" {
+		t.Fatalf("launches %+v", launches)
+	}
+	for i, spec := range launches {
+		cmd := exec.Command(spec.Argv[0], spec.Argv[1:]...)
+		cmd.Env, cmd.Dir = spec.Env, dir
+		cmd.Stdin = strings.NewReader("hi\n")
+		out, err := cmd.Output()
+		if err != nil {
+			t.Fatalf("launch %d %q: %v\n%s", i, spec.Argv, err, out)
+		}
+		if !strings.Contains(string(out), "ready conv-a") {
+			t.Fatalf("launch %d output:\n%s", i, out)
+		}
+	}
+
+	if err := r.fake.Output("sb-a", []byte(fakeagent.LimitMessage("3pm")+"\r\n")); err != nil {
+		t.Fatal(err)
+	}
+	r.now = r.now.Add(node.LimitScan)
+	r.reconcile(n)
+	if l := n.Limit(); !l.Limited || l.ResetAt == nil {
+		t.Fatalf("limit %+v", l)
+	}
+
+	// A file naming a built-in adapter is refused at node start.
+	bad := filepath.Join(dir, "bad.json")
+	if err := os.WriteFile(bad, []byte(`{"adapters":[{"name":"`+def.Name()+`","executable":"x"}]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := node.Resolve(host(map[string]string{"SWITCHBOARD_HOSTING_ADAPTERS": bad}, map[string]string{def.Executable(): "/x"})); err == nil || !strings.Contains(err.Error(), "already registered") {
+		t.Fatalf("built-in name: %v", err)
 	}
 }

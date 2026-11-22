@@ -239,6 +239,9 @@ const (
 	// HostingAgentName names the agent CLI the node launches (default: the
 	// default adapter's executable), resolved through PATH at node start.
 	HostingAgentName = "HOSTING_AGENT"
+	// HostingAdaptersName is the path of the node's configured agent
+	// adapters file (#434; internal/agent/generic); unset, none.
+	HostingAdaptersName = "HOSTING_ADAPTERS"
 	// HostingMachineName is the machine name given to hosted sessions
 	// (default os.Hostname()).
 	HostingMachineName = "HOSTING_MACHINE"

@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/sandcorporation/switchboard/internal/agent"
-	_ "github.com/sandcorporation/switchboard/internal/agent/builtin"
+	"github.com/sandcorporation/switchboard/internal/agent/builtin"
 	"github.com/sandcorporation/switchboard/internal/config"
 )
 
@@ -62,11 +62,13 @@ type Host struct {
 	LookPath func(string) (string, error)
 	Hostname func() (string, error)
 	Environ  func() []string
+	// ReadFile reads the configured adapters file; nil is os.ReadFile.
+	ReadFile func(string) ([]byte, error)
 }
 
 // Machine is the real Host.
 func Machine() Host {
-	return Host{Getenv: os.Getenv, LookPath: exec.LookPath, Hostname: os.Hostname, Environ: os.Environ}
+	return Host{Getenv: os.Getenv, LookPath: exec.LookPath, Hostname: os.Hostname, Environ: os.Environ, ReadFile: os.ReadFile}
 }
 
 // ErrNoAgent is returned when the agent CLI cannot be resolved; the node
@@ -76,6 +78,11 @@ var ErrNoAgent = errors.New("node: agent CLI not found")
 // Resolve reads the node-side hosting variables (new names only) and
 // resolves the agent CLI. It fails when the agent cannot be found.
 func Resolve(h Host) (Config, error) {
+	if file, from := config.EnvFrom(h.Getenv, config.HostingAdaptersName); strings.TrimSpace(file) != "" {
+		if _, err := builtin.LoadConfigured(strings.TrimSpace(file), h.ReadFile); err != nil {
+			return Config{}, fmt.Errorf("node: %s: %w", from, err)
+		}
+	}
 	exe, from := config.EnvFrom(h.Getenv, config.HostingAgentName)
 	if exe = strings.TrimSpace(exe); exe == "" {
 		exe = agent.Default().Executable()

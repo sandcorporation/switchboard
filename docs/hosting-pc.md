@@ -1132,6 +1132,34 @@ Warning: with `PERMS` `skip` the agent runs every tool without asking anyone.
 - Sessions added before this release show `PERMS` `ask` and keep running as before. Turn one on with `sbpc host set <id> --skip-permissions on`; like every change but start and stop, it applies at the next launch, so follow it with `sbpc host restart <id>` (the conversation resumes).
 - The dashboard's 터미널 tab shows the mode in 권한 (건너뜀 / 물음); `GET /api/admin/terminals` carries `skip_permissions`, and `PUT /api/admin/terminals/{id}` with `{"skip_permissions":true}` changes it.
 
+## Agent adapters
+
+- `host add … --adapter NAME` (or the dashboard's 어댑터) launches a session with that adapter; empty is the node's default. `host grant … --adapter NAME[,NAME]` limits what a role may choose.
+- A node lists the adapters whose executable it finds; `GET /api/admin/nodes` shows them in `adapters` and `default_adapter`. A session naming one the node lacks is refused.
+- Another agent CLI without code: set `SWITCHBOARD_HOSTING_ADAPTERS` on the node to a JSON file and restart the node. A bad file stops the node at start.
+
+```json
+{"adapters": [{
+  "name": "acme",
+  "executable": "acme-agent",
+  "new_args": ["--conversation", "{id}"],
+  "resume_args": ["--reopen", "{id}"],
+  "permission_skip_args": ["--no-confirm"],
+  "drop_env": ["ACME_SESSION"],
+  "limit_patterns": ["(?i)quota exhausted"]
+}]}
+```
+
+| Field | |
+|---|---|
+| `name` | `[a-z0-9][a-z0-9_-]*`, up to 32; not a built-in adapter's |
+| `executable` | looked up on `PATH`, or a full path |
+| `new_args` | arguments of a new conversation; `{id}` is the session's conversation id |
+| `resume_args` | arguments that resume `{id}`; without them every launch starts a new conversation |
+| `permission_skip_args` | added when `PERMS` is `skip` |
+| `drop_env` | environment names removed from the session |
+| `limit_patterns` | Go regular expressions of the usage-limit message on screen |
+
 ## Sessions a role adds under itself
 
 The admin lets a role (a boss, say) add, start, stop and remove worker sessions under itself with its own token, within a grant:
