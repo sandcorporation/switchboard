@@ -46,6 +46,7 @@ func newNodeBackend(o backendOptions) (nodeBackend, backendInfo, error) {
 		Dial:    conpty.DialFor(o.instance),
 		Version: o.version,
 		Start:   func() error { return conpty.Start(exe, run) },
+		Logf:    func(format string, args ...any) { log.Printf("node: "+format, args...) },
 	})
 	if err != nil {
 		return nil, backendInfo{}, fmt.Errorf("node: keeper: %w", err)

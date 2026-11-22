@@ -89,7 +89,7 @@ func TestNodeOverKeeper(t *testing.T) {
 	// New switchboard version: the keeper is replaced and the session
 	// resumes the same conversation in the new one.
 	rec.Launched = true
-	run(connect("v2"), rec)
+	n3 := run(connect("v2"), rec)
 	if current == first {
 		t.Fatal("keeper not replaced")
 	}
@@ -100,5 +100,24 @@ func TestNodeOverKeeper(t *testing.T) {
 	}
 	if got := current.sp.specs; len(got) != 1 || got[0].Argv[1] != "--resume" || got[0].Argv[2] != "conv-a" {
 		t.Fatalf("relaunch %+v", got)
+	}
+
+	// The keeper goes away under a running node (idle exit, killed): the
+	// next pass starts a new one and resumes the conversation in it (#464).
+	gone := current
+	gone.keeper.Shutdown(time.Second)
+	for range 2 {
+		if err := n3.Reconcile(ctx(t)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if current == gone {
+		t.Fatal("no keeper started after the last one went")
+	}
+	if got := current.sp.specs; len(got) != 1 || got[0].Argv[1] != "--resume" || got[0].Argv[2] != "conv-a" {
+		t.Fatalf("relaunch after the keeper went %+v", got)
+	}
+	if st := n3.States()[0]; st.Observed != node.ObservedRunning {
+		t.Fatalf("state after the keeper went %+v", st)
 	}
 }

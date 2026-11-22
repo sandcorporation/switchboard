@@ -1970,7 +1970,7 @@ async function hostedBySlot(){
   try{for(const v of await api('terminals'))if(v.slot&&v.slot.role)m.set(v.slot.role,v)}catch(e){}
   return m;
 }
-const termState={running:'실행 중',starting:'시작 중',stopped:'멈춤',waiting:'대기',crashloop:'반복 실패','backing off':'재시도 대기','resume failed':'재개 실패',relaunching:'다시 띄우는 중',unknown:'모름','node offline':'노드 오프라인',gone:'삭제됨'};
+const termState={running:'실행 중',starting:'시작 중',stopped:'멈춤',waiting:'대기',crashloop:'반복 실패','backing off':'재시도 대기','resume failed':'재개 실패',relaunching:'다시 띄우는 중','backend down':'터미널 끊김',unknown:'모름','node offline':'노드 오프라인',gone:'삭제됨'};
 function termStateText(st,rt){
   let t=termState[st]||st;
   if(st==='backing off'&&rt.next_attempt_at){
@@ -1981,12 +1981,12 @@ function termStateText(st,rt){
   return t;
 }
 function termSt(v){return (v.runtime||{}).state||'unknown'}
-function termStClass(st){return st==='running'?'st-idle':st==='node offline'||st==='unknown'?'st-offline':st==='crashloop'||st==='resume failed'?'st-error':''}
+function termStClass(st){return st==='running'?'st-idle':st==='node offline'||st==='unknown'?'st-offline':st==='crashloop'||st==='resume failed'||st==='backend down'?'st-error':''}
 const termTone={'st-idle':'success','st-error':'danger'};
 function termRole(v){return v.slot&&v.slot.role?v.slot.role:v.base}
 function termDesire(v){const st=termSt(v);return v.desired==='stopped'&&st!=='stopped'&&st!=='node offline'?' → 멈춤':''}
 const termCols=['이름','프로필','노드','상태','권한','재시작','마지막 시작'];
-const termChips=[['all','전체',()=>true],['running','실행 중',v=>termSt(v)==='running'],['stopped','멈춤',v=>v.desired==='stopped'||termSt(v)==='stopped'],['problem','문제',v=>/^(crashloop|resume failed|backing off)$/.test(termSt(v))],['offline','오프라인',v=>/^(node offline|unknown)$/.test(termSt(v))]];
+const termChips=[['all','전체',()=>true],['running','실행 중',v=>termSt(v)==='running'],['stopped','멈춤',v=>v.desired==='stopped'||termSt(v)==='stopped'],['problem','문제',v=>/^(crashloop|resume failed|backing off|backend down)$/.test(termSt(v))],['offline','오프라인',v=>/^(node offline|unknown)$/.test(termSt(v))]];
 // termSeq drops an answer a later load has overtaken.
 let termData=null,termFilter='all',termSeq=0;
 async function loadTerminals(){

@@ -916,3 +916,69 @@ func TestWatchIdleWaitsWhileASessionOrConnectionExists(t *testing.T) {
 		t.Fatal("detached empty keeper did not go idle")
 	}
 }
+
+// TestClientStartsAKeeperThatWentAway: a keeper that exits (idle limit) or
+// is killed after Connect is started again by the next request, which then
+// runs in it; a start that fails is that request's error (#464).
+func TestClientStartsAKeeperThatWentAway(t *testing.T) {
+	var (
+		mu       sync.Mutex
+		current  *keeperRig
+		starts   int
+		startErr error
+	)
+	dial := func(ctx context.Context) (net.Conn, error) {
+		mu.Lock()
+		r := current
+		mu.Unlock()
+		if r == nil {
+			return nil, errors.New("no keeper")
+		}
+		select {
+		case <-r.keeper.Done():
+			return nil, errors.New("no keeper")
+		default:
+		}
+		return r.dial(ctx)
+	}
+	start := func() error {
+		mu.Lock()
+		defer mu.Unlock()
+		if startErr != nil {
+			return startErr
+		}
+		starts++
+		current = newKeeper(t, "v1")
+		return nil
+	}
+	var logged []string
+	c, how, err := conpty.Connect(ctx(t), conpty.ConnectOptions{Dial: dial, Version: "v1", Start: start, Grace: time.Second, Wait: 2 * time.Second,
+		Logf: func(f string, a ...any) { logged = append(logged, fmt.Sprintf(f, a...)) }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = c.Close() })
+	if how != conpty.Started || starts != 1 {
+		t.Fatalf("connect: %s, %d starts", how, starts)
+	}
+
+	current.keeper.Shutdown(time.Second)
+	if err := c.Launch(ctx(t), shell("sb-a")); err != nil {
+		t.Fatalf("launch after the keeper went: %v", err)
+	}
+	if starts != 2 || len(logged) != 1 {
+		t.Fatalf("%d starts, logged %q", starts, logged)
+	}
+	if in, ok := info(t, c, "sb-a"); !ok || !in.Alive {
+		t.Fatalf("sb-a in the new keeper: %+v", in)
+	}
+
+	mu.Lock()
+	startErr = errors.New("exe not found")
+	mu.Unlock()
+	current.keeper.Shutdown(time.Second)
+	err = c.Launch(ctx(t), shell("sb-b"))
+	if err == nil || !strings.Contains(err.Error(), "restart") || !strings.Contains(err.Error(), "exe not found") {
+		t.Fatalf("launch with no keeper and a failing start: %v", err)
+	}
+}
