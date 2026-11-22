@@ -4,7 +4,7 @@
 //
 //   main push -> GitHub Actions promote.yml: checks || image (see images below, tagged <sha>) -> production fast-forward
 //   production push -> this job: no build, no tests. Waits briefly for the image of that sha, pulls it on the
-//                      deploy node, recreates the service, waits for the container health check and runs /health.
+//                      deploy node, checks the settings with it (switchboard-check below), recreates the service, waits for the container health check and runs /health.
 //                      If the new container is not healthy it switches back to the previous successful image.
 //
 // Host-specific values stay out of this public repository:
@@ -23,6 +23,11 @@ sandcorpDeploy(
   composeProject: 'switchboard', // owns the data volume switchboard_switchboard_data
   composeFiles: ['compose.yaml'],
   service: 'switchboard', // must match compose.yaml
+  // Settings check before the service is recreated (#428): compose.yaml's switchboard-check runs `switchboard serve
+  // --check` with the new image and this .env. When the server would refuse to start, `up --wait` fails, the deploy
+  // stops here and the running container stays as it is. (The library's migrate hook would fit better, but it runs
+  // `sh -c <cmd>` through the image's entrypoint `switchboard`.)
+  preServices: ['switchboard-check'],
   healthCmd: 'wget -q -O - http://127.0.0.1:8080/health',
   // Stop before touching the running service if the deploy .env lacks these. Without MAIL_BIND_ADDRESS Compose
   // would silently bind to loopback and every remote client would lose the mailbox.

@@ -175,6 +175,39 @@ func TestHostingNameGuardMatches(t *testing.T) {
 }
 
 // upRE matches a command line that runs `switchboard up`.
+// composeServices splits a compose file's services: section into each
+// service's lines, by service name (two-space keys).
+func composeServices(compose string) map[string]string {
+	out := map[string]string{}
+	in, name := false, ""
+	for _, line := range strings.Split(compose, "\n") {
+		switch {
+		case line == "services:":
+			in = true
+			continue
+		case in && line != "" && !strings.HasPrefix(line, " ") && !strings.HasPrefix(line, "#"):
+			in = false
+		}
+		if !in {
+			continue
+		}
+		if strings.HasPrefix(line, "  ") && !strings.HasPrefix(line, "   ") && strings.HasSuffix(strings.TrimSpace(line), ":") && !strings.HasPrefix(strings.TrimSpace(line), "#") {
+			name = strings.TrimSuffix(strings.TrimSpace(line), ":")
+		}
+		if name != "" {
+			out[name] += line + "\n"
+		}
+	}
+	return out
+}
+
+func TestComposeServicesSplitsBlocks(t *testing.T) {
+	got := composeServices("x: &a\n  K: v\nservices:\n  a:\n    command: x\n  # note\n  b:\n    image: y\nvolumes:\n  d:\n")
+	if len(got) != 2 || !strings.Contains(got["a"], "command: x") || strings.Contains(got["b"], "command") || strings.Contains(got["b"], "d:") {
+		t.Fatalf("got %q", got)
+	}
+}
+
 var upRE = regexp.MustCompile(`\bswitchboard(\.exe)?["']?\s*,?\s*["']?up\b`)
 
 // TestOperationsConfigNeverRunsUp keeps the operations instance on the
@@ -193,8 +226,18 @@ func TestOperationsConfigNeverRunsUp(t *testing.T) {
 		if m := upRE.FindString(string(b)); m != "" {
 			t.Errorf("%s runs %q: the operations instance never runs up", rel, m)
 		}
-		if strings.HasPrefix(filepath.Base(f), "compose") && commandRE.Match(b) {
-			t.Errorf("%s overrides the image command: the operations instance runs the image's entrypoint", rel)
+		if !strings.HasPrefix(filepath.Base(f), "compose") {
+			continue
+		}
+		for name, block := range composeServices(string(b)) {
+			if !commandRE.MatchString(block) {
+				continue
+			}
+			// The pre-deploy settings check (#428) runs only serve --check.
+			if name == "switchboard-check" && strings.Contains(block, "switchboard serve --check") && !strings.Contains(strings.ReplaceAll(block, "switchboard serve --check", ""), "switchboard serve") {
+				continue
+			}
+			t.Errorf("%s: service %s overrides the image command: the operations instance runs the image's entrypoint", rel, name)
 		}
 	}
 	b, err := os.ReadFile(filepath.Join(root, "Dockerfile"))

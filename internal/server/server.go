@@ -15,7 +15,6 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -88,53 +87,17 @@ type attachFunc func(ctx context.Context, s *Server) (done <-chan struct{}, err 
 // stop (stopfile.go), and attach, when set, runs after the listener is bound.
 func run(v string, ln net.Listener, setupDir string, attach attachFunc) {
 	version = v
-	hostingOn, e := hostingStart(os.Getenv)
-	if e != nil {
+	s := &Server{tokens: map[string]string{}, done: make(chan struct{})}
+	// Every refusal that reads only the settings; `serve --check` runs the
+	// same (check.go).
+	if e := startSettings(s, os.Getenv, version); e != nil {
 		fatal(e)
 	}
 	db, e := store.Open(config.Env("DB_PATH", "/data/mail.db"))
 	if e != nil {
 		fatal(e)
 	}
-	s := &Server{db: db, tokens: map[string]string{}, admin: adminauth.Config{ProxyToken: config.EnvAlias("ADMIN_PROXY_TOKEN")}, done: make(chan struct{}), publicURL: strings.TrimRight(config.EnvAlias("PUBLIC_URL"), "/"), hosting: hostingOn}
-	if v, from := config.EnvAliasFrom(os.Getenv, "SSE_KEEPALIVE"); v != "" {
-		d, err := time.ParseDuration(v)
-		if err != nil || d <= 0 {
-			fatal(from + " must be a positive duration such as 20s")
-		}
-		s.mailCfg.KeepAlive = d
-	}
-	if v, from := config.EnvAliasFrom(os.Getenv, "POLL_MAX"); v != "" {
-		n, err := strconv.Atoi(v)
-		if err != nil || n <= 0 {
-			fatal(from + " must be a positive whole number of seconds such as 55")
-		}
-		s.mailCfg.PollMax = time.Duration(n) * time.Second
-	}
-	if v, from := config.EnvAliasFrom(os.Getenv, "SLOT_LEASE"); v != "" {
-		d, err := time.ParseDuration(v)
-		if err != nil || d < time.Second {
-			fatal(from + " must be a duration of at least 1s such as 3m")
-		}
-		s.presenceCfg.SlotLease = d
-	}
-	if e = presence.Configure(&s.presenceCfg, os.Getenv); e != nil {
-		fatal(e)
-	}
-	configureCLIMin(s, os.Getenv, version, log.Printf)
-	if e = configureStall(s, os.Getenv); e != nil {
-		fatal(e)
-	}
-	if e = configureAlerts(s, os.Getenv); e != nil {
-		fatal(e)
-	}
-	s.discord = insight.ConfigureDiscord(os.Getenv)
-	if e = adminauth.Configure(&s.admin, os.Getenv); e != nil {
-		fatal(e)
-	}
-	if s.terminal, e = terminalSettings(os.Getenv); e != nil {
-		fatal(e)
-	}
+	s.db = db
 	if e = s.logRemindStart(); e != nil {
 		fatal(e)
 	}
@@ -164,7 +127,7 @@ func run(v string, ln net.Listener, setupDir string, attach attachFunc) {
 	if s.hosting {
 		log.Printf("terminal hosting is on")
 	}
-	addr := config.Env("LISTEN_ADDR", defaultListenAddr)
+	addr := listenAddr(os.Getenv)
 	// No WriteTimeout: /api/events responses stay open indefinitely and
 	// /api/events/poll waits up to SWITCHBOARD_POLL_MAX.
 	srv := &http.Server{Addr: addr, Handler: s.handler(), ReadHeaderTimeout: 10 * time.Second}
