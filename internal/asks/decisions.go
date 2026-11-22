@@ -282,3 +282,18 @@ func decisionMatches(d wire.Decision, needle string) bool {
 	}
 	return false
 }
+
+// DecisionsByID reads answered questions by ID, in the order given; IDs that
+// are unknown or not answered are left out. The rules ledger shows a rule's
+// source with it (internal/rules takes this as a function).
+func (s *Service) DecisionsByID(ids []string) ([]wire.Decision, error) {
+	out := []wire.Decision{}
+	for _, id := range ids {
+		ds, err := queryDecisionRows(s.db, `id=?`, id, 1)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, ds...)
+	}
+	return out, nil
+}

@@ -215,6 +215,23 @@ var commands = []command{
 			{"--ndjson", "", "stream the server's ndjson export unchanged"},
 			optJSON, optProfile,
 		}},
+	{name: "rules", args: "[list | show N | add TEXT | void N | topics | tag list | tag set SERVICE TAG[,TAG] | tag role ROLE +TAG|-TAG|=TAG]", nargs: 4, optArgs: true,
+		summary: "The rules ledger: the decisions and tips in force by service and topic. An admin or a global boss reads every row with its scope, sources, history and the answered questions it came from, adds (a row on the same scope and topic as one in force needs --replace N[,N] or --alongside), voids and sets tags; any other role lists and shows only its own group's rows in force that reach it (all, its service, its tags). A role's tags are its service's (tag set) plus +TAG, minus -TAG (tag role; put -- before a -TAG, =TAG goes back to the service's)",
+		options: []option{
+			{"--service", "SERVICE", "list: the rows that reach the roles of SERVICE (the part of a role before /)"},
+			{"--topic", "TOPIC", "list: only TOPIC; add: the row's topic, one of `rules topics`"},
+			{"--kind", "decision|tip", "list: only this kind; add: the row's kind"},
+			{"--all", "", "list: also replaced and void rows (admin or global boss)"},
+			{"--scope", "all|service:NAME[,NAME]|tag:NAME[,NAME]", "add: where the row applies (all is the row's group)"},
+			{"--group", "PREFIX", "add: the group of an all or tag row (default: roles in no group; a service row takes its services' group)"},
+			{"--source", "ID[,ID]|TEXT", "add: answered question IDs (q_…) or a text the row comes from (repeatable)"},
+			{"--new-topic", "", "add: create --topic when it is not a topic yet"},
+			{"--replace", "N[,N]", "add: replace these rows in force"},
+			{"--alongside", "", "add: stand alongside the rows in force on the same scope and topic"},
+			{"--device", "NAME", "add: the mechanism that enforces the row (it is then never put into sessions)"},
+			{"--idem", "KEY", "add: retry-safe key; adding again with the same key returns the first row"},
+			optJSON, optProfile,
+		}},
 	{name: "mail", args: "ACTION [ID]", nargs: 2, optArgs: true, synopsis: "(ACTION: list | show ID | close ID)",
 		summary: "Read every role's mail, the dashboard's mail tab (boss roles only; a group boss sees its groups): list newest first, show one message, leaving its state and recording the view, or close a directive as the dashboard does (recorded)",
 		options: []option{
@@ -579,6 +596,8 @@ func dispatch(args []string) (int, error) {
 		return cliProgress(c, p)
 	case "report":
 		return cliReport(c, p, os.Stdout)
+	case "rules":
+		return cliRules(c, p, os.Stdout)
 	case "job":
 		return cliJob(c, p)
 	case "schedule":

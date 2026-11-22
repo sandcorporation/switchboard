@@ -31,6 +31,7 @@ import (
 	"github.com/sandcorporation/switchboard/internal/live"
 	"github.com/sandcorporation/switchboard/internal/mail"
 	"github.com/sandcorporation/switchboard/internal/presence"
+	"github.com/sandcorporation/switchboard/internal/rules"
 	"github.com/sandcorporation/switchboard/internal/store"
 	"github.com/sandcorporation/switchboard/internal/wire"
 )
@@ -392,6 +393,10 @@ func (s *Server) serveAPI(w http.ResponseWriter, r *http.Request) {
 		s.progressAPI(w, r, s.ids().IsGlobalBoss(who))
 		return
 	}
+	if path == "rules" || strings.HasPrefix(path, "rules/") {
+		s.rules().API(w, r, s.ruleCaller(who), strings.TrimPrefix(strings.TrimPrefix(path, "rules"), "/"))
+		return
+	}
 	if path == "reports" || strings.HasPrefix(path, "reports/") {
 		s.reports().API(w, r, who, strings.TrimPrefix(strings.TrimPrefix(path, "reports"), "/"))
 		return
@@ -534,6 +539,10 @@ func (s *Server) adminRoutes(w http.ResponseWriter, r *http.Request, path string
 	}
 	if rest, ok := strings.CutPrefix(path, "permissions"); ok && (rest == "" || strings.HasPrefix(rest, "/")) {
 		s.asks().AdminPermissionsAPI(w, r, strings.TrimPrefix(rest, "/"))
+		return
+	}
+	if rest, ok := strings.CutPrefix(path, "rules"); ok && (rest == "" || strings.HasPrefix(rest, "/")) {
+		s.rules().API(w, r, rules.Caller{Role: "admin:" + who.User, Full: true}, strings.TrimPrefix(rest, "/"))
 		return
 	}
 	if rest, ok := strings.CutPrefix(path, "reports"); ok && (rest == "" || strings.HasPrefix(rest, "/")) {

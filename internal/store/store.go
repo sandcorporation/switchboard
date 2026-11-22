@@ -170,7 +170,46 @@ func Init(db *sql.DB) error {
 	if e = migrateHostAutoAlerts(db); e != nil {
 		return e
 	}
-	return migrateHostGrants(db)
+	if e = migrateHostGrants(db); e != nil {
+		return e
+	}
+	return migrateRules(db)
+}
+
+// migrateRules adds the rules ledger (#406 ①, internal/rules): rules (a
+// decision or tip, its group, scope and topic, its sources, state and the
+// rows it replaced; match_* are the hit conditions ② reads), rule_topics
+// (the topics a rule picks from), service_tags (tags a service's roles
+// inherit) and role_tags (a role's additions, op '+', and removals, '-').
+func migrateRules(db *sql.DB) error {
+	_, err := db.Exec(`CREATE TABLE IF NOT EXISTS rules(
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		kind TEXT NOT NULL,
+		body TEXT NOT NULL,
+		grp TEXT NOT NULL DEFAULT '',
+		scope TEXT NOT NULL,
+		scope_values TEXT NOT NULL DEFAULT '',
+		topic TEXT NOT NULL,
+		sources TEXT NOT NULL DEFAULT '',
+		source_text TEXT NOT NULL DEFAULT '',
+		status TEXT NOT NULL DEFAULT 'active',
+		replaces TEXT NOT NULL DEFAULT '',
+		replaced_by INTEGER,
+		device TEXT NOT NULL DEFAULT '',
+		match_tool TEXT NOT NULL DEFAULT '',
+		match_command TEXT NOT NULL DEFAULT '',
+		match_path TEXT NOT NULL DEFAULT '',
+		author TEXT NOT NULL,
+		created_at TEXT NOT NULL,
+		voided_by TEXT NOT NULL DEFAULT '',
+		voided_at TEXT NOT NULL DEFAULT '',
+		idem TEXT,
+		UNIQUE(author, idem));
+	CREATE INDEX IF NOT EXISTS idx_rules_topic ON rules(grp, topic, status);
+	CREATE TABLE IF NOT EXISTS rule_topics(name TEXT PRIMARY KEY, created_by TEXT NOT NULL, created_at TEXT NOT NULL);
+	CREATE TABLE IF NOT EXISTS service_tags(service TEXT NOT NULL, tag TEXT NOT NULL, PRIMARY KEY(service, tag));
+	CREATE TABLE IF NOT EXISTS role_tags(role TEXT NOT NULL, tag TEXT NOT NULL, op TEXT NOT NULL, PRIMARY KEY(role, tag));`)
+	return err
 }
 
 // migrateHostGrants adds host_grants (#369): per role, the base roles, nodes

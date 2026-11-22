@@ -314,6 +314,7 @@ table.cards td.cardhide{display:none}
 #progressTbl td[data-label]+td[data-label]::before{content:"· "}
 #progressTbl td.num[data-label]::after{content:" " attr(data-label)}
 }
+.ruleform{display:grid;gap:var(--space-2);max-width:44rem}.ruleform textarea{width:100%}.ruleform .row{display:flex;flex-wrap:wrap;gap:var(--space-2);align-items:center}
 </style>
 </head>
 <body>
@@ -330,6 +331,7 @@ table.cards td.cardhide{display:none}
 <div class="sc-sidenav-heading" aria-hidden="true">응답</div>
 <button type="button" class="sc-sidenav-item" title="질문" data-wait role="tab" id="tab-questions" data-tab="questions" aria-controls="panel-questions" aria-selected="false" tabindex="-1"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 14.5a6.5 6.5 0 1 0 0-13 6.5 6.5 0 0 0 0 13zM6.3 6a1.8 1.8 0 1 1 2.4 1.7c-.5.2-.7.6-.7 1.1v.5M8 11.2v.1" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="tab-name sc-sidenav-label">질문</span><span class="tab-count sc-sidenav-count"></span></button>
 <button type="button" class="sc-sidenav-item" title="권한 요청" data-wait role="tab" id="tab-permissions" data-tab="permissions" aria-controls="panel-permissions" aria-selected="false" tabindex="-1"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5l5.5 2v4c0 3.5-2.5 6-5.5 7-3-1-5.5-3.5-5.5-7v-4z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="tab-name sc-sidenav-label">권한 요청</span><span class="tab-count sc-sidenav-count"></span></button>
+<button type="button" class="sc-sidenav-item" title="규칙" role="tab" id="tab-rules" data-tab="rules" aria-controls="panel-rules" aria-selected="false" tabindex="-1"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4l1.5 1.5L6.5 3M8.5 4.5h5M2.5 9l1.5 1.5L6.5 8M8.5 9.5h5M8.5 13h5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="tab-name sc-sidenav-label">규칙</span><span class="tab-count sc-sidenav-count"></span></button>
 <div class="sc-sidenav-heading" aria-hidden="true">관리</div>
 <button type="button" class="sc-sidenav-item" title="지표" role="tab" id="tab-metrics" data-tab="metrics" aria-controls="panel-metrics" aria-selected="false" tabindex="-1"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 13.5v-4M6.5 13.5v-8M10.5 13.5v-6M14 13.5v-10" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="tab-name sc-sidenav-label">지표</span><span class="tab-count sc-sidenav-count"></span></button>
 <button type="button" class="sc-sidenav-item" title="터미널" role="tab" id="tab-terminals" data-tab="terminals" aria-controls="panel-terminals" aria-selected="false" tabindex="-1" hidden><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3h12v10H2zM4.5 6l2 2-2 2M8 10h3.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="tab-name sc-sidenav-label">터미널</span><span class="tab-count sc-sidenav-count"></span></button>
@@ -418,6 +420,26 @@ table.cards td.cardhide{display:none}
 <table id="permPendingTbl" class="stack list"><thead><tr><th>상태</th><th>도구 · 요약</th><th>요청한 쪽</th><th>요청</th><th>만료</th></tr></thead><tbody id="permPending"></tbody></table>
 <h3 class="sechead">지난 기록</h3>
 <table id="permHistoryTbl" class="stack list"><thead><tr><th>결과</th><th>도구 · 요약</th><th>요청한 쪽</th><th>요청</th><th>답한 쪽</th></tr></thead><tbody id="permHistory"></tbody></table>
+</section>
+<section id="panel-rules" role="tabpanel" aria-labelledby="tab-rules" tabindex="0" class="card" hidden>
+<div class="toolbar"><h2>규칙</h2><button id="reloadRules">새로 고침</button><span id="rulesNote" class="muted" role="status" aria-live="polite"></span></div>
+<div class="listbar"><div class="chips" id="ruleChips" role="group" aria-label="종류 고르기"></div>
+<input id="ruleService" type="search" aria-label="서비스" placeholder="서비스" autocomplete="off" autocapitalize="off" spellcheck="false">
+<select id="ruleTopic" aria-label="주제"><option value="">모든 주제</option></select>
+<label><input type="checkbox" id="ruleAll"> 대체·무효 포함</label></div>
+<table id="rulesTbl" class="stack list"><thead><tr><th class="num">#</th><th>종류</th><th>주제</th><th>범위</th><th>글</th></tr></thead><tbody id="rules"></tbody></table>
+<details id="ruleAdd"><summary>새 줄</summary>
+<form id="ruleForm" class="ruleform">
+<div class="row"><select id="ruleKind" aria-label="종류"><option value="decision">결정</option><option value="tip">요령</option></select>
+<input id="ruleScope" aria-label="범위" placeholder="all · service:NAME · tag:NAME" required autocomplete="off" autocapitalize="off" spellcheck="false">
+<input id="ruleTopicIn" list="ruleTopics" aria-label="주제" placeholder="주제" required autocomplete="off" autocapitalize="off" spellcheck="false"><datalist id="ruleTopics"></datalist>
+<label><input type="checkbox" id="ruleNewTopic"> 새 주제</label>
+<input id="ruleGroup" aria-label="그룹" placeholder="그룹 (all·tag 줄)" autocomplete="off" autocapitalize="off" spellcheck="false"></div>
+<textarea id="ruleText" rows="3" aria-label="글" required></textarea>
+<input id="ruleSource" aria-label="출처" placeholder="출처: 질문 ID(q_…) 또는 글" required>
+<div class="row"><button type="submit">올리기</button></div>
+<div id="ruleAddMsg" class="msg" role="status" aria-live="polite"></div>
+</form></details>
 </section>
 <section id="panel-questions" role="tabpanel" aria-labelledby="tab-questions" tabindex="0" class="card" hidden>
 <div class="toolbar"><h2>질문</h2>
@@ -566,9 +588,10 @@ async function apiSend(method,path,body){
     return r.json();
   }
   if(r.status===401)signedOut();
-  let text='';try{text=(await r.text()).trim().slice(0,300)}catch(e){}
+  let raw='';try{raw=(await r.text()).trim()}catch(e){}
+  const text=raw.slice(0,300);
   const e=Error(r.status===401?'로그인 필요(401)':r.status===403?'쓰기 거부(403) · 같은 주소에서 열었는지 확인':'요청 실패('+r.status+')'+(text?': '+text:''));
-  e.status=r.status;throw e;
+  e.status=r.status;e.body=raw;throw e;
 }
 function node(tag,text,cls){const n=document.createElement(tag);n.textContent=text;if(cls)n.className=cls;return n}
 async function initMail(){
@@ -864,8 +887,8 @@ registerDetail('mail',{
 // Each tab's loader runs once, the first time the tab is shown; after that the
 // tab's own 「새로 고침」 button reloads it. #33 sets tabLoaders.permissions and
 // #42 sets tabLoaders.questions / tabLoaders.settings (null = nothing to load).
-const tabNames=['progress','sessions','mail','reports','jobs','questions','permissions','metrics','terminals','settings'];
-const tabLoaders={progress:null,sessions:loadSessions,reports:loadReports,jobs:loadJobs,metrics:null,mail:initMail,permissions:null,questions:null,settings:null};
+const tabNames=['progress','sessions','mail','reports','jobs','questions','permissions','rules','metrics','terminals','settings'];
+const tabLoaders={progress:null,sessions:loadSessions,reports:loadReports,jobs:loadJobs,metrics:null,mail:initMail,permissions:null,questions:null,rules:loadRules,settings:null};
 const tabLoaded=new Set();
 // setTabCount(name,n) shows n as a small count next to the tab name; n
 // null/undefined hides it.
@@ -1611,6 +1634,154 @@ registerDetail('reports',{
     box.append(node('h3','연결된 지시 '+r.threads.length,'sechead'));
     if(!r.threads.length)box.append(node('p','연결된 지시 없음','empty'));
     for(const t of r.threads)box.append(reportThread(t));
+  }
+});
+// ---- 규칙 (#406 ①) ----
+// The rules ledger: rows in force by service and topic, 결정 first. A row's
+// detail has its history and the answered questions it came from; an admin
+// fixes a row (a new row replacing it) or voids it. A 409 lists the rows in
+// force on the same scope and topic: replace them or stand alongside.
+const ruleCols=['#','종류','주제','범위','글'];
+const ruleKinds={decision:'결정',tip:'요령'};
+const ruleStates={active:['유효','success'],replaced:['대체됨','neutral'],void:['무효','danger']};
+const ruleChips=[['decision','결정'],['tip','요령'],['','전체']];
+let rulesData=null,rulesKind='decision',rulesSeq=0;
+function ruleScopeText(s){return !s?'':s.kind==='all'||!s.values||!s.values.length?s.kind:s.kind+':'+s.values.join(',')}
+function ruleFirstLine(t){return String(t||'').split('\n')[0]}
+function parseRuleScope(v){
+  const i=v.indexOf(':'),kind=(i<0?v:v.slice(0,i)).trim();
+  return {kind:kind,values:i<0?[]:v.slice(i+1).split(',').map(x=>x.trim()).filter(Boolean)};
+}
+// ruleSourceBody reads a source field: answered question IDs (q_…, comma
+// separated) or a text.
+function ruleSourceBody(v){
+  const ids=v.split(',').map(x=>x.trim()).filter(Boolean);
+  return ids.length&&ids.every(x=>/^q_\S+$/.test(x))?{sources:ids}:{source_text:v.trim()};
+}
+async function loadRules(){
+  const seq=++rulesSeq,q=new URLSearchParams(),svc=$('ruleService').value.trim(),topic=$('ruleTopic').value;
+  if(svc)q.set('service',svc);
+  if(topic)q.set('topic',topic);
+  if($('ruleAll').checked)q.set('all','1');
+  $('rulesNote').textContent='불러오는 중…';
+  try{
+    const [list,topics]=await Promise.all([api('rules?'+q.toString()),api('rules/topics')]);
+    if(seq!==rulesSeq)return;
+    rulesData=list.rules;
+    fillRuleTopics(topics.topics);
+    drawRules();
+  }catch(e){if(seq===rulesSeq)$('rulesNote').textContent=e.message}
+}
+function fillRuleTopics(topics){
+  const sel=$('ruleTopic'),cur=sel.value,dl=$('ruleTopics');
+  sel.replaceChildren(new Option('모든 주제',''));dl.replaceChildren();
+  for(const t of topics){sel.append(new Option(t.name+' · '+t.active,t.name));dl.append(new Option(t.name,t.name))}
+  if(cur&&!topics.some(t=>t.name===cur))sel.append(new Option(cur,cur));
+  sel.value=cur;
+}
+function drawRules(){
+  const list=rulesData;if(!list)return;
+  const chips=$('ruleChips');chips.replaceChildren();
+  for(const [k,label] of ruleChips){
+    const b=node('button',label+' ','sc-chip');b.type='button';b.setAttribute('aria-pressed',k===rulesKind?'true':'false');
+    b.append(node('span',String(list.filter(r=>!k||r.kind===k).length),'sc-chip-count'));
+    b.onclick=()=>{rulesKind=k;drawRules()};
+    chips.append(b);
+  }
+  const shown=list.filter(r=>!rulesKind||r.kind===rulesKind),body=$('rules');
+  keepRowFocus(body,()=>{
+    body.replaceChildren();
+    for(const r of shown)body.append(ruleRow(r));
+    if(!shown.length)emptyRow(body,ruleCols.length,'규칙 없음');
+  });
+  $('rulesNote').textContent=(shown.length===list.length?'':shown.length+' / ')+list.length+'줄';
+}
+function ruleBadge(st){return ruleStates[st]||[st,'neutral']}
+function ruleRow(r){
+  const off=r.status&&r.status!=='active',tr=node('tr','',off?'done':'');
+  const t=cell('',ruleCols[4],'wrap');t.append(node('span',ruleFirstLine(r.text)));
+  if(off){const [l,tone]=ruleBadge(r.status);t.append(' ',badge(l,tone))}
+  tr.append(cell('#'+r.id,ruleCols[0],'num'),cell(ruleKinds[r.kind]||r.kind,ruleCols[1]),cell(r.topic,ruleCols[2]),cell(ruleScopeText(r.scope)+(r.group?' @'+r.group:''),ruleCols[3]),t);
+  detailRow(tr,'rules',r.id);
+  return tr;
+}
+// postRule adds a row; on a 409 it shows the rows in force and offers to
+// replace them or (for a new row) to stand alongside them.
+async function postRule(body,msg,done){
+  msg.className='msg';msg.replaceChildren();
+  try{done(await apiSend('POST','rules',body));return}
+  catch(e){
+    let c=null;
+    if(e.status===409){try{c=JSON.parse(e.body)}catch(x){}}
+    if(!c||!c.rules){msg.className='msg err';msg.textContent=e.message;return}
+    msg.append(node('p','같은 범위·주제에 유효한 줄이 있다'));
+    const ul=node('ul','','plain');
+    for(const r of c.rules)ul.append(node('li','#'+r.id+' '+(ruleKinds[r.kind]||r.kind)+' '+ruleFirstLine(r.text)));
+    const row=node('div','','row'),rep=node('button','대체');rep.type='button';
+    rep.onclick=()=>postRule(Object.assign({},body,{replace:[...(body.replace||[]),...c.rules.map(r=>r.id)]}),msg,done);
+    row.append(rep);
+    if(!(body.replace&&body.replace.length)){
+      const side=node('button','나란히');side.type='button';
+      side.onclick=()=>postRule(Object.assign({},body,{alongside:true}),msg,done);
+      row.append(side);
+    }
+    msg.append(ul,row);
+  }
+}
+function ruleEditForm(r){
+  const f=node('form','','ruleform');
+  const text=node('textarea','');text.value=r.text;text.rows=4;text.required=true;text.setAttribute('aria-label','새 글');
+  const src=node('input','');src.placeholder='출처: 질문 ID(q_…) 또는 글';src.required=true;src.setAttribute('aria-label','출처');
+  const save=node('button','고쳐 올리기');save.type='submit';
+  const off=node('button','무효로');off.type='button';
+  const msg=node('div','','msg');msg.setAttribute('role','status');
+  const row=node('div','','row');row.append(save,off);
+  f.append(node('h3','고치기','sechead'),text,src,row,msg);
+  f.onsubmit=e=>{
+    e.preventDefault();
+    postRule(Object.assign(ruleSourceBody(src.value),{kind:r.kind,text:text.value,topic:r.topic,scope:r.scope,group:r.group||'',device:r.device||'',replace:[r.id]}),msg,n=>{loadRules();openDetail('rules',String(n.id))});
+  };
+  off.onclick=async()=>{
+    if(!confirm('#'+r.id+' 줄을 무효로 돌린다. 되돌릴 수 없다.'))return;
+    try{await apiSend('POST','rules/'+encodeURIComponent(r.id)+'/void');loadRules();drawDetail()}
+    catch(e){msg.className='msg err';msg.textContent=e.message}
+  };
+  return f;
+}
+registerDetail('rules',{
+  list:'규칙',kinds:['rules'],
+  load:async id=>{
+    try{return await api('rules/'+encodeURIComponent(id))}
+    catch(e){if(e.status===404)return null;throw e}
+  },
+  head:r=>({title:'#'+r.id+' '+(ruleKinds[r.kind]||r.kind)+' · '+r.topic,badge:ruleBadge(r.status)}),
+  subs:()=>[['body','규칙']],
+  draw:async(r,sub,box)=>{
+    box.append(node('p',r.text,'rbody'));
+    const pairs=[['범위',ruleScopeText(r.scope)],['그룹',r.group||'(그룹 없음)']];
+    if(r.sources&&r.sources.length)pairs.push(['출처',r.sources.join(', ')]);
+    if(r.source_text)pairs.push(['출처 글',r.source_text]);
+    if(r.device)pairs.push(['장치',r.device]);
+    pairs.push(['적은 이',r.author||'-'],['시각',when(r.created_at)]);
+    if(r.voided_by)pairs.push(['무효로 돌린 이',r.voided_by+' · '+when(r.voided_at)]);
+    box.append(dl(pairs));
+    if(r.history&&r.history.length){
+      box.append(node('h3','이력','sechead'));
+      const ul=node('ul','','plain');
+      for(const h of r.history){
+        const li=node('li',''),a=node('a','#'+h.id+' '+ruleFirstLine(h.text));a.href=detailHash('rules',String(h.id));
+        const [l,tone]=ruleBadge(h.status);li.append(a,' ',badge(l,tone));ul.append(li);
+      }
+      box.append(ul);
+    }
+    if(r.answers&&r.answers.length){
+      box.append(node('h3','원문','sechead'));
+      for(const a of r.answers){
+        box.append(node('div',a.id+' · '+a.asker+' → '+a.answered_by+' · '+when(a.answered_at),'rline'));
+        for(const it of a.items||[])box.append(node('p','['+it.header+'] '+it.question+' → '+[...(it.chosen||[]),...(it.other?[it.other]:[])].join(', '),'muted'));
+      }
+    }
+    if(r.status==='active')box.append(ruleEditForm(r));
   }
 });
 // ---- 결정 (#50) ----
@@ -2458,7 +2629,7 @@ tabLoaders.permissions=loadPermissions;
 // and {type:'change',seq,kinds}; kinds are tab names. The shown tab reloads
 // (not while a field in it has focus), the others reload when next shown.
 // Reconnects back off exponentially (1s to 30s) and resume with boot+after.
-const liveReload={progress:loadProgress,sessions:loadSessions,reports:loadReports,jobs:loadJobs,metrics:loadMetrics,mail:load,permissions:loadPermissions,questions:loadQuestions,settings:loadSettingsView,terminals:loadTerminals};
+const liveReload={progress:loadProgress,sessions:loadSessions,reports:loadReports,jobs:loadJobs,metrics:loadMetrics,mail:load,permissions:loadPermissions,rules:loadRules,questions:loadQuestions,settings:loadSettingsView,terminals:loadTerminals};
 const liveCounts={reports:refreshReportCount,questions:refreshQuestionCount,permissions:refreshPermissionCount,metrics:refreshMetricsCount};
 let liveBoot='',liveSeq=0,liveDelay=1000,liveDirty=new Set(),liveStale=new Set(),liveTimer=0,liveDetail=false;
 function liveMark(kinds){
@@ -2579,6 +2750,15 @@ $('reloadMetrics').onclick=loadMetrics;
 $('metDays7').onclick=()=>setMetricsDays(7);
 $('metDays30').onclick=()=>setMetricsDays(30);
 $('reloadReports').onclick=()=>loadReports();
+$('reloadRules').onclick=()=>loadRules();
+$('ruleService').onchange=()=>loadRules();
+$('ruleTopic').onchange=()=>loadRules();
+$('ruleAll').onchange=()=>loadRules();
+$('ruleForm').onsubmit=e=>{
+  e.preventDefault();
+  const body=Object.assign(ruleSourceBody($('ruleSource').value),{kind:$('ruleKind').value,text:$('ruleText').value,topic:$('ruleTopicIn').value.trim(),new_topic:$('ruleNewTopic').checked,scope:parseRuleScope($('ruleScope').value),group:$('ruleGroup').value.trim()});
+  postRule(body,$('ruleAddMsg'),r=>{$('ruleText').value='';$('ruleSource').value='';loadRules();openDetail('rules',String(r.id))});
+};
 $('reloadJobs').onclick=()=>loadJobs();
 $('jobRole').onchange=$('jobState').onchange=()=>loadJobs();
 $('reloadQuestions').onclick=()=>{setMsg($('questionsMsg'),'');loadQuestions()};
