@@ -237,7 +237,7 @@ func (b *Backend) List(ctx context.Context) ([]term.Info, error) {
 		if line == "" {
 			continue
 		}
-		info, err := parsePane(line)
+		info, err := parsePane(line, b.reportsSignal())
 		if err != nil {
 			return nil, err
 		}
@@ -247,50 +247,76 @@ func (b *Backend) List(ctx context.Context) ([]term.Info, error) {
 	return infos, nil
 }
 
-func parsePane(line string) (term.Info, error) {
+func parsePane(line string, reportsSignal bool) (term.Info, error) {
 	f := strings.Split(line, "\t")
 	if len(f) != 6 {
 		return term.Info{}, fmt.Errorf("tmux: list-panes line %q", line)
 	}
 	pid, _ := strconv.Atoi(f[1])
 	created, _ := strconv.ParseInt(f[5], 10, 64)
-	info := term.Info{Name: f[0], PID: pid, Alive: f[2] != "1", StartedAt: time.Unix(created, 0)}
-	if !info.Alive {
-		info.ExitCode = exitCode(f[3], f[4])
+	code, exited := exitCode(f[2] == "1", f[3], f[4], reportsSignal)
+	info := term.Info{Name: f[0], PID: pid, Alive: !exited, StartedAt: time.Unix(created, 0)}
+	if exited {
+		info.ExitCode = code
 	}
 	return info, nil
 }
 
 // exitCode is the pane's exit status, or 128+signal for a program killed by
-// a signal, as a shell reports it.
-func exitCode(status, signal string) int {
+// a signal, as a shell reports it; exited says whether the program has
+// exited with that status known.
+//
+// tmux marks a pane dead when its pty closes, which can come before tmux
+// reaps the program and records how it ended: for that moment the pane is
+// dead with neither status nor signal. Such a pane counts as not yet
+// exited, so nobody reads a made-up exit code. tmux older than 3.3 has no
+// pane_dead_signal, so a program killed by a signal never gets either
+// there; that tmux takes a dead pane as exited at once, code -1 unknown.
+func exitCode(dead bool, status, signal string, reportsSignal bool) (code int, exited bool) {
+	if !dead {
+		return 0, false
+	}
 	if n, err := strconv.Atoi(status); err == nil {
-		return n
+		return n, true
 	}
 	if n, err := strconv.Atoi(signal); err == nil {
-		return 128 + n
+		return 128 + n, true
 	}
-	return -1
+	return -1, !reportsSignal
+}
+
+// reportsSignal says whether this tmux has pane_dead_signal (3.3+).
+func (b *Backend) reportsSignal() bool {
+	return b.version.AtLeast(Version{Major: 3, Minor: 3})
 }
 
 type pane struct {
-	pid  int
+	pid int
+	// dead is a pane whose program is gone: no more input or output.
 	dead bool
+	// exited is a dead pane whose exit status is known (see exitCode).
+	exited bool
 }
 
 func (b *Backend) pane(ctx context.Context, name string) (pane, error) {
 	// list-panes, not display-message: display-message falls back to the
 	// current pane when the target is missing instead of failing.
-	out, err := b.run(ctx, name, "list-panes", "-t", target(name), "-F", "#{pane_pid} #{pane_dead}")
+	out, err := b.run(ctx, name, "list-panes", "-t", target(name), "-F", "#{pane_pid}\t#{pane_dead}\t#{pane_dead_status}\t#{pane_dead_signal}")
 	if err != nil {
 		return pane{}, err
 	}
-	f := strings.Fields(out)
-	if len(f) < 1 {
+	out = strings.TrimSpace(out)
+	if out == "" {
 		return pane{}, fmt.Errorf("%s: %w", name, term.ErrNoSession)
 	}
+	f := strings.Split(strings.SplitN(out, "\n", 2)[0], "\t")
+	for len(f) < 4 {
+		f = append(f, "")
+	}
 	pid, _ := strconv.Atoi(f[0])
-	return pane{pid: pid, dead: len(f) > 1 && f[1] == "1"}, nil
+	p := pane{pid: pid, dead: f[1] == "1"}
+	_, p.exited = exitCode(p.dead, f[2], f[3], b.reportsSignal())
+	return p, nil
 }
 
 func (b *Backend) running(ctx context.Context, name string) (pane, error) {
@@ -426,8 +452,8 @@ func (b *Backend) Stop(ctx context.Context, name string, grace time.Duration) er
 	return nil
 }
 
-// waitDead polls until the pane is dead or d passes. A session gone
-// altogether counts as dead.
+// waitDead polls until the pane is dead with its exit status recorded, or d
+// passes. A session gone altogether counts as dead.
 func (b *Backend) waitDead(ctx context.Context, name string, d time.Duration) (bool, error) {
 	deadline := time.Now().Add(d)
 	for {
@@ -438,7 +464,7 @@ func (b *Backend) waitDead(ctx context.Context, name string, d time.Duration) (b
 		if err != nil {
 			return false, err
 		}
-		if p.dead {
+		if p.exited {
 			return true, nil
 		}
 		if !time.Now().Before(deadline) {

@@ -608,3 +608,31 @@ func play(t *testing.T, sc term.Scene) term.Grid {
 	}
 	return e.Grid(-1)
 }
+
+// tmux marks a pane dead when its pty closes, which can come before it
+// reaps the program: list-panes then shows pane_dead 1 with an empty
+// status. That pane has not exited yet; it must not read as exit code -1.
+func TestParsePaneDeadBeforeStatus(t *testing.T) {
+	for _, c := range []struct {
+		line          string
+		reportsSignal bool
+		alive         bool
+		code          int
+	}{
+		{"sb-1\t42\t0\t\t\t1700000000", true, true, 0},
+		{"sb-1\t42\t1\t\t\t1700000000", true, true, 0},
+		{"sb-1\t42\t1\t7\t\t1700000000", true, false, 7},
+		{"sb-1\t42\t1\t\t15\t1700000000", true, false, 143},
+		// tmux 3.2 has no pane_dead_signal: a killed program never gets a
+		// status there, so a dead pane is exited at once, code unknown.
+		{"sb-1\t42\t1\t\t\t1700000000", false, false, -1},
+	} {
+		i, err := parsePane(c.line, c.reportsSignal)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if i.Alive != c.alive || (!i.Alive && i.ExitCode != c.code) {
+			t.Errorf("parsePane(%q, %v) = alive %v code %d, want alive %v code %d", c.line, c.reportsSignal, i.Alive, i.ExitCode, c.alive, c.code)
+		}
+	}
+}
