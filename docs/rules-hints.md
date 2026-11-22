@@ -2,27 +2,27 @@
 
 The rules ledger (`internal/rules`, README "Rules ledger") reaches a session two ways:
 
-- A row with hit conditions (`match`) goes to the session's tool calls, through a hook of the agent plugin. The plugin lives outside this repository; this page is its contract with the server.
+- A row with hit conditions (`match`) goes to the result of a session's tool call that it matches, through a hook of the agent plugin. The plugin lives outside this repository; this page is its contract with the server.
 - A row without conditions goes to the end of a boss role's directive mail, added by the server (`SWITCHBOARD_RULES_FOOTER`, default on).
 
 A row with a `device` (the mechanism that enforces it) goes to neither, and neither does a proposed row (a proposer's tip waiting for approval, README "Rules ledger: proposals and answer classes").
 
 A third hook keeps the ledger fed: the Stop hook does not let a session end its turn while a person's answer to one of its panel questions is unclassified (below).
 
-## The pre-tool-call hook
+## The tool-result hook
 
-Before each tool call the hook:
+The hook adds context to the result of a tool call; it never blocks the call. After each tool call the hook:
 
 1. Reads `GET /api/rules/mine` with the role's token and role header. It keeps the body and its `ETag`, and sends `If-None-Match: <etag>` the next time; `304 Not Modified` means the kept body still holds. It revalidates when the session starts and after a compact; between them, as often as it likes (a 304 has no body).
-2. Matches the tool call against each row's `match`. Every condition given must hold:
+2. Matches the call (its tool, command and path) against each row's `match`. Every condition given must hold:
    - `tool`: the tool name, exactly, or a pattern where `*` is any text (`mcp__*`).
    - `command`: a Go (RE2) regular expression found anywhere in the command text (a shell tool's command). A call without a command text does not meet it.
    - `path`: a glob of the file path the tool touches: `*` is any text but `/`, `**` any text, `**/` also no directory at all, `?` one character but `/`. Paths are matched as the tool gives them (usually absolute), so start a pattern with `**/` to match anywhere.
    A row without `match` is never hit by a tool call.
-3. For each hit row, adds a line to the call's extra context: `결정 #N 참고: <summary>` for a decision, `요령 #N 참고: <summary>` for a tip.
+3. For each hit row, adds a line to the call's result: `결정 #N 참고: <summary>` for a decision, `요령 #N 참고: <summary>` for a tip.
 4. Sends `POST /api/rules/hits` with `{"ids":[N,…]}`, the rows it just put in.
 
-The hook never blocks the call; it only adds context. A row goes in once per session, and once more after a compact (the context it added may be gone): the hook keeps the numbers it put in for the session and clears them on a compact. Whether and how to repeat a row within a session is the plugin's choice. When the server cannot be reached, the hook uses the body it kept, or adds nothing.
+A row goes in once per session, and once more after a compact (the context it added may be gone): the hook keeps the numbers it put in for the session and clears them on a compact. Whether and how to repeat a row within a session is the plugin's choice. When the server cannot be reached, the hook uses the body it kept, or adds nothing.
 
 The server's reference for the matching is `wire.RuleMatch.Hits` (`internal/wire/rules.go`), tested in `internal/wire/rules_test.go` and `internal/server/rules_hints_test.go`.
 
@@ -76,7 +76,7 @@ Each decision is a line; the tips are one line with their count and topics. The 
 
 ## The Stop hook: unclassified answers
 
-Every answer a person gives to a panel question (in the dashboard or the asking session's panel) starts unclassified for the role that asked. Answers given before this came in are not counted; answers a boss role gives are not counted either. At the end of each turn the plugin's Stop hook:
+Every answer a person gives to a panel question (in the dashboard or the asking session's panel) starts unclassified for the role that asked. Answers given before this came in are not counted; answers a boss role gives are not counted either. When the session is about to end its turn (the Stop event, not a tool call), the plugin's Stop hook:
 
 1. Reads `GET /api/rules/unclassified` with the role's token and role header, sending `If-None-Match` with the `ETag` it kept; `304` means the kept body still holds.
 2. When `count` is 0, lets the turn end.
