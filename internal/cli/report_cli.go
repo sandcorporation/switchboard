@@ -12,6 +12,9 @@ import (
 // cliReport posts a report (POST /api/reports, boss roles only) and prints
 // its ID, or the stored report with --json.
 func cliReport(c Config, p parsedArgs, out io.Writer) (int, error) {
+	if len(p.pos) > 0 {
+		return cliReportRead(c, p, out)
+	}
 	q, err := reportRequest(p)
 	if err != nil {
 		return 0, err

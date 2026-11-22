@@ -191,9 +191,11 @@ var commands = []command{
 	{name: "progress", args: "[SERVICE]", nargs: 1, optArgs: true,
 		summary: "Show per-service progress: last report, live sessions, and open directives (! over the threshold) (boss roles only)",
 		options: []option{{"--json", "", "print the server's whole JSON response unchanged (SERVICE is ignored)"}, optProfile}},
-	{name: "report", synopsis: "--title TEXT [--request TEXT] [--mail ID[,ID...]]... (--body TEXT | --body-file PATH | stdin)",
-		summary: "Post a report to the dashboard, linking the directive threads it covers (boss roles only); prints the report ID",
+	{name: "report", args: "[list | show R<ID>]", nargs: 2, optArgs: true,
+		synopsis: "| --title TEXT [--request TEXT] [--mail ID[,ID...]]... (--body TEXT | --body-file PATH | stdin)",
+		summary:  "Post a report to the dashboard, linking the directive threads it covers; prints the report ID. `report list [--open]` lists the reports (with --open, each open one's open directive threads) and `report show R<ID>` one report's threads (boss roles only)",
 		options: []option{
+			{"--open", "", "list: only open reports, each with its open directive threads"},
 			{"--title", "TEXT", "report title (one line)"},
 			{"--request", "TEXT", "what was asked (one line)"},
 			{"--mail", "ID[,ID...]", "link mail by ID (repeatable); a reply links its thread's directive; mail you received is also marked complete; #N in the body is never a link"},

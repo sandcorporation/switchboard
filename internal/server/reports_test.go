@@ -112,8 +112,13 @@ func TestReportNonBossForbidden(t *testing.T) {
 	if code != 403 {
 		t.Fatalf("worker: %d %s", code, raw)
 	}
-	if w := callAs(s, "GET", "/api/reports", reportBossToken, reportBossRole, nil); w.Code != 405 {
-		t.Fatalf("GET: %d", w.Code)
+	if w := callAs(s, "PUT", "/api/reports", reportBossToken, reportBossRole, nil); w.Code != 405 {
+		t.Fatalf("PUT: %d", w.Code)
+	}
+	for _, path := range []string{"/api/reports", "/api/reports/1"} {
+		if w := callAs(s, "GET", path, reportWorkerToken, reportWorkerRole, nil); w.Code != 403 {
+			t.Fatalf("worker GET %s: %d", path, w.Code)
+		}
 	}
 	if w := callAs(s, "POST", "/api/reports", "wrong", reportBossRole, map[string]any{"title": "t", "body": "b"}); w.Code != 401 {
 		t.Fatalf("no token: %d", w.Code)
@@ -344,7 +349,180 @@ func TestReportCLI(t *testing.T) {
 	if r := h.run(nil, "report", "--title", "T", "--body", "x"); r.code == 0 || !strings.Contains(r.stderr, "403") {
 		t.Fatalf("non-boss: %+v", r)
 	}
+	h.configure(nil, "a")
+	list := h.mustRun(nil, "report", "list")
+	lines := strings.Split(list, "\n")
+	if len(lines) != 2 || !strings.HasPrefix(lines[0], "R2 open 열린 지시 3/3 ") || !strings.HasSuffix(lines[0], " Linked") || !strings.HasPrefix(lines[1], "R1 done 열린 지시 0/0 ") {
+		t.Fatalf("list:\n%s", list)
+	}
+	openList := h.mustRun(nil, "report", "list", "--open")
+	if strings.Contains(openList, "R1 ") || !strings.Contains(openList, "\n  #1 a → b ") || !strings.Contains(openList, " pending 살아 있음 one") {
+		t.Fatalf("list --open:\n%s", openList)
+	}
+	if show := h.mustRun(nil, "report", "show", "R2"); !strings.Contains(show, "요청 do two things") || !strings.Contains(show, "열림 #2 a → b ") || !strings.Contains(show, "# Done") {
+		t.Fatalf("show:\n%s", show)
+	}
+	var js wire.ReportList
+	if err := json.Unmarshal([]byte(h.mustRun(nil, "report", "list", "--open", "--json")), &js); err != nil || len(js.Reports) != 1 {
+		t.Fatalf("list --json: %v %+v", err, js)
+	}
+	if r := h.run(nil, "report", "show", "R99"); r.code == 0 || !strings.Contains(r.stderr, "404") {
+		t.Fatalf("show missing: %+v", r)
+	}
+	if r := h.run(nil, "report", "nope"); r.code == 0 {
+		t.Fatalf("unknown action: %+v", r)
+	}
+	h.configure(nil, "b")
+	if r := h.run(nil, "report", "list"); r.code == 0 || !strings.Contains(r.stderr, "403") {
+		t.Fatalf("non-boss list: %+v", r)
+	}
 	if help := h.mustRun(nil, "help", "report"); !strings.Contains(help, "--mail") || !strings.Contains(help, "--idem") {
 		t.Fatalf("help: %s", help)
+	}
+}
+
+func bossReport(t *testing.T, s *Server, path string, out any) int {
+	t.Helper()
+	w := callAs(s, "GET", path, reportBossToken, reportBossRole, nil)
+	if w.Code == 200 {
+		if err := json.Unmarshal(w.Body.Bytes(), out); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return w.Code
+}
+
+func TestReportBossReadsListAndDetail(t *testing.T) {
+	t.Parallel()
+	s := reportServer(t)
+	open := directive(t, s, "open one")
+	done := directive(t, s, "done one")
+	if w := callAs(s, "POST", "/api/messages/"+itoa(done)+"/complete", reportWorkerToken, reportWorkerRole, nil); w.Code != 200 {
+		t.Fatalf("complete: %d %s", w.Code, w.Body)
+	}
+	ro := mustReport(t, s, map[string]any{"title": "Open", "body": "b", "mail": []int64{open}})
+	rd := mustReport(t, s, map[string]any{"title": "Done", "body": "b", "mail": []int64{done}})
+	var l wire.ReportList
+	if code := bossReport(t, s, "/api/reports", &l); code != 200 || len(l.Reports) != 2 || l.Reports[0].ID != rd.ID {
+		t.Fatalf("list: %d %+v", code, l)
+	}
+	for status, want := range map[string]int64{"open": ro.ID, "done": rd.ID} {
+		var f wire.ReportList
+		if code := bossReport(t, s, "/api/reports?status="+status, &f); code != 200 || len(f.Reports) != 1 || f.Reports[0].ID != want {
+			t.Fatalf("status %s: %d %+v", status, code, f)
+		}
+	}
+	if code := bossReport(t, s, "/api/reports?status=bogus", &l); code != 400 {
+		t.Fatalf("bogus status: %d", code)
+	}
+	var d wire.ReportDetail
+	if code := bossReport(t, s, "/api/reports/"+itoa(ro.ID), &d); code != 200 || len(d.Threads) != 1 || !d.Threads[0].Open || !d.Threads[0].Directive.RecipientLive {
+		t.Fatalf("detail: %d %+v", code, d)
+	}
+	if code := bossReport(t, s, "/api/reports/R"+itoa(ro.ID), &d); code != 200 {
+		t.Fatalf("R-prefixed: %d", code)
+	}
+	if code := bossReport(t, s, "/api/reports/999", &d); code != 404 {
+		t.Fatalf("missing: %d", code)
+	}
+}
+
+func TestReportGroupBossReadsOwnGroupOnly(t *testing.T) {
+	t.Parallel()
+	s := groupServer(t)
+	putGroup(t, s, "partner-a", `{"boss_role":"`+partnerBossRole+`"}`)
+	if code := sendAs(s, partnerBossToken, partnerBossRole, partnerDevRole); code != 201 {
+		t.Fatalf("send: %d", code)
+	}
+	var mid int64
+	_ = s.db.QueryRow(`SELECT id FROM messages WHERE recipient=?`, partnerDevRole).Scan(&mid)
+	if w := callAs(s, "POST", "/api/reports", partnerBossToken, partnerBossRole, map[string]any{"title": "Mine", "body": "b", "mail": []int64{mid}}); w.Code != 201 {
+		t.Fatalf("own report: %d %s", w.Code, w.Body)
+	}
+	if w := callAs(s, "POST", "/api/reports", bossToken, internalBossRole, map[string]any{"title": "Other", "body": "b"}); w.Code != 201 {
+		t.Fatalf("internal report: %d %s", w.Code, w.Body)
+	}
+	var l wire.ReportList
+	w := callAs(s, "GET", "/api/reports", partnerBossToken, partnerBossRole, nil)
+	_ = json.Unmarshal(w.Body.Bytes(), &l)
+	if w.Code != 200 || len(l.Reports) != 1 || l.Reports[0].Title != "Mine" {
+		t.Fatalf("group boss list: %d %s", w.Code, w.Body)
+	}
+	if w = callAs(s, "GET", "/api/reports/2", partnerBossToken, partnerBossRole, nil); w.Code != 404 {
+		t.Fatalf("other group's report: %d", w.Code)
+	}
+	w = callAs(s, "GET", "/api/reports", bossToken, internalBossRole, nil)
+	_ = json.Unmarshal(w.Body.Bytes(), &l)
+	if w.Code != 200 || len(l.Reports) != 2 {
+		t.Fatalf("global boss list: %d %s", w.Code, w.Body)
+	}
+}
+
+// Where a report and the progress view judge a directive differently. The
+// report's open is the answered rule's Open over the linked thread root;
+// progress only counts boss-sent mail to a live recipient. Both stay as they
+// are (#396): this pins each case.
+func TestReportOpenVersusProgressOpenDirectives(t *testing.T) {
+	t.Parallel()
+	s := reportServer(t)
+	if _, err := seedRoles(s.db, `INSERT INTO roles(role,token,created_at) VALUES(?,?,'now')`, "team/gone", "secret-team-gone"); err != nil {
+		t.Fatal(err)
+	}
+	progressOpen := func() int {
+		var r wire.ProgressReport
+		if code := bossReport(t, s, "/api/progress", &r); code != 200 {
+			t.Fatalf("progress: %d", code)
+		}
+		n := 0
+		for _, sv := range r.Services {
+			n += len(sv.OpenDirectives)
+		}
+		return n
+	}
+	send := func(token, from, to, subject string) int64 {
+		w := callAs(s, "POST", "/api/messages", token, from, map[string]string{"recipient": to, "subject": subject, "body": "x"})
+		if w.Code != 201 {
+			t.Fatalf("send: %d %s", w.Code, w.Body)
+		}
+		var m wire.Message
+		_ = json.Unmarshal(w.Body.Bytes(), &m)
+		return m.ID
+	}
+	statusOf := func(root int64) (string, wire.ReportThread) {
+		rp := mustReport(t, s, map[string]any{"title": "R" + itoa(root), "body": "b", "mail": []int64{root}})
+		d := reportDetail(t, s, rp.ID)
+		return d.Status, d.Threads[0]
+	}
+
+	// Recipient revoked: the report keeps it open, progress drops it.
+	gone := send(reportBossToken, reportBossRole, "team/gone", "to a revoked role")
+	if _, err := s.db.Exec(`UPDATE roles SET revoked_at='now' WHERE role='team/gone'`); err != nil {
+		t.Fatal(err)
+	}
+	if st, th := statusOf(gone); st != wire.ReportOpen || th.Directive.RecipientLive || progressOpen() != 0 {
+		t.Fatalf("revoked recipient: report %s live=%v progress=%d", st, th.Directive.RecipientLive, progressOpen())
+	}
+	// Root sent by a non-boss to another worker: open in the report (the boss
+	// is not its recipient, so linking does not complete it), not in progress.
+	// Linked mail the boss itself received is completed by the report.
+	if _, err := seedRoles(s.db, `INSERT INTO roles(role,token,created_at) VALUES(?,?,'now')`, "team/peer", "secret-team-peer"); err != nil {
+		t.Fatal(err)
+	}
+	up := send(reportWorkerToken, reportWorkerRole, "team/peer", "from a worker")
+	if st, _ := statusOf(up); st != wire.ReportOpen || progressOpen() != 0 {
+		t.Fatalf("worker-sent root: report %s progress=%d", st, progressOpen())
+	}
+	// Answered but not completed: open in both.
+	asked := directive(t, s, "answered only")
+	workerReply(t, s, asked, "started")
+	if st, th := statusOf(asked); st != wire.ReportOpen || !th.Answered || th.Completed || progressOpen() != 1 {
+		t.Fatalf("answered only: report %s answered=%v completed=%v progress=%d", st, th.Answered, th.Completed, progressOpen())
+	}
+	// Completed: closed in both.
+	if w := callAs(s, "POST", "/api/messages/"+itoa(asked)+"/complete", reportWorkerToken, reportWorkerRole, nil); w.Code != 200 {
+		t.Fatalf("complete: %d", w.Code)
+	}
+	if st, _ := statusOf(asked); st != wire.ReportDone || progressOpen() != 0 {
+		t.Fatalf("completed: report %s progress=%d", st, progressOpen())
 	}
 }
