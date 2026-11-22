@@ -1,0 +1,42 @@
+# Closing a ticket ticks its `- [ ] #N` line in every open issue; a head whose ticket lines are all ticked
+# (and whose tickets are all closed) is closed with a comment naming them. Bodies without ticket lines are
+# left alone. Only the default token (issues: write); no secrets, no checkout of pull request code.
+name: close-spec-heads
+
+on:
+  issues:
+    types: [closed]
+  pull_request:
+    paths:
+      - .github/workflows/close-spec-heads.yml
+      - scripts/ci/close_spec_heads*.sh
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: close-spec-heads
+  cancel-in-progress: false
+
+jobs:
+  test:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - run: bash scripts/ci/close_spec_heads_test.sh
+
+  close:
+    if: github.event_name == 'issues'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Tick and close
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          ISSUE: ${{ github.event.issue.number }}
+        run: bash scripts/ci/close_spec_heads.sh "$ISSUE"
