@@ -71,7 +71,8 @@ func mailClose(c Config, id string, jsonOut bool) (int, error) {
 	return bossSend(c, "POST", "messages/"+id+"/close", nil, jsonOut, os.Stdout, "closed #"+id)
 }
 
-// jobsWrite runs `jobs stop ID`, `jobs rm ID` and `jobs rm-schedule ID`.
+// jobsWrite runs `jobs show ID`, `jobs stop ID`, `jobs rm ID` and
+// `jobs rm-schedule ID`.
 func jobsWrite(c Config, p parsedArgs) (int, error) {
 	if len(p.pos) != 2 {
 		return 0, usagef("jobs %s requires ID", p.pos[0])
@@ -82,6 +83,18 @@ func jobsWrite(c Config, p parsedArgs) (int, error) {
 	}
 	jsonOut := p.bool("--json")
 	switch p.pos[0] {
+	case "show":
+		// The command opens one job at a time; the server records the read.
+		b, err := bossView(c, "jobs/"+id, jsonOut)
+		if b == nil || err != nil {
+			return ExitOK, err
+		}
+		var j wire.Job
+		if err := json.Unmarshal(b, &j); err != nil {
+			return 0, fmt.Errorf("unexpected response from server: %v", err)
+		}
+		printJob(j)
+		return ExitOK, nil
 	case "stop":
 		return bossSend(c, "POST", "jobs/"+id+"/stop", nil, jsonOut, os.Stdout, "stop requested for job #"+id)
 	case "rm":
@@ -95,7 +108,7 @@ func jobsWrite(c Config, p parsedArgs) (int, error) {
 		}
 		return bossSend(c, "DELETE", "schedules/"+id, nil, jsonOut, os.Stdout, "removed schedule #"+id)
 	}
-	return 0, usagef("jobs: unknown action %q (stop, rm, rm-schedule)", p.pos[0])
+	return 0, usagef("jobs: unknown action %q (show, stop, rm, rm-schedule)", p.pos[0])
 }
 
 // rolesWrite runs `roles revoke ROLE` and `roles restore ROLE`.

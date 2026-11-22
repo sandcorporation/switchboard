@@ -33,9 +33,12 @@ const maxCatchUp = 100000
 // slash):
 //
 //	POST   ""   create (idempotent on the role and key)
-//	GET    ""   list: the role's own, every role's for a boss role
-//	GET    "ID" show (owner only)
+//	GET    ""   list: the role's own, every role's for a boss role (another
+//	            role's prompt left out: OwnSchedules)
+//	GET    "ID" show: the owner, or a boss role over it (recorded)
 //	DELETE "ID" remove (owner only)
+//	POST   "ID/pause"  pause: the owner, or a boss role over it (#404)
+//	POST   "ID/resume" resume: the same
 func (s *Service) ScheduleAPI(w http.ResponseWriter, r *http.Request, p identity.Principal, rest string) {
 	if rest == "" {
 		switch r.Method {
@@ -50,15 +53,33 @@ func (s *Service) ScheduleAPI(w http.ResponseWriter, r *http.Request, p identity
 				}
 				role = p.Role
 			}
-			s.writeSchedules(w, role, r.URL.Query().Get("state"), false)
+			// The role's own rows carry the prompt (OwnSchedules).
+			out, err := s.OwnSchedules(s.ViewOf(p), role, r.URL.Query().Get("state"))
+			if err != nil {
+				http.Error(w, "query failed", http.StatusInternalServerError)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
 		default:
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		}
 		return
 	}
-	id, err := strconv.ParseInt(rest, 10, 64)
+	idPart, action, _ := strings.Cut(rest, "/")
+	id, err := strconv.ParseInt(idPart, 10, 64)
 	if err != nil || id <= 0 {
 		http.Error(w, "invalid schedule ID", http.StatusBadRequest)
+		return
+	}
+	if action != "" {
+		// The owner, or a boss role over it (#404).
+		s.pauseAPI(w, r, s.ViewOf(p), id, action)
+		return
+	}
+	if r.Method == http.MethodGet {
+		// The owner, or a boss role over it (recorded, #404).
+		sc, err := s.ShowSchedule(s.ViewOf(p), id)
+		writeShown(w, "schedule", sc, err)
 		return
 	}
 	sc, err := s.GetSchedule(id)
@@ -72,10 +93,8 @@ func (s *Service) ScheduleAPI(w http.ResponseWriter, r *http.Request, p identity
 		return
 	}
 	switch r.Method {
-	case http.MethodGet:
-		writeJSON(w, http.StatusOK, sc)
 	case http.MethodDelete:
-		s.removeSchedule(w, id)
+		s.removeSchedule(w, sc.ID)
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
@@ -83,22 +102,40 @@ func (s *Service) ScheduleAPI(w http.ResponseWriter, r *http.Request, p identity
 
 // ScheduleAdminAPI serves the dashboard's /api/admin/schedules (rest is the
 // path after it, without the slash). The admin guard and the write guard ran
-// already.
+// already; v is the admin, or the boss role whose token reached the path.
 //
-//	GET    ""   every role's schedules, ?role= and ?state=; no prompt text
+//	GET    ""   the schedules in view, ?role= and ?state=; no prompt text
+//	            (ListSchedules)
+//	GET    "ID" one schedule with its prompt (recorded: ShowSchedule)
 //	DELETE "ID" remove
-func (s *Service) ScheduleAdminAPI(w http.ResponseWriter, r *http.Request, rest string) {
+//	POST   "ID/pause", "ID/resume" (PauseSchedule, ResumeSchedule)
+func (s *Service) ScheduleAdminAPI(w http.ResponseWriter, r *http.Request, v View, rest string) {
 	if rest == "" {
 		if r.Method != http.MethodGet {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		s.writeSchedules(w, r.URL.Query().Get("role"), r.URL.Query().Get("state"), true)
+		out, err := s.ListSchedules(v, r.URL.Query().Get("role"), r.URL.Query().Get("state"))
+		if err != nil {
+			http.Error(w, "query failed", http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, http.StatusOK, out)
 		return
 	}
-	id, err := strconv.ParseInt(rest, 10, 64)
+	idPart, action, _ := strings.Cut(rest, "/")
+	id, err := strconv.ParseInt(idPart, 10, 64)
 	if err != nil || id <= 0 {
 		http.Error(w, "invalid schedule ID", http.StatusBadRequest)
+		return
+	}
+	if action != "" {
+		s.pauseAPI(w, r, v, id, action)
+		return
+	}
+	if r.Method == http.MethodGet {
+		sc, err := s.ShowSchedule(v, id)
+		writeShown(w, "schedule", sc, err)
 		return
 	}
 	if r.Method != http.MethodDelete {
@@ -204,23 +241,9 @@ func (s *Service) removeSchedule(w http.ResponseWriter, id int64) {
 	writeJSON(w, http.StatusOK, map[string]any{"id": id, "removed": true})
 }
 
-func (s *Service) writeSchedules(w http.ResponseWriter, role, state string, hidePrompt bool) {
-	out, err := s.Schedules(role, state)
-	if err != nil {
-		http.Error(w, "query failed", http.StatusInternalServerError)
-		return
-	}
-	if hidePrompt {
-		for i := range out {
-			out[i].Prompt = ""
-		}
-	}
-	writeJSON(w, http.StatusOK, out)
-}
-
-// Schedules lists schedules newest first, of role and in state when given
-// (StateLive: active).
-func (s *Service) Schedules(role, state string) ([]wire.Schedule, error) {
+// schedules lists schedules newest first, of role and in state when given
+// (StateLive: active or paused), prompts included.
+func (s *Service) schedules(role, state string) ([]wire.Schedule, error) {
 	where, args := []string{}, []any{}
 	if role != "" {
 		where, args = append(where, "role=?"), append(args, role)
@@ -228,7 +251,7 @@ func (s *Service) Schedules(role, state string) ([]wire.Schedule, error) {
 	switch state {
 	case "":
 	case StateLive:
-		where, args = append(where, "state=?"), append(args, wire.ScheduleActive)
+		where, args = append(where, "state IN (?,?)"), append(args, wire.ScheduleActive, wire.SchedulePaused)
 	default:
 		where, args = append(where, "state=?"), append(args, state)
 	}
@@ -247,12 +270,12 @@ func (s *Service) Schedules(role, state string) ([]wire.Schedule, error) {
 		if err != nil {
 			return nil, err
 		}
-		out = append(out, sc.Schedule)
+		out = append(out, s.passed(sc.Schedule))
 	}
 	return out, rows.Err()
 }
 
-const scheduleColumns = `id,role,machine,kind,label,prompt,cron,tz,state,created_at,expires_at,next_fire_at,last_fire_at,missed,missed_last_at,duration_s,last_mail_id,no_extend`
+const scheduleColumns = `id,role,machine,kind,label,prompt,cron,tz,state,created_at,expires_at,next_fire_at,last_fire_at,missed,missed_last_at,duration_s,last_mail_id,no_extend,paused_at,paused_by,paused_by_admin,pause_reason`
 
 // scheduleRow is a schedule with the columns the sweep needs.
 type scheduleRow struct {
@@ -264,13 +287,21 @@ type scheduleRow struct {
 func scanSchedule(r scanner) (scheduleRow, error) {
 	var sc scheduleRow
 	var created, expires string
-	var next, last, missedLast sql.NullString
+	var next, last, missedLast, pausedAt sql.NullString
 	var duration int64
-	var noExtend bool
+	var noExtend, pausedByAdmin bool
+	var pausedBy string
 	err := r.Scan(&sc.ID, &sc.Role, &sc.Machine, &sc.Kind, &sc.Label, &sc.Prompt, &sc.Cron, &sc.TZ, &sc.State,
-		&created, &expires, &next, &last, &sc.Missed, &missedLast, &duration, &sc.lastMail, &noExtend)
+		&created, &expires, &next, &last, &sc.Missed, &missedLast, &duration, &sc.lastMail, &noExtend,
+		&pausedAt, &pausedBy, &pausedByAdmin, &sc.PauseReason)
 	if err != nil {
 		return sc, err
+	}
+	if sc.State == wire.SchedulePaused {
+		sc.PausedAt = parseNull(pausedAt)
+		sc.PausedBy = &wire.ScheduleActor{Name: pausedBy, Admin: pausedByAdmin}
+	} else {
+		sc.PauseReason = ""
 	}
 	sc.CreatedAt, sc.ExpiresAt = parse(created), parse(expires)
 	sc.NextFireAt, sc.LastFireAt, sc.MissedLastAt = parseNull(next), parseNull(last), parseNull(missedLast)
@@ -285,7 +316,13 @@ func (s *Service) GetSchedule(id int64) (wire.Schedule, error) {
 	if errors.Is(err, sql.ErrNoRows) {
 		return sc.Schedule, errNotFound
 	}
-	return sc.Schedule, err
+	return s.passed(sc.Schedule), err
+}
+
+// passed marks a paused once schedule whose time went by (wire.Schedule.Passed).
+func (s *Service) passed(sc wire.Schedule) wire.Schedule {
+	sc.Passed = sc.State == wire.SchedulePaused && sc.Kind == wire.ScheduleOnce && sc.NextFireAt != nil && !sc.NextFireAt.After(s.now())
+	return sc
 }
 
 func (s *Service) scheduleByIdem(role, key string) (wire.Schedule, bool) {

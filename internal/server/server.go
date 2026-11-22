@@ -503,13 +503,13 @@ func (s *Server) adminAPI(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	s.adminRoutes(w, r, strings.TrimPrefix(r.URL.Path, "/api/admin/"), who)
+	s.adminRoutes(w, r, strings.TrimPrefix(r.URL.Path, "/api/admin/"), who, nil)
 }
 
 // adminRoutes serves an /api/admin/ path (prefix removed) for a caller past
 // the guards: a signed-in admin, or a boss role's write (bossWrite, #399),
-// which reaches the same handlers.
-func (s *Server) adminRoutes(w http.ResponseWriter, r *http.Request, path string, who adminauth.Identity) {
+// which reaches the same handlers; boss is that role, nil for an admin.
+func (s *Server) adminRoutes(w http.ResponseWriter, r *http.Request, path string, who adminauth.Identity, boss *identity.Principal) {
 	if s.hosting && hostingAdminPath(path) {
 		s.hostingAdmin(w, r, path)
 		return
@@ -541,11 +541,11 @@ func (s *Server) adminRoutes(w http.ResponseWriter, r *http.Request, path string
 		return
 	}
 	if rest, ok := strings.CutPrefix(path, "jobs"); ok && (rest == "" || strings.HasPrefix(rest, "/")) {
-		s.jobs().AdminAPI(w, r, strings.TrimPrefix(rest, "/"))
+		s.jobs().AdminAPI(w, r, s.ledgerView(who, boss), strings.TrimPrefix(rest, "/"))
 		return
 	}
 	if rest, ok := strings.CutPrefix(path, "schedules"); ok && (rest == "" || strings.HasPrefix(rest, "/")) {
-		s.jobs().ScheduleAdminAPI(w, r, strings.TrimPrefix(rest, "/"))
+		s.jobs().ScheduleAdminAPI(w, r, s.ledgerView(who, boss), strings.TrimPrefix(rest, "/"))
 		return
 	}
 	if rest, ok := strings.CutPrefix(path, "roles"); ok && (rest == "" || strings.HasPrefix(rest, "/")) {

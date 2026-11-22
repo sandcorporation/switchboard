@@ -140,6 +140,9 @@ func Init(db *sql.DB) error {
 	if e = migrateBossWrites(db); e != nil {
 		return e
 	}
+	if e = migrateLedgerViews(db); e != nil {
+		return e
+	}
 	if e = migrateReports(db); e != nil {
 		return e
 	}
@@ -147,6 +150,9 @@ func Init(db *sql.DB) error {
 		return e
 	}
 	if e = migrateSchedules(db); e != nil {
+		return e
+	}
+	if e = migrateSchedulePauses(db); e != nil {
 		return e
 	}
 	if e = migrateRoleCredentials(db); e != nil {
@@ -540,6 +546,44 @@ CREATE INDEX IF NOT EXISTS idx_mailbox_views_at ON mailbox_views(viewed_at)`)
 func migrateBossWrites(db *sql.DB) error {
 	_, err := db.Exec(`CREATE TABLE IF NOT EXISTS boss_writes(id INTEGER PRIMARY KEY AUTOINCREMENT,role TEXT NOT NULL,method TEXT NOT NULL,path TEXT NOT NULL,target TEXT NOT NULL DEFAULT '',status INTEGER NOT NULL DEFAULT 0,written_at INTEGER NOT NULL);
 CREATE INDEX IF NOT EXISTS idx_boss_writes_at ON boss_writes(written_at)`)
+	return err
+}
+
+// migrateLedgerViews adds the audit log of reads of one job or schedule
+// with its command or prompt by anyone but its owner (#404, additive):
+// viewer (an admin's name, admin=1, or a role), kind (job or schedule),
+// item ID, owner role and time. The command and prompt are never kept.
+func migrateLedgerViews(db *sql.DB) error {
+	_, err := db.Exec(`CREATE TABLE IF NOT EXISTS ledger_views(id INTEGER PRIMARY KEY AUTOINCREMENT,viewer TEXT NOT NULL,admin INTEGER NOT NULL DEFAULT 0,kind TEXT NOT NULL,item_id INTEGER NOT NULL,owner TEXT NOT NULL,viewed_at INTEGER NOT NULL);
+CREATE INDEX IF NOT EXISTS idx_ledger_views_at ON ledger_views(viewed_at)`)
+	return err
+}
+
+// migrateSchedulePauses adds a schedule's pause (#404, additive): when, by
+// whom (a role, or an admin's name with paused_by_admin=1) and why, on
+// schedules; and schedule_pauses, every pause and resume: schedule, action
+// (pause or resume), actor, reason, what a resume did with a once fire that
+// passed (fire, drop or ”), and time.
+func migrateSchedulePauses(db *sql.DB) error {
+	adds := []struct{ column, def string }{
+		{"paused_at", `TEXT`},
+		{"paused_by", `TEXT NOT NULL DEFAULT ''`},
+		{"paused_by_admin", `INTEGER NOT NULL DEFAULT 0`},
+		{"pause_reason", `TEXT NOT NULL DEFAULT ''`},
+	}
+	for _, c := range adds {
+		has, err := HasColumn(db, "schedules", c.column)
+		if err != nil {
+			return err
+		}
+		if !has {
+			if _, err = db.Exec(`ALTER TABLE schedules ADD COLUMN ` + c.column + ` ` + c.def); err != nil {
+				return err
+			}
+		}
+	}
+	_, err := db.Exec(`CREATE TABLE IF NOT EXISTS schedule_pauses(id INTEGER PRIMARY KEY AUTOINCREMENT,schedule_id INTEGER NOT NULL,action TEXT NOT NULL,actor TEXT NOT NULL,admin INTEGER NOT NULL DEFAULT 0,reason TEXT NOT NULL DEFAULT '',passed TEXT NOT NULL DEFAULT '',at INTEGER NOT NULL);
+CREATE INDEX IF NOT EXISTS idx_schedule_pauses_schedule ON schedule_pauses(schedule_id)`)
 	return err
 }
 

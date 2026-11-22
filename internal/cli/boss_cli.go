@@ -152,7 +152,7 @@ func cliJobs(c Config, p parsedArgs) (int, error) {
 		fmt.Println("\nschedules:")
 	}
 	for _, s := range v.Schedules {
-		fmt.Printf("#%d  %s  %s  %s  %s\n", s.ID, s.State, s.Role, s.Cron, s.Label)
+		fmt.Printf("#%d  %s  %s  %s  %s\n", s.ID, scheduleState(s), s.Role, s.Cron, s.Label)
 	}
 	return ExitOK, nil
 }

@@ -29,6 +29,9 @@ type Service struct {
 	now  func() time.Time
 	ids  *identity.Service
 	wake func(mailbox string) // wakes the mailbox's waiters after an end mail
+	// notify tells a schedule's owner of a pause or resume by someone else
+	// (WithNotify); nil sends nothing.
+	notify Notify
 }
 
 // New builds the service. wake is called with the owner's mailbox after an
@@ -48,7 +51,8 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 //
 //	POST ""          create (idempotent on the role and key)
 //	GET  ""          list: the role's own jobs, every role's for a boss role
-//	GET  "ID"        show (owner only)
+//	                 (another role's command left out: OwnJobs)
+//	GET  "ID"        show: the owner, or a boss role over it (recorded)
 //	POST "ID/report" the runner's state (owner only)
 //	POST "ID/stop"   ask the runner to stop (owner only)
 //	POST "ID/lines"  a watch's batch of output lines (owner only)
@@ -79,6 +83,12 @@ func (s *Service) API(w http.ResponseWriter, r *http.Request, p identity.Princip
 		http.Error(w, "invalid job ID", http.StatusBadRequest)
 		return
 	}
+	if action == "" && r.Method == http.MethodGet {
+		// The owner, or a boss role over it (recorded, #404).
+		j, err := s.ShowJob(s.ViewOf(p), id)
+		writeShown(w, "job", j, err)
+		return
+	}
 	j, err := s.Get(id)
 	if err != nil || j.Role != p.Role {
 		// Another role's job is as unknown as a missing one.
@@ -90,8 +100,6 @@ func (s *Service) API(w http.ResponseWriter, r *http.Request, p identity.Princip
 		return
 	}
 	switch {
-	case action == "" && r.Method == http.MethodGet:
-		writeJSON(w, http.StatusOK, j)
 	case action == "report" && r.Method == http.MethodPost:
 		s.report(w, r, j)
 	case action == "stop" && r.Method == http.MethodPost:
@@ -157,18 +165,13 @@ func (s *Service) list(w http.ResponseWriter, r *http.Request, p identity.Princi
 		}
 		role = p.Role
 	}
-	out, err := s.query(role, r.URL.Query().Get("state"))
+	out, err := s.OwnJobs(s.ViewOf(p), role, r.URL.Query().Get("state"))
 	if err != nil {
 		http.Error(w, "query failed", http.StatusInternalServerError)
 		return
 	}
 	writeJSON(w, http.StatusOK, out)
 }
-
-// Jobs lists jobs newest first (at most 500), of role and in state when
-// given (StateLive: not ended): the dashboard's jobs tab and a boss role's
-// jobs view (#397).
-func (s *Service) Jobs(role, state string) ([]wire.Job, error) { return s.query(role, state) }
 
 // StateLive is the list filter for every job not yet ended.
 const StateLive = "live"
@@ -210,23 +213,23 @@ func (s *Service) query(role, state string) ([]wire.Job, error) {
 // AdminAPI serves the dashboard's /api/admin/jobs (rest is the path after
 // it, without the slash). The admin guard and the write guard ran already.
 //
-//	GET    ""        every role's jobs, ?role= and ?state= (live: not ended);
-//	                 the command text is left out
+// v is the admin, or the boss role whose token reached the admin path.
+//
+//	GET    ""        the jobs in view, ?role= and ?state= (live: not ended);
+//	                 the command text is left out (ListJobs)
+//	GET    "ID"      one job with its command (recorded: ShowJob)
 //	POST   "ID/stop" ask the runner to stop
 //	DELETE "ID"      remove an ended job's record
-func (s *Service) AdminAPI(w http.ResponseWriter, r *http.Request, rest string) {
+func (s *Service) AdminAPI(w http.ResponseWriter, r *http.Request, v View, rest string) {
 	if rest == "" {
 		if r.Method != http.MethodGet {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		out, err := s.query(r.URL.Query().Get("role"), r.URL.Query().Get("state"))
+		out, err := s.ListJobs(v, r.URL.Query().Get("role"), r.URL.Query().Get("state"))
 		if err != nil {
 			http.Error(w, "query failed", http.StatusInternalServerError)
 			return
-		}
-		for i := range out {
-			out[i].Command = ""
 		}
 		writeJSON(w, http.StatusOK, out)
 		return
@@ -235,6 +238,11 @@ func (s *Service) AdminAPI(w http.ResponseWriter, r *http.Request, rest string) 
 	id, err := strconv.ParseInt(idPart, 10, 64)
 	if err != nil || id <= 0 {
 		http.Error(w, "invalid job ID", http.StatusBadRequest)
+		return
+	}
+	if action == "" && r.Method == http.MethodGet {
+		j, err := s.ShowJob(v, id)
+		writeShown(w, "job", j, err)
 		return
 	}
 	j, err := s.Get(id)

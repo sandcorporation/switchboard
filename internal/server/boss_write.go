@@ -57,17 +57,9 @@ var bossWriteRoutes = []bossWriteRoute{
 	}},
 	{http.MethodPost, pathShape("jobs/*/stop"), jobOwner},
 	{http.MethodDelete, pathShape("jobs/*"), jobOwner},
-	{http.MethodDelete, pathShape("schedules/*"), func(s *Server, p string, _ []byte) (string, error) {
-		id, err := strconv.ParseInt(seg(p, 1), 10, 64)
-		if err != nil {
-			return "", errNoTarget
-		}
-		sc, err := s.jobs().GetSchedule(id)
-		if err != nil {
-			return "", errNoTarget
-		}
-		return sc.Role, nil
-	}},
+	{http.MethodDelete, pathShape("schedules/*"), scheduleOwner},
+	{http.MethodPost, pathShape("schedules/*/pause"), scheduleOwner},
+	{http.MethodPost, pathShape("schedules/*/resume"), scheduleOwner},
 	{http.MethodPost, roleAction("/revoke"), roleOwner("/revoke")},
 	{http.MethodPost, roleAction("/restore"), roleOwner("/restore")},
 	{http.MethodPut, prefixed("question-settings/"), settingOwner},
@@ -95,6 +87,10 @@ var bossWriteRoutes = []bossWriteRoute{
 	{http.MethodGet, terminal("/events"), terminalOwner},
 	{http.MethodGet, terminal("/log"), terminalOwner},
 	{http.MethodGet, pathShape("terminals/*/autos/*"), terminalOwner},
+	// One job or schedule with its command or prompt (#404); the jobs
+	// package records the read.
+	{http.MethodGet, pathShape("jobs/*"), jobOwner},
+	{http.MethodGet, pathShape("schedules/*"), scheduleOwner},
 }
 
 // bossReadThrough reports whether a GET /api/boss/<path> is one of the
@@ -165,7 +161,7 @@ func (s *Server) bossWrite(w http.ResponseWriter, r *http.Request, who identity.
 		http.Error(sw, "not found", status)
 	default:
 		w.Header().Set("Content-Type", "application/json")
-		s.adminRoutes(sw, r, path, adminauth.Identity{User: who.Role})
+		s.adminRoutes(sw, r, path, adminauth.Identity{User: who.Role}, &who)
 	}
 	code := sw.code
 	if code == 0 {
@@ -257,6 +253,18 @@ func jobOwner(s *Server, p string, _ []byte) (string, error) {
 		return "", errNoTarget
 	}
 	return j.Role, nil
+}
+
+func scheduleOwner(s *Server, p string, _ []byte) (string, error) {
+	id, err := strconv.ParseInt(seg(p, 1), 10, 64)
+	if err != nil {
+		return "", errNoTarget
+	}
+	sc, err := s.jobs().GetSchedule(id)
+	if err != nil {
+		return "", errNoTarget
+	}
+	return sc.Role, nil
 }
 
 func roleOwner(suffix string) func(*Server, string, []byte) (string, error) {

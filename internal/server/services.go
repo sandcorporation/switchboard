@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sandcorporation/switchboard/internal/adminauth"
 	"github.com/sandcorporation/switchboard/internal/asks"
 	"github.com/sandcorporation/switchboard/internal/identity"
 	"github.com/sandcorporation/switchboard/internal/insight"
@@ -100,7 +101,7 @@ func (s *Server) reports() *reports.Service {
 // jobs is the job ledger over this server's database, clock and identity
 // rules. An end mail wakes the owner's waiters.
 func (s *Server) jobs() *jobs.Service {
-	return jobs.New(s.db, s.now, s.ids(), s.hub.Publish)
+	return jobs.New(s.db, s.now, s.ids(), s.hub.Publish).WithNotify(s.notifyRole)
 }
 
 // progressAPI serves the progress view with the metrics alert limit and base
@@ -123,4 +124,37 @@ func (s *Server) migrateAnsweredRule(logf func(string, ...any)) error {
 	}
 	logf("%s", m.Line())
 	return nil
+}
+
+// ledgerView is the job ledger's view of an admin path's caller (#404): the
+// boss role whose token reached it, or the signed-in admin.
+func (s *Server) ledgerView(who adminauth.Identity, boss *identity.Principal) jobs.View {
+	if boss != nil {
+		return s.jobs().ViewOf(*boss)
+	}
+	return jobs.AdminView(who.User)
+}
+
+// notifyRole stores a normal system mail to role's mailbox once per idem key
+// and wakes its waiters: a notice that needs no answer (a system mail is
+// never an open directive). The job ledger tells a schedule's owner of a
+// pause or resume by someone else with it (#404).
+func (s *Server) notifyRole(ctx context.Context, role, subject, body, idem string) error {
+	var box string
+	err := store.InTx(ctx, s.db, func(tx *sql.Tx) error {
+		box = ""
+		to, ok := identity.Mailbox(tx, role)
+		if !ok {
+			return nil
+		}
+		stored, err := mail.InsertSystemMailOnce(tx, to, subject, body, "", "normal", idem, s.now())
+		if stored {
+			box = to
+		}
+		return err
+	})
+	if err == nil && box != "" {
+		s.hub.Publish(box)
+	}
+	return err
 }

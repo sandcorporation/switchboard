@@ -14,8 +14,8 @@ import (
 )
 
 var scheduleCmd = command{name: "schedule", args: "ACTION [ID]", nargs: 2, optArgs: true,
-	synopsis: "(ACTION: add | list | show ID | rm ID)",
-	summary:  "Have the server mail this role a prompt at times; fires while no session is attached are merged into one mail",
+	synopsis: "(ACTION: add | list | show ID | rm ID | pause ID | resume ID)",
+	summary:  "Have the server mail this role a prompt at times; fires while no session is attached are merged into one mail. A boss role lists, shows (the read is recorded), pauses and resumes the schedules of roles in view; another role's prompt is only in show. A paused schedule drops the times that pass and its expiry waits; the owner is told when someone else pauses or resumes it",
 	options: []option{
 		{"--cron", "EXPR", "add: five-field cron (minute hour day-of-month month day-of-week) in this machine's time zone"},
 		{"--at", "TIME", "add: once at TIME (RFC 3339, YYYY-MM-DD HH:MM, or HH:MM today or tomorrow, local time)"},
@@ -25,8 +25,11 @@ var scheduleCmd = command{name: "schedule", args: "ACTION [ID]", nargs: 2, optAr
 		{"--label", "TEXT", "add: label (default the first 60 characters of the prompt)"},
 		{"--no-extend", "", "add: the expiry is fixed; it does not move forward while a session is attached"},
 		{"--idem", "KEY", "add: retry-safe key; adding again with the same key returns the first schedule"},
-		{"--state", "STATE", "list: only schedules in this state (active, ended, expired)"},
+		{"--state", "STATE", "list: only schedules in this state (active, paused, ended, expired; live: active or paused)"},
 		{"--owner", "ROLE", "list: only this role's schedules (boss roles)"},
+		{"--reason", "TEXT", "pause: why, shown with who paused it"},
+		{"--fire", "", "resume: a once schedule whose time passed while paused sends its prompt now"},
+		{"--drop", "", "resume: a once schedule whose time passed while paused drops it and ends"},
 		optJSON, optProfile,
 	}}
 
@@ -35,7 +38,7 @@ func init() { commands = append(commands, scheduleCmd) }
 func cliSchedule(c Config, p parsedArgs) (int, error) {
 	action := p.pos[0]
 	var id int64
-	if action == "show" || action == "rm" {
+	if action == "show" || action == "rm" || action == "pause" || action == "resume" {
 		if len(p.pos) < 2 {
 			return 0, usagef("schedule %s needs a schedule ID", action)
 		}
@@ -64,8 +67,12 @@ func cliSchedule(c Config, p parsedArgs) (int, error) {
 			fmt.Printf("removed #%d\n", id)
 		}
 		return ExitOK, nil
+	case "pause":
+		return schedulePause(c, id, p.values["--reason"], p.bool("--json"))
+	case "resume":
+		return scheduleResume(c, id, p.bool("--fire"), p.bool("--drop"), p.bool("--json"))
 	}
-	return 0, usagef("schedule: unknown action %q (add, list, show, rm)", action)
+	return 0, usagef("schedule: unknown action %q (add, list, show, rm, pause, resume)", action)
 }
 
 func scheduleAdd(c Config, p parsedArgs, now time.Time) (int, error) {
@@ -173,7 +180,7 @@ func scheduleList(c Config, p parsedArgs) (int, error) {
 		return 0, fmt.Errorf("unexpected response from server: %v", err)
 	}
 	for _, sc := range list {
-		fmt.Printf("#%d  %s  %s  %s  %s  %s\n", sc.ID, sc.State, scheduleWhen(sc), nextText(sc), sc.Role, sc.Label)
+		fmt.Printf("#%d  %s  %s  %s  %s  %s\n", sc.ID, scheduleState(sc), scheduleWhen(sc), nextText(sc), sc.Role, sc.Label)
 	}
 	return ExitOK, nil
 }
@@ -188,7 +195,7 @@ func scheduleWhen(sc wire.Schedule) string {
 
 func nextText(sc wire.Schedule) string {
 	s := "-"
-	if sc.NextFireAt != nil {
+	if sc.NextFireAt != nil && sc.State != wire.SchedulePaused {
 		s = "next " + sc.NextFireAt.Local().Format("2006-01-02 15:04")
 	}
 	if sc.Missed > 0 {
@@ -216,6 +223,74 @@ func scheduleShow(c Config, id int64, jsonOut bool) (int, error) {
 	if sc.LastFireAt != nil {
 		fmt.Printf("last     %s\n", sc.LastFireAt.Format(time.RFC3339))
 	}
+	if sc.PausedAt != nil && sc.PausedBy != nil {
+		fmt.Printf("paused   %s by %s\n", sc.PausedAt.Format(time.RFC3339), sc.PausedBy.Label())
+		if sc.PauseReason != "" {
+			fmt.Printf("reason   %s\n", sc.PauseReason)
+		}
+		if sc.Passed {
+			fmt.Println("passed   its time went by while paused (resume with --fire or --drop)")
+		}
+	}
 	fmt.Printf("prompt   %s\n", sc.Prompt)
 	return ExitOK, nil
+}
+
+// schedulePause runs `schedule pause ID [--reason TEXT]` (#404): the owner,
+// or a boss role over it.
+func schedulePause(c Config, id int64, reason string, jsonOut bool) (int, error) {
+	b, err := slotCall(c, "POST", "/api/schedules/"+strconv.FormatInt(id, 10)+"/pause", wire.SchedulePause{Reason: reason})
+	if err != nil {
+		return 0, err
+	}
+	return printPaused(b, jsonOut)
+}
+
+// scheduleResume runs `schedule resume ID [--fire|--drop]`. A once schedule
+// whose time passed while paused needs one of the two; without it the
+// server refuses and the command exits 2.
+func scheduleResume(c Config, id int64, fire, drop, jsonOut bool) (int, error) {
+	var q wire.ScheduleResume
+	switch {
+	case fire && drop:
+		return 0, usagef("schedule resume: give --fire or --drop, not both")
+	case fire:
+		q.Passed = wire.PassedFire
+	case drop:
+		q.Passed = wire.PassedDrop
+	}
+	b, err := slotCall(c, "POST", "/api/schedules/"+strconv.FormatInt(id, 10)+"/resume", q)
+	if err != nil {
+		if q.Passed == "" && strings.Contains(err.Error(), "409") && strings.Contains(err.Error(), "passed") {
+			return 0, usagef("schedule resume: #%d is a once schedule whose time passed while it was paused; give --fire (send it now) or --drop (drop it and end)", id)
+		}
+		return 0, err
+	}
+	return printPaused(b, jsonOut)
+}
+
+func printPaused(b []byte, jsonOut bool) (int, error) {
+	if jsonOut {
+		fmt.Println(strings.TrimSpace(string(b)))
+		return ExitOK, nil
+	}
+	var sc wire.Schedule
+	if err := json.Unmarshal(b, &sc); err != nil {
+		return 0, fmt.Errorf("unexpected response from server: %v", err)
+	}
+	fmt.Printf("#%d  %s  %s  %s\n", sc.ID, scheduleState(sc), nextText(sc), sc.Label)
+	return ExitOK, nil
+}
+
+// scheduleState is the state, with who paused a paused schedule and
+// whether its once time passed.
+func scheduleState(sc wire.Schedule) string {
+	if sc.State != wire.SchedulePaused || sc.PausedBy == nil {
+		return sc.State
+	}
+	s := "paused by " + sc.PausedBy.Label()
+	if sc.Passed {
+		s += " (time passed)"
+	}
+	return s
 }
