@@ -1,3 +1,44 @@
+# The server's settings, shared by the service and its pre-deploy check below.
+x-switchboard-environment: &switchboard-environment
+  DB_PATH: /data/mail.db
+  LISTEN_ADDR: :8080
+  SWITCHBOARD_TOKENS: ${SWITCHBOARD_TOKENS:?set in external .env}
+  SWITCHBOARD_ENROLLMENT_TOKEN: ${SWITCHBOARD_ENROLLMENT_TOKEN:-}
+  SWITCHBOARD_ADMIN_PROXY_TOKEN: ${SWITCHBOARD_ADMIN_PROXY_TOKEN:-}
+  # Admin login (README): builtin, or empty for the proxy secret above / default deny.
+  SWITCHBOARD_ADMIN_AUTH: ${SWITCHBOARD_ADMIN_AUTH:-}
+  SWITCHBOARD_OIDC_ISSUER: ${SWITCHBOARD_OIDC_ISSUER:-}
+  SWITCHBOARD_OIDC_CLIENT_ID: ${SWITCHBOARD_OIDC_CLIENT_ID:-}
+  # The client secret is a credential (keep it in the external .env); the _FILE form is not passed.
+  SWITCHBOARD_OIDC_CLIENT_SECRET: ${SWITCHBOARD_OIDC_CLIENT_SECRET:-}
+  SWITCHBOARD_OIDC_ADMINS: ${SWITCHBOARD_OIDC_ADMINS:-}
+  SWITCHBOARD_OIDC_SCOPES: ${SWITCHBOARD_OIDC_SCOPES:-}
+  SWITCHBOARD_INSECURE_COOKIE: ${SWITCHBOARD_INSECURE_COOKIE:-}
+  SWITCHBOARD_TRUST_FORWARDED: ${SWITCHBOARD_TRUST_FORWARDED:-}
+  # Optional; empty means the built-in default (see README).
+  SWITCHBOARD_BOSS_ROLES: ${SWITCHBOARD_BOSS_ROLES:-}
+  SWITCHBOARD_SWEEP_INTERVAL: ${SWITCHBOARD_SWEEP_INTERVAL:-}
+  SWITCHBOARD_LABEL_STALL: ${SWITCHBOARD_LABEL_STALL:-}
+  SWITCHBOARD_PERMISSION_TTL: ${SWITCHBOARD_PERMISSION_TTL:-}
+  SWITCHBOARD_ALERT_PENDING: ${SWITCHBOARD_ALERT_PENDING:-}
+  SWITCHBOARD_ALERT_ERROR: ${SWITCHBOARD_ALERT_ERROR:-}
+  SWITCHBOARD_ALERT_BLOCKED: ${SWITCHBOARD_ALERT_BLOCKED:-}
+  SWITCHBOARD_REMIND: ${SWITCHBOARD_REMIND:-}
+  SWITCHBOARD_REMIND_AFTER: ${SWITCHBOARD_REMIND_AFTER:-}
+  SWITCHBOARD_REMIND_MAX: ${SWITCHBOARD_REMIND_MAX:-}
+  SWITCHBOARD_REMIND_IDLE: ${SWITCHBOARD_REMIND_IDLE:-}
+  SWITCHBOARD_REMIND_IDLE_MAX: ${SWITCHBOARD_REMIND_IDLE_MAX:-}
+  # Optional Discord notice for new questions; the webhook URL is a credential (keep it in the external .env).
+  SWITCHBOARD_DISCORD_WEBHOOK: ${SWITCHBOARD_DISCORD_WEBHOOK:-}
+  SWITCHBOARD_PUBLIC_URL: ${SWITCHBOARD_PUBLIC_URL:-}
+  SWITCHBOARD_DISCORD_USERNAME: ${SWITCHBOARD_DISCORD_USERNAME:-}
+  SWITCHBOARD_DISCORD_AVATAR_URL: ${SWITCHBOARD_DISCORD_AVATAR_URL:-}
+  # Terminal hosting (docs/hosting-server.md); all empty means off.
+  SWITCHBOARD_HOSTING: ${SWITCHBOARD_HOSTING:-}
+  SWITCHBOARD_HOSTING_TERMINAL: ${SWITCHBOARD_HOSTING_TERMINAL:-}
+  SWITCHBOARD_HOSTING_TERMINAL_ALLOW: ${SWITCHBOARD_HOSTING_TERMINAL_ALLOW:-}
+  SWITCHBOARD_HOSTING_REMOTE_LISTEN: ${SWITCHBOARD_HOSTING_REMOTE_LISTEN:-}
+  SWITCHBOARD_HOSTING_REMOTE_ALLOW: ${SWITCHBOARD_HOSTING_REMOTE_ALLOW:-}
 services:
   switchboard:
     # Deployments set SWITCHBOARD_IMAGE to the deployment image at <commit sha> (see Jenkinsfile) and run without building.
@@ -5,46 +46,7 @@ services:
     image: ${SWITCHBOARD_IMAGE:-switchboard:local}
     build: .
     restart: unless-stopped
-    environment:
-      DB_PATH: /data/mail.db
-      LISTEN_ADDR: :8080
-      SWITCHBOARD_TOKENS: ${SWITCHBOARD_TOKENS:?set in external .env}
-      SWITCHBOARD_ENROLLMENT_TOKEN: ${SWITCHBOARD_ENROLLMENT_TOKEN:-}
-      SWITCHBOARD_ADMIN_PROXY_TOKEN: ${SWITCHBOARD_ADMIN_PROXY_TOKEN:-}
-      # Admin login (README): builtin, or empty for the proxy secret above / default deny.
-      SWITCHBOARD_ADMIN_AUTH: ${SWITCHBOARD_ADMIN_AUTH:-}
-      SWITCHBOARD_OIDC_ISSUER: ${SWITCHBOARD_OIDC_ISSUER:-}
-      SWITCHBOARD_OIDC_CLIENT_ID: ${SWITCHBOARD_OIDC_CLIENT_ID:-}
-      # The client secret is a credential (keep it in the external .env); the _FILE form is not passed.
-      SWITCHBOARD_OIDC_CLIENT_SECRET: ${SWITCHBOARD_OIDC_CLIENT_SECRET:-}
-      SWITCHBOARD_OIDC_ADMINS: ${SWITCHBOARD_OIDC_ADMINS:-}
-      SWITCHBOARD_OIDC_SCOPES: ${SWITCHBOARD_OIDC_SCOPES:-}
-      SWITCHBOARD_INSECURE_COOKIE: ${SWITCHBOARD_INSECURE_COOKIE:-}
-      SWITCHBOARD_TRUST_FORWARDED: ${SWITCHBOARD_TRUST_FORWARDED:-}
-      # Optional; empty means the built-in default (see README).
-      SWITCHBOARD_BOSS_ROLES: ${SWITCHBOARD_BOSS_ROLES:-}
-      SWITCHBOARD_SWEEP_INTERVAL: ${SWITCHBOARD_SWEEP_INTERVAL:-}
-      SWITCHBOARD_LABEL_STALL: ${SWITCHBOARD_LABEL_STALL:-}
-      SWITCHBOARD_PERMISSION_TTL: ${SWITCHBOARD_PERMISSION_TTL:-}
-      SWITCHBOARD_ALERT_PENDING: ${SWITCHBOARD_ALERT_PENDING:-}
-      SWITCHBOARD_ALERT_ERROR: ${SWITCHBOARD_ALERT_ERROR:-}
-      SWITCHBOARD_ALERT_BLOCKED: ${SWITCHBOARD_ALERT_BLOCKED:-}
-      SWITCHBOARD_REMIND: ${SWITCHBOARD_REMIND:-}
-      SWITCHBOARD_REMIND_AFTER: ${SWITCHBOARD_REMIND_AFTER:-}
-      SWITCHBOARD_REMIND_MAX: ${SWITCHBOARD_REMIND_MAX:-}
-      SWITCHBOARD_REMIND_IDLE: ${SWITCHBOARD_REMIND_IDLE:-}
-      SWITCHBOARD_REMIND_IDLE_MAX: ${SWITCHBOARD_REMIND_IDLE_MAX:-}
-      # Optional Discord notice for new questions; the webhook URL is a credential (keep it in the external .env).
-      SWITCHBOARD_DISCORD_WEBHOOK: ${SWITCHBOARD_DISCORD_WEBHOOK:-}
-      SWITCHBOARD_PUBLIC_URL: ${SWITCHBOARD_PUBLIC_URL:-}
-      SWITCHBOARD_DISCORD_USERNAME: ${SWITCHBOARD_DISCORD_USERNAME:-}
-      SWITCHBOARD_DISCORD_AVATAR_URL: ${SWITCHBOARD_DISCORD_AVATAR_URL:-}
-      # Terminal hosting (docs/hosting-server.md); all empty means off.
-      SWITCHBOARD_HOSTING: ${SWITCHBOARD_HOSTING:-}
-      SWITCHBOARD_HOSTING_TERMINAL: ${SWITCHBOARD_HOSTING_TERMINAL:-}
-      SWITCHBOARD_HOSTING_TERMINAL_ALLOW: ${SWITCHBOARD_HOSTING_TERMINAL_ALLOW:-}
-      SWITCHBOARD_HOSTING_REMOTE_LISTEN: ${SWITCHBOARD_HOSTING_REMOTE_LISTEN:-}
-      SWITCHBOARD_HOSTING_REMOTE_ALLOW: ${SWITCHBOARD_HOSTING_REMOTE_ALLOW:-}
+    environment: *switchboard-environment
     ports:
       - "${MAIL_BIND_ADDRESS:-127.0.0.1}:8097:8080"
       # Node listener; the published address comes from the external .env. Nothing listens in the container unless the remote listener is set.
@@ -63,5 +65,36 @@ services:
       timeout: 3s
       retries: 3
       start_period: 10s
+  # Pre-deploy settings check (#428): the deploy brings this up (Jenkinsfile preServices) with the new image and the
+  # same .env before it recreates switchboard, and stops when it fails, leaving the running service as it was. It runs
+  # `switchboard serve --check` (the server's own start-up decisions, no database, no listener), then reports healthy
+  # for a short while, since `up --wait` counts any exit as a failure. An image without serve --check (a rollback to a
+  # commit before #428) is not checked.
+  switchboard-check:
+    image: ${SWITCHBOARD_IMAGE:-switchboard:local}
+    build: .
+    restart: "no"
+    environment: *switchboard-environment
+    entrypoint:
+      - sh
+      - -c
+      - |
+        if ! switchboard help serve >/dev/null 2>&1; then echo "settings: this image has no serve --check; not checked"
+        else switchboard serve --check || exit 1
+        fi
+        touch /tmp/settings-ok
+        sleep 30
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    healthcheck:
+      test: ["CMD", "test", "-f", "/tmp/settings-ok"]
+      interval: 1s
+      timeout: 3s
+      retries: 3
+      start_period: 60s
 volumes:
   switchboard_data:

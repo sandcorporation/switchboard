@@ -31,7 +31,14 @@ func main() {
 		Host:      server.HostCLI,
 		HostAuto:  server.HostAutoCLI,
 		HostGrant: server.HostGrantCLI,
-		Up:        func(dir string, port int, node string) error { return server.Up(version, dir, port, node) },
+		Serve: func(check bool) int {
+			if check {
+				return server.Check(version, os.Getenv, os.Stdout, nil)
+			}
+			server.Run(version)
+			return 0
+		},
+		Up: func(dir string, port int, node string) error { return server.Up(version, dir, port, node) },
 		Node: func(host, tokenFile, joinCode string, restartSessions, allowChecks bool) error {
 			return server.Node(version, host, tokenFile, joinCode, restartSessions, allowChecks)
 		},

@@ -309,6 +309,11 @@ var commands = []command{
 			{"--yes", "", "with a boss role's token: confirm remove, new-conversation, revoke-node and auto rm (without it the command says what it would do and exits 2)"},
 			optJSON,
 		}},
+	{name: "serve",
+		summary: "Run the mail server, as with no arguments; --check only checks its start-up settings and exits (1 when the server would refuse to start)",
+		options: []option{
+			{"--check", "", "run the server's start-up settings decisions without the database or a listener; print each refusal by setting name (never a value), warn when SWITCHBOARD_PUBLIC_URL does not answer /health"},
+		}},
 	{name: "up",
 		summary: "Run this PC's hosting instance: the server with terminal hosting on, on 127.0.0.1:PORT with its database in DIR, and a node for this machine in the same process",
 		options: []option{
@@ -393,6 +398,10 @@ type HostAutoFunc func(action, ref string, c wire.HostAutoCreate, runs int, json
 // server's database, which the client never opens, so the binary supplies it.
 type AdminFunc func(action, name string, jsonOut bool, stdin io.Reader, stdout, stderr io.Writer) (int, error)
 
+// ServeFunc runs `serve`: the server until stopped, or with check only its
+// start-up settings check, returning the exit code.
+type ServeFunc func(check bool) int
+
 // UpFunc runs `up`: the server and a node in one process, until stopped.
 type UpFunc func(dataDir string, port int, nodeName string) error
 
@@ -411,6 +420,7 @@ type Commands struct {
 	Host       HostFunc
 	HostAuto   HostAutoFunc
 	HostGrant  HostGrantFunc
+	Serve      ServeFunc
 	Up         UpFunc
 	Node       NodeFunc
 	NodeInvite NodeInviteFunc
@@ -547,6 +557,11 @@ func dispatch(args []string) (int, error) {
 		return cliRegister(p)
 	case "admin":
 		return admin(p.pos[0], p.pos[1], p.bool("--json"), os.Stdin, os.Stdout, os.Stderr)
+	case "serve":
+		if binary.Serve == nil {
+			return 0, usagef("serve is not available in this build")
+		}
+		return binary.Serve(p.bool("--check")), nil
 	case "up":
 		return cliUp(p)
 	case "node":
