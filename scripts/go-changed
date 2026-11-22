@@ -1,0 +1,72 @@
+#!/usr/bin/env bash
+# scripts/go-changed [--base REF] [--list] [go test args...]
+# Tests only the Go packages a change can reach: the packages whose files
+# changed since the merge base with REF (default origin/main; committed,
+# staged, unstaged and untracked files all count) and every package that
+# imports one of them, directly or through others, from its code or its
+# tests (`go list -test -deps`). A change to go.mod or go.sum tests ./...;
+# a non-Go file inside a package directory (testdata, embedded files) counts
+# for that package; files outside every package (docs, scripts) select
+# nothing. `--list` prints the import paths instead of testing. Runs go
+# through scripts/go. The full suite still runs in CI.
+set -euo pipefail
+
+root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+cd "$root"
+base=origin/main
+list=0
+while [ $# -gt 0 ]; do
+  case $1 in
+    --base) base=${2:?--base needs a ref}; shift 2 ;;
+    --list) list=1; shift ;;
+    *) break ;;
+  esac
+done
+
+gocmd=scripts/go
+mb=$(git merge-base "$base" HEAD)
+changed=$( { git diff --name-only "$mb"; git ls-files --others --exclude-standard; } | sort -u)
+if [ -z "$changed" ]; then
+  echo "go-changed: nothing changed since $base" >&2
+  exit 0
+fi
+
+if printf '%s\n' "$changed" | grep -qxE 'go\.(mod|sum)'; then
+  pkgs="./..."
+else
+  module=$("$gocmd" list -m)
+  # Package directories: the nearest directory with a .go file, walking up.
+  dirs=$(printf '%s\n' "$changed" | while IFS= read -r f; do
+    d=$(dirname "$f")
+    while [ "$d" != "." ] && ! compgen -G "$d/*.go" >/dev/null; do d=$(dirname "$d"); done
+    if [ "$d" = "." ]; then
+      if compgen -G "*.go" >/dev/null; then echo "$module"; fi
+    else
+      echo "$module/$d"
+    fi
+  done | sort -u)
+  if [ -z "$dirs" ]; then
+    echo "go-changed: no Go package changed since $base" >&2
+    exit 0
+  fi
+  # Every package (and its test variants) with its full dependency list; a
+  # package is reached when it is changed or depends on a changed one.
+  pkgs=$("$gocmd" list -test -f '{{if .ForTest}}{{.ForTest}}{{else}}{{.ImportPath}}{{end}} {{join .Deps " "}}' ./... |
+    awk -v changed="$dirs" '
+      BEGIN { n = split(changed, c, "\n"); for (i = 1; i <= n; i++) want[c[i]] = 1 }
+      {
+        pkg = $1; sub(/ .*/, "", pkg)
+        if (pkg ~ /\.test$/) next
+        if (pkg in want) { hit[pkg] = 1; next }
+        for (i = 2; i <= NF; i++) { d = $i; if (d ~ /^\[/) continue; if (d in want) { hit[pkg] = 1; break } }
+      }
+      END { for (p in hit) print p }' | sort)
+fi
+
+if [ "$list" = 1 ]; then
+  printf '%s\n' $pkgs
+  exit 0
+fi
+echo "go-changed: go test $(printf '%s ' $pkgs)$*" >&2
+# shellcheck disable=SC2086
+exec "$gocmd" test $pkgs "$@"
