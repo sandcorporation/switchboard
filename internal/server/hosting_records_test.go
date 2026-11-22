@@ -278,11 +278,11 @@ func TestHostCLIManagesRecords(t *testing.T) {
 	}
 }
 
-func TestHostCLIRefusesTheContainerDatabase(t *testing.T) {
+func TestHostCLIRefusesTheContainerDatabaseWithHostingOff(t *testing.T) {
 	t.Parallel()
-	for _, path := range []string{"", "/data/mail.db"} {
+	for path, want := range map[string]string{"": "name this instance's own database", "/data/mail.db": "SWITCHBOARD_HOSTING is off"} {
 		code, _, stderr := hostCLI(t, path, "list")
-		if code != 1 || !strings.Contains(stderr, "name this instance's own database") {
+		if code != 1 || !strings.Contains(stderr, want) {
 			t.Errorf("DB_PATH=%q: %d %s", path, code, stderr)
 		}
 	}

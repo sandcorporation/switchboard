@@ -346,16 +346,30 @@ func NodeInviteCLI(name string, stdout io.Writer) (int, error) {
 	})
 }
 
+// instanceDBRefusal is the guard of withInstanceDB. DB_PATH must be set. The
+// container default database is the server's own: it takes hosting rows only
+// while the instance has SWITCHBOARD_HOSTING on (the same reading as the
+// server start), so an instance with hosting off never gains any. Any other
+// path is an instance database of its own (`up`).
+func instanceDBRefusal(cmd, path string, getenv func(string) string) error {
+	switch {
+	case path == "":
+		return errors.New(cmd + ": DB_PATH is unset; name this instance's own database")
+	case filepath.ToSlash(filepath.Clean(path)) == containerDBPath:
+		if on, from := config.HostingFrom(getenv); !on {
+			return errors.New(cmd + ": " + from + " is off; the database " + containerDBPath + " takes hosting records only while hosting is on")
+		}
+	}
+	return nil
+}
+
 // withInstanceDB runs fn over the hosting service of DB_PATH, which must name
 // this instance's own database, so the operations database never gains
 // hosting rows.
 func withInstanceDB(cmd string, fn func(*hosting.Service) error) (int, error) {
 	path := os.Getenv("DB_PATH")
-	switch {
-	case path == "":
-		return 0, errors.New(cmd + ": DB_PATH is unset; name this instance's own database")
-	case filepath.ToSlash(filepath.Clean(path)) == containerDBPath:
-		return 0, errors.New(cmd + ": DB_PATH is the container default " + containerDBPath + "; name this instance's own database")
+	if err := instanceDBRefusal(cmd, path, os.Getenv); err != nil {
+		return 0, err
 	}
 	db, err := store.Open(path)
 	if err != nil {
