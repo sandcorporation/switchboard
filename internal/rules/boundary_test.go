@@ -45,7 +45,7 @@ func TestRulesImportOnlyLeaves(t *testing.T) {
 // rule about rules grew a second home; add a function here instead.
 func TestRuleTablesStayInRules(t *testing.T) {
 	root := ".."
-	table := regexp.MustCompile(`(?i)\b(from|join|update|into|table)\s+(rules|rule_topics|rule_hits|service_tags|role_tags)\b`)
+	table := regexp.MustCompile(`(?i)\b(from|join|update|into|table)\s+(rules|rule_topics|rule_hits|rule_proposers|rule_classes|service_tags|role_tags)\b`)
 	files := 0
 	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {

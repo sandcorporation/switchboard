@@ -20,6 +20,9 @@ type CLIPair struct {
 // (#408): GET rules/mine is `rules mine` and POST rules/hits `rules hit`
 // (docs/rules-hints.md); the dashboard shows their result as each row's
 // hit count and conditions in the 규칙 tab (GET rules, GET rules/{}).
+// So do the ledger's other role APIs (#409): GET and POST rules/proposers
+// are `rules proposer`, POST rules/classify `rules classify`; the 규칙 tab
+// shows proposals (approve, reject) and the unclassified count.
 //
 // CLIPairs is the table. Keep it in the dashboard's order.
 var CLIPairs = []CLIPair{
@@ -37,7 +40,10 @@ var CLIPairs = []CLIPair{
 	{Method: "GET", Path: "rules/topics", CLI: "rules topics"},
 	{Method: "POST", Path: "rules", CLI: "rules add"},
 	{Method: "POST", Path: "rules/{}/void", CLI: "rules void"},
+	{Method: "GET", Path: "rules/unclassified", CLI: "rules unclassified"},
 	{Method: "GET", Path: "rules/{}", CLI: "rules show"},
+	{Method: "POST", Path: "rules/{}/approve", CLI: "rules approve"},
+	{Method: "POST", Path: "rules/{}/reject", CLI: "rules reject"},
 	{Method: "GET", Path: "reports", CLI: "report list"},
 	{Method: "GET", Path: "reports/{}", CLI: "report show"},
 	{Method: "GET", Path: "jobs", CLI: "jobs"},

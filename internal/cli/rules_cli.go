@@ -34,7 +34,7 @@ func cliRules(c Config, p parsedArgs, out io.Writer) (int, error) {
 			return 0, usagef("rules list takes no argument")
 		}
 		return rulesList(c, p, out)
-	case "show", "void":
+	case "show", "void", "approve", "reject":
 		if err := nargs(2, action+" needs a rule number"); err != nil {
 			return 0, err
 		}
@@ -42,10 +42,28 @@ func cliRules(c Config, p parsedArgs, out io.Writer) (int, error) {
 		if err != nil || id <= 0 {
 			return 0, usagef("rules %s: invalid rule number %q", action, p.pos[1])
 		}
-		if action == "show" {
+		switch action {
+		case "show":
 			return rulesShow(c, id, p, out)
+		case "void":
+			return rulesVoid(c, id, p, out)
 		}
-		return rulesVoid(c, id, p, out)
+		return rulesReview(c, id, action, p, out)
+	case "proposer":
+		if len(p.pos) != 1 && len(p.pos) != 3 {
+			return 0, usagef("rules proposer lists the proposers; rules proposer ROLE on|off sets one")
+		}
+		return rulesProposer(c, p, out)
+	case "classify":
+		if err := nargs(2, "classify needs a question ID (q_…) and --rule N or --once"); err != nil {
+			return 0, err
+		}
+		return rulesClassify(c, p, out)
+	case "unclassified":
+		if err := nargs(1, "unclassified takes no argument"); err != nil {
+			return 0, err
+		}
+		return rulesUnclassified(c, p, out)
 	case "add":
 		if err := nargs(2, `add needs the rule text as one argument (quote it)`); err != nil {
 			return 0, err
@@ -78,7 +96,7 @@ func cliRules(c Config, p parsedArgs, out io.Writer) (int, error) {
 	case "tag":
 		return rulesTag(c, p, out)
 	}
-	return 0, usagef("rules: unknown action %q (list, show, add, edit, void, topics, tag, mine or hit)", action)
+	return 0, usagef("rules: unknown action %q (list, show, add, edit, void, approve, reject, proposer, topics, tag, mine, hit, classify or unclassified)", action)
 }
 
 // rulesCall is slotCall that hands back a non-2xx status and body instead of
@@ -122,6 +140,10 @@ func ruleState(r wire.Rule) string {
 		return " (대체됨)"
 	case wire.RuleVoid:
 		return " (무효)"
+	case wire.RuleProposed:
+		return " (제안)"
+	case wire.RuleRejected:
+		return " (거절됨)"
 	}
 	return ""
 }
@@ -151,12 +173,15 @@ func rulesList(c Config, p parsedArgs, out io.Writer) (int, error) {
 	if p.bool("--all") {
 		q.Set("all", "1")
 	}
+	if p.bool("--proposed") {
+		q.Set("proposed", "1")
+	}
 	// Decisions by default (#406, #408): tips with --kind tip, both with
 	// --kind all or --all.
 	switch kind, ok := p.values["--kind"]; {
 	case kind == "all":
 		q.Del("kind")
-	case !ok && !p.bool("--all"):
+	case !ok && !p.bool("--all") && !p.bool("--proposed"):
 		q.Set("kind", wire.RuleDecision)
 	}
 	path := "/api/rules"
@@ -179,6 +204,9 @@ func rulesList(c Config, p parsedArgs, out io.Writer) (int, error) {
 	}
 	for _, r := range l.Rules {
 		fmt.Fprintln(out, ruleLine(r))
+	}
+	if l.Proposed > 0 && !p.bool("--proposed") {
+		fmt.Fprintf(out, "승인 기다리는 제안 %d건 (rules list --proposed)\n", l.Proposed)
 	}
 	return ExitOK, nil
 }
@@ -370,22 +398,8 @@ func postRule(c Config, q wire.RuleRequest, action string, p parsedArgs, out io.
 	if err != nil {
 		return 0, err
 	}
-	if status == http.StatusConflict {
-		var cf wire.RuleConflict
-		if json.Unmarshal(b, &cf) == nil && len(cf.Rules) > 0 {
-			if p.bool("--json") {
-				fmt.Fprintln(out, strings.TrimSpace(string(b)))
-			} else {
-				fmt.Fprintln(out, "같은 범위·주제에 유효한 줄이 있어 올리지 않았다:")
-				ids := make([]string, len(cf.Rules))
-				for i, r := range cf.Rules {
-					fmt.Fprintln(out, "  "+ruleLine(r))
-					ids[i] = strconv.FormatInt(r.ID, 10)
-				}
-				fmt.Fprintf(out, "--replace %s (대체) 또는 --alongside (나란히)를 붙여 다시 올린다.\n", strings.Join(ids, ","))
-			}
-			return ExitError, nil
-		}
+	if status == http.StatusConflict && printConflict(out, b, p) {
+		return ExitError, nil
 	}
 	if status >= 300 {
 		return 0, fmt.Errorf("server returned %d %s: %s", status, http.StatusText(status), strings.TrimSpace(string(b)))
@@ -398,6 +412,9 @@ func postRule(c Config, q wire.RuleRequest, action string, p parsedArgs, out io.
 		return 0, fmt.Errorf("unexpected response from server: %v", err)
 	}
 	fmt.Fprintln(out, ruleLine(r))
+	if r.Status == wire.RuleProposed {
+		fmt.Fprintf(out, "  제안: 관리자나 전역 boss 가 승인하면 유효 (rules approve %d)\n", r.ID)
+	}
 	if m := ruleMatchText(r.Match); m != "" {
 		fmt.Fprintln(out, "  걸림 "+m)
 	}
@@ -405,6 +422,27 @@ func postRule(c Config, q wire.RuleRequest, action string, p parsedArgs, out io.
 		fmt.Fprintf(out, "  #%d 대체됨\n", old)
 	}
 	return ExitOK, nil
+}
+
+// printConflict prints a 409's rows in force and the flags to add; false
+// when the body is not such a conflict.
+func printConflict(out io.Writer, b []byte, p parsedArgs) bool {
+	var cf wire.RuleConflict
+	if json.Unmarshal(b, &cf) != nil || len(cf.Rules) == 0 {
+		return false
+	}
+	if p.bool("--json") {
+		fmt.Fprintln(out, strings.TrimSpace(string(b)))
+		return true
+	}
+	fmt.Fprintln(out, "같은 범위·주제에 유효한 줄이 있어 올리지 않았다:")
+	ids := make([]string, len(cf.Rules))
+	for i, r := range cf.Rules {
+		fmt.Fprintln(out, "  "+ruleLine(r))
+		ids[i] = strconv.FormatInt(r.ID, 10)
+	}
+	fmt.Fprintf(out, "--replace %s (대체) 또는 --alongside (나란히)를 붙여 다시 올린다.\n", strings.Join(ids, ","))
+	return true
 }
 
 func rulesVoid(c Config, id int64, p parsedArgs, out io.Writer) (int, error) {

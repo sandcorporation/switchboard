@@ -3,6 +3,7 @@ package rules
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"slices"
 	"strings"
@@ -184,8 +185,8 @@ func (s *Service) changeRoleTags(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid JSON", http.StatusBadRequest)
 		return
 	}
-	if q.Role == "" || strings.ContainsAny(q.Role, " ,") {
-		http.Error(w, "role: a base role", http.StatusBadRequest)
+	if err := checkRoleName(q.Role); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	seen := map[string]bool{}
@@ -231,4 +232,12 @@ func (s *Service) changeRoleTags(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, rt)
+}
+
+// checkRoleName checks a base role named in a request.
+func checkRoleName(role string) error {
+	if role == "" || strings.ContainsAny(role, " ,") {
+		return errors.New("role: a base role")
+	}
+	return nil
 }

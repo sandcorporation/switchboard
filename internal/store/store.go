@@ -176,7 +176,42 @@ func Init(db *sql.DB) error {
 	if e = migrateRules(db); e != nil {
 		return e
 	}
-	return migrateRuleHits(db)
+	if e = migrateRuleHits(db); e != nil {
+		return e
+	}
+	return migrateRuleProposals(db)
+}
+
+// migrateRuleProposals adds the rules ledger's running gear (#409,
+// internal/rules), all additive: rules.reviewed_by, reviewed_at and
+// review_note (who approved or rejected a proposed row, when, and why);
+// rule_proposers (the roles an admin or a global boss let propose tips);
+// rule_classes (a person's answer to a panel question since this table
+// came in, unclassified until its asker marks it: a rule's number or once).
+func migrateRuleProposals(db *sql.DB) error {
+	for _, c := range []string{"reviewed_by", "reviewed_at", "review_note"} {
+		has, err := HasColumn(db, "rules", c)
+		if err != nil {
+			return err
+		}
+		if !has {
+			if _, err = db.Exec(`ALTER TABLE rules ADD COLUMN ` + c + ` TEXT NOT NULL DEFAULT ''`); err != nil {
+				return err
+			}
+		}
+	}
+	_, err := db.Exec(`CREATE TABLE IF NOT EXISTS rule_proposers(role TEXT PRIMARY KEY, set_by TEXT NOT NULL, set_at TEXT NOT NULL);
+	CREATE TABLE IF NOT EXISTS rule_classes(
+		question_id TEXT PRIMARY KEY,
+		asker TEXT NOT NULL,
+		header TEXT NOT NULL DEFAULT '',
+		answered_at TEXT NOT NULL,
+		class TEXT NOT NULL DEFAULT '',
+		rule_id INTEGER,
+		classified_by TEXT NOT NULL DEFAULT '',
+		classified_at TEXT NOT NULL DEFAULT '');
+	CREATE INDEX IF NOT EXISTS idx_rule_classes_asker ON rule_classes(class, asker);`)
+	return err
 }
 
 // migrateRuleHits adds rule_hits (#408 T2, internal/rules): per rule row,

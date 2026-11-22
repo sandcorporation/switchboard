@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"log"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -100,7 +101,7 @@ func (s *Server) presence() *presence.Service {
 // (internal/presence).
 func (s *Server) asks() *asks.Service {
 	return asks.New(s.db, s.now, &s.asksCfg, s.ids(), s.mail(), &s.hub, s.done, s.discord.NoticeQuestion,
-		asks.SlotRules{Asking: presence.AskingSlot, Answer: presence.AnswerSlot})
+		asks.SlotRules{Asking: presence.AskingSlot, Answer: presence.AnswerSlot}).WithPersonAnswer(rules.RecordAnswer)
 }
 
 // insight is the metrics and alert rules over this server's database, clock,
@@ -122,7 +123,23 @@ func (s *Server) rules() *rules.Service {
 	return rules.New(s.db, s.now, rules.Hooks{
 		GroupOf: func(role string) string { g, _ := ids.GroupOf(role); return g.Prefix },
 		Answers: func(qs []string) ([]wire.Decision, error) { return s.asks().DecisionsByID(qs) },
+		Notice:  s.noticeGlobalBosses,
 	})
+}
+
+// noticeGlobalBosses mails each global boss role a notice that asks no
+// reply, once per idem (a rule proposal waiting for approval, #409).
+func (s *Server) noticeGlobalBosses(subject, body, idem string) {
+	roles := make([]string, 0, len(s.bossRoles))
+	for r := range s.bossRoles {
+		roles = append(roles, r)
+	}
+	slices.Sort(roles)
+	for _, role := range roles {
+		if err := s.notifyRole(context.Background(), role, subject, body, idem+"-"+role); err != nil {
+			log.Printf("notice %s: %v", role, err)
+		}
+	}
 }
 
 // ruleCaller is p as the rules ledger sees it: a global boss reads in full

@@ -3,12 +3,15 @@
 // service's roles inherit; and who reads which rows.
 //
 // Everything about rules lives here: the tables rules, rule_topics,
-// rule_hits, service_tags and role_tags are read and written only by this package (the
-// boundary test keeps it so). What the ledger needs from other packages is
+// rule_hits, rule_proposers, rule_classes, service_tags and role_tags are
+// read and written only by this package (the boundary test keeps it so). What the ledger needs from other packages is
 // passed in: the caller (Caller, built by the server from identity: an
 // admin or a global boss reads in full and writes; any other role reads its
 // own scope), a role's group (Hooks.GroupOf, from identity's groups) and the
-// answered questions a row names as its source (Hooks.Answers, from asks).
+// answered questions a row names as its source (Hooks.Answers, from asks),
+// the global bosses' notice of a proposal (Hooks.Notice, from the server),
+// and each person's answer to a panel question, which asks hands to
+// RecordAnswer inside its own transaction.
 // This package imports store and wire only.
 package rules
 
@@ -42,6 +45,9 @@ type Hooks struct {
 	// Answers reads answered questions by ID; IDs that are unknown or not
 	// answered are left out.
 	Answers func(ids []string) ([]wire.Decision, error)
+	// Notice sends the global bosses a mail that asks no reply (a proposal
+	// waiting for approval), once per idempotency key.
+	Notice func(subject, body, idem string)
 }
 
 // Service is the ledger over one database.
