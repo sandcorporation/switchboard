@@ -165,7 +165,7 @@ func (s *Server) bossWrite(w http.ResponseWriter, r *http.Request, who identity.
 		http.Error(sw, "not found", status)
 	default:
 		w.Header().Set("Content-Type", "application/json")
-		s.adminRoutes(sw, r, path, adminauth.Identity{User: who.Role})
+		s.adminRoutes(sw, r, path, adminauth.Identity{User: who.Role}, &who)
 	}
 	code := sw.code
 	if code == 0 {

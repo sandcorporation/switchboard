@@ -16,13 +16,6 @@ import (
 	"github.com/sandcorporation/switchboard/internal/wire"
 )
 
-// bossJobs is GET /api/boss/jobs: the job ledger and the schedules, as the
-// dashboard's jobs tab shows them (commands and prompts left out).
-type bossJobs struct {
-	Jobs      []wire.Job      `json:"jobs"`
-	Schedules []wire.Schedule `json:"schedules"`
-}
-
 // bossRoles is GET /api/boss/roles: roles (with their group and whether
 // revoked), the leased numbered slots and the groups.
 type bossRoles struct {
@@ -120,28 +113,12 @@ func (s *Server) bossAPI(w http.ResponseWriter, r *http.Request, who identity.Pr
 		}
 		writeJSON(w, out)
 	case "jobs":
-		js, err := s.jobs().Jobs("", q.Get("state"))
+		// The ledger's read model applies the view (jobs.View, #404).
+		ledger := s.jobs()
+		out, err := ledger.Ledger(ledger.ViewOf(who), q.Get("state"))
 		if err != nil {
 			fail()
 			return
-		}
-		ss, err := s.jobs().Schedules("", q.Get("state"))
-		if err != nil {
-			fail()
-			return
-		}
-		out := bossJobs{Jobs: []wire.Job{}, Schedules: []wire.Schedule{}}
-		for _, j := range js {
-			if see(j.Role) {
-				j.Command = ""
-				out.Jobs = append(out.Jobs, j)
-			}
-		}
-		for _, sc := range ss {
-			if see(sc.Role) {
-				sc.Prompt = ""
-				out.Schedules = append(out.Schedules, sc)
-			}
 		}
 		writeJSON(w, out)
 	case "roles":

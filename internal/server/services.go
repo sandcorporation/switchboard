@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sandcorporation/switchboard/internal/adminauth"
 	"github.com/sandcorporation/switchboard/internal/asks"
 	"github.com/sandcorporation/switchboard/internal/identity"
 	"github.com/sandcorporation/switchboard/internal/insight"
@@ -123,4 +124,13 @@ func (s *Server) migrateAnsweredRule(logf func(string, ...any)) error {
 	}
 	logf("%s", m.Line())
 	return nil
+}
+
+// ledgerView is the job ledger's view of an admin path's caller (#404): the
+// boss role whose token reached it, or the signed-in admin.
+func (s *Server) ledgerView(who adminauth.Identity, boss *identity.Principal) jobs.View {
+	if boss != nil {
+		return s.jobs().ViewOf(*boss)
+	}
+	return jobs.AdminView(who.User)
 }

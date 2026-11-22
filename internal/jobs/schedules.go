@@ -50,7 +50,13 @@ func (s *Service) ScheduleAPI(w http.ResponseWriter, r *http.Request, p identity
 				}
 				role = p.Role
 			}
-			s.writeSchedules(w, role, r.URL.Query().Get("state"), false)
+			// A role's own list carries the prompts (#292).
+			out, err := s.schedules(role, r.URL.Query().Get("state"))
+			if err != nil {
+				http.Error(w, "query failed", http.StatusInternalServerError)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
 		default:
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		}
@@ -83,17 +89,23 @@ func (s *Service) ScheduleAPI(w http.ResponseWriter, r *http.Request, p identity
 
 // ScheduleAdminAPI serves the dashboard's /api/admin/schedules (rest is the
 // path after it, without the slash). The admin guard and the write guard ran
-// already.
+// already; v is the admin, or the boss role whose token reached the path.
 //
-//	GET    ""   every role's schedules, ?role= and ?state=; no prompt text
+//	GET    ""   the schedules in view, ?role= and ?state=; no prompt text
+//	            (ListSchedules)
 //	DELETE "ID" remove
-func (s *Service) ScheduleAdminAPI(w http.ResponseWriter, r *http.Request, rest string) {
+func (s *Service) ScheduleAdminAPI(w http.ResponseWriter, r *http.Request, v View, rest string) {
 	if rest == "" {
 		if r.Method != http.MethodGet {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		s.writeSchedules(w, r.URL.Query().Get("role"), r.URL.Query().Get("state"), true)
+		out, err := s.ListSchedules(v, r.URL.Query().Get("role"), r.URL.Query().Get("state"))
+		if err != nil {
+			http.Error(w, "query failed", http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, http.StatusOK, out)
 		return
 	}
 	id, err := strconv.ParseInt(rest, 10, 64)
@@ -204,23 +216,9 @@ func (s *Service) removeSchedule(w http.ResponseWriter, id int64) {
 	writeJSON(w, http.StatusOK, map[string]any{"id": id, "removed": true})
 }
 
-func (s *Service) writeSchedules(w http.ResponseWriter, role, state string, hidePrompt bool) {
-	out, err := s.Schedules(role, state)
-	if err != nil {
-		http.Error(w, "query failed", http.StatusInternalServerError)
-		return
-	}
-	if hidePrompt {
-		for i := range out {
-			out[i].Prompt = ""
-		}
-	}
-	writeJSON(w, http.StatusOK, out)
-}
-
-// Schedules lists schedules newest first, of role and in state when given
-// (StateLive: active).
-func (s *Service) Schedules(role, state string) ([]wire.Schedule, error) {
+// schedules lists schedules newest first, of role and in state when given
+// (StateLive: active), prompts included.
+func (s *Service) schedules(role, state string) ([]wire.Schedule, error) {
 	where, args := []string{}, []any{}
 	if role != "" {
 		where, args = append(where, "role=?"), append(args, role)

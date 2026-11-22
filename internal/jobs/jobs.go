@@ -165,11 +165,6 @@ func (s *Service) list(w http.ResponseWriter, r *http.Request, p identity.Princi
 	writeJSON(w, http.StatusOK, out)
 }
 
-// Jobs lists jobs newest first (at most 500), of role and in state when
-// given (StateLive: not ended): the dashboard's jobs tab and a boss role's
-// jobs view (#397).
-func (s *Service) Jobs(role, state string) ([]wire.Job, error) { return s.query(role, state) }
-
 // StateLive is the list filter for every job not yet ended.
 const StateLive = "live"
 
@@ -210,23 +205,22 @@ func (s *Service) query(role, state string) ([]wire.Job, error) {
 // AdminAPI serves the dashboard's /api/admin/jobs (rest is the path after
 // it, without the slash). The admin guard and the write guard ran already.
 //
-//	GET    ""        every role's jobs, ?role= and ?state= (live: not ended);
-//	                 the command text is left out
+// v is the admin, or the boss role whose token reached the admin path.
+//
+//	GET    ""        the jobs in view, ?role= and ?state= (live: not ended);
+//	                 the command text is left out (ListJobs)
 //	POST   "ID/stop" ask the runner to stop
 //	DELETE "ID"      remove an ended job's record
-func (s *Service) AdminAPI(w http.ResponseWriter, r *http.Request, rest string) {
+func (s *Service) AdminAPI(w http.ResponseWriter, r *http.Request, v View, rest string) {
 	if rest == "" {
 		if r.Method != http.MethodGet {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		out, err := s.query(r.URL.Query().Get("role"), r.URL.Query().Get("state"))
+		out, err := s.ListJobs(v, r.URL.Query().Get("role"), r.URL.Query().Get("state"))
 		if err != nil {
 			http.Error(w, "query failed", http.StatusInternalServerError)
 			return
-		}
-		for i := range out {
-			out[i].Command = ""
 		}
 		writeJSON(w, http.StatusOK, out)
 		return

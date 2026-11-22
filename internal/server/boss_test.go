@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/sandcorporation/switchboard/internal/jobs"
 	"github.com/sandcorporation/switchboard/internal/wire"
 )
 
@@ -172,7 +173,7 @@ func TestBossJobsAndTerminals(t *testing.T) {
 			t.Fatalf("create job %s: %d %s", j.role, w.Code, w.Body)
 		}
 	}
-	var group, global bossJobs
+	var group, global jobs.Ledger
 	bossGet(t, s, partnerBossToken, partnerBossRole, "jobs", &group)
 	bossGet(t, s, bossToken, internalBossRole, "jobs", &global)
 	if len(group.Jobs) != 1 || group.Jobs[0].Role != partnerDevRole || group.Jobs[0].Command != "" || len(global.Jobs) != 2 {
