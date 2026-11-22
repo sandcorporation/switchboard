@@ -53,3 +53,15 @@ test('sizes',()=>{
   assert.strictEqual(F.size(2048),'2.0 KB');
   assert.strictEqual(F.size(3<<20),'3.0 MB');
 });
+
+test('kindOf picks the panel by extension',()=>{
+  assert.strictEqual(F.kindOf('a/b/pic.PNG'),'image');
+  assert.strictEqual(F.kindOf('x.svg'),'image');
+  assert.strictEqual(F.kindOf('x.webp'),'image');
+  assert.strictEqual(F.kindOf('s.mp3'),'audio');
+  assert.strictEqual(F.kindOf('d/v.webm'),'video');
+  assert.strictEqual(F.kindOf('m.mp4'),'video');
+  assert.strictEqual(F.kindOf('README'),'text');
+  assert.strictEqual(F.kindOf('a.png/notes'),'text');
+  assert.strictEqual(F.kindOf('main.go'),'text');
+});

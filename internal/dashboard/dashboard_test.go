@@ -781,6 +781,7 @@ func TestDashboardWorkspaceSide(t *testing.T) {
 		"return (p.startsWith('term:')&&p.length>5)||!!S.itemOf(p)||!!F.fileOf(p);",
 		"if(side.sub==='files')out.append(fileTree(v.id));",
 		"const pre=node('pre','','ws-text');pre.textContent=t.text;",
+		"const m=document.createElement(kind==='image'?'img':kind);",
 		"if(detailCur){sessShown='';sessBody.replaceChildren();return}",
 		".has-detail>.ws-side{display:none}",
 	} {
