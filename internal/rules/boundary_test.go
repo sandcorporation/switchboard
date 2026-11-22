@@ -41,11 +41,11 @@ func TestRulesImportOnlyLeaves(t *testing.T) {
 
 // TestRuleTablesStayInRules keeps the ledger's tables in this package: no
 // other package (but store, which holds the schema) names rules,
-// rule_topics, service_tags or role_tags in SQL. A failure here means a
+// rule_topics, rule_hits, service_tags or role_tags in SQL. A failure here means a
 // rule about rules grew a second home; add a function here instead.
 func TestRuleTablesStayInRules(t *testing.T) {
 	root := ".."
-	table := regexp.MustCompile(`(?i)\b(from|join|update|into|table)\s+(rules|rule_topics|service_tags|role_tags)\b`)
+	table := regexp.MustCompile(`(?i)\b(from|join|update|into|table)\s+(rules|rule_topics|rule_hits|service_tags|role_tags)\b`)
 	files := 0
 	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
@@ -72,6 +72,45 @@ func TestRuleTablesStayInRules(t *testing.T) {
 			}
 			return true
 		})
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if files < 20 {
+		t.Fatalf("walked %d files; the walk lost its root", files)
+	}
+}
+
+// TestOnlyServerImportsRules keeps the ledger's effects on other domains
+// passed in by the server (#408): mail gets the directive footer as a
+// function (mail.Footer), never by importing this package.
+func TestOnlyServerImportsRules(t *testing.T) {
+	const self = "github.com/sandcorporation/switchboard/internal/rules"
+	files := 0
+	err := filepath.WalkDir("../..", func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			if d.Name() == "testdata" || d.Name() == ".git" || d.Name() == "node_modules" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		files++
+		f, err := parser.ParseFile(token.NewFileSet(), path, nil, parser.ImportsOnly)
+		if err != nil {
+			return err
+		}
+		for _, im := range f.Imports {
+			if p, _ := strconv.Unquote(im.Path.Value); p == self && filepath.Base(filepath.Dir(path)) != "server" {
+				t.Errorf("%s imports the rules ledger; only internal/server does, passing functions to the others", path)
+			}
+		}
 		return nil
 	})
 	if err != nil {

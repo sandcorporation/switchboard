@@ -117,6 +117,17 @@ func Env(k, d string) string {
 	return d
 }
 
+// RulesFooterName is SWITCHBOARD_RULES_FOOTER without the prefix (#408):
+// "off" stops adding the rules in force to a boss role's directive mail.
+const RulesFooterName = "RULES_FOOTER"
+
+// RulesFooterFrom reports whether the directive mail footer is on: every
+// value but "off" (the default, empty, included).
+func RulesFooterFrom(getenv func(string) string) bool {
+	v, _ := EnvFrom(getenv, RulesFooterName)
+	return strings.TrimSpace(v) != "off"
+}
+
 // HostingName is SWITCHBOARD_HOSTING without the prefix: terminal hosting
 // (#173). The operations instance never sets it; a test keeps it out of the
 // deployment files.

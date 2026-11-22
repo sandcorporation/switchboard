@@ -53,13 +53,13 @@ func TestRulesCLI(t *testing.T) {
 	if out = h.mustRun(boss, "rules", "tag", "set", "b", "ci-tips"); out != "b: ci-tips" {
 		t.Fatalf("tag set: %q", out)
 	}
-	if out = h.mustRun(worker, "rules", "list"); !strings.Contains(out, "#3 요령 ci rerun once") || strings.Contains(out, "other service") {
+	if out = h.mustRun(worker, "rules", "list", "--kind", "tip"); !strings.Contains(out, "#3 요령 ci rerun once") || strings.Contains(out, "other service") {
 		t.Fatalf("worker list with the tag: %q", out)
 	}
 	if out = h.mustRun(boss, "rules", "tag", "role", "b", "--", "-ci-tips"); out != "b -ci-tips → (태그 없음)" {
 		t.Fatalf("tag role: %q", out)
 	}
-	if out = h.mustRun(worker, "rules", "list"); strings.Contains(out, "rerun once") {
+	if out = h.mustRun(worker, "rules", "list", "--kind", "all"); strings.Contains(out, "rerun once") {
 		t.Fatalf("worker list without the tag: %q", out)
 	}
 	if out = h.mustRun(boss, "rules", "tag", "list"); out != "b: ci-tips\nb -ci-tips → (태그 없음)" {
@@ -82,5 +82,48 @@ func TestRulesCLI(t *testing.T) {
 	}
 	if out = h.mustRun(worker, "rules"); out != "규칙 없음" {
 		t.Fatalf("worker list after void: %q", out)
+	}
+
+	// #408 T1: a Korean topic, a text of several lines (list shows the
+	// first, show the whole), and a usage error's reason as the last line.
+	h.mustRun(boss, "rules", "add", "--kind", "tip", "--scope", "service:b", "--topic", "배포", "--new-topic", "--source", "x", "green first\n- then tag\n- then notes")
+	if out = h.mustRun(worker, "rules", "list", "--kind", "tip", "--topic", "배포"); out != "#5 요령 배포 green first" {
+		t.Fatalf("korean topic list: %q", out)
+	}
+	if out = h.mustRun(worker, "rules", "show", "5"); out != "#5 요령 배포\n\ngreen first\n- then tag\n- then notes" {
+		t.Fatalf("multi-line show: %q", out)
+	}
+	// #408 T2: conditions on add and edit, mine, hit and the count in show.
+	out = h.mustRun(boss, "rules", "add", "--kind", "decision", "--scope", "service:b", "--topic", "release", "--source", "x", "--when-tool", "Bash", "--when-command", "git push .*--force", "no force push")
+	if !strings.Contains(out, "#6 결정 release") || !strings.Contains(out, "걸림 도구 Bash · 명령 /git push .*--force/") {
+		t.Fatalf("add with conditions: %q", out)
+	}
+	if r := h.run(boss, "rules", "add", "--kind", "tip", "--scope", "service:b", "--topic", "release", "--source", "x", "--alongside", "--when-command", "(", "y"); r.code != 2 || !strings.Contains(r.stderr, "match command") {
+		t.Fatalf("bad regexp: %+v", r)
+	}
+	out = h.mustRun(boss, "rules", "edit", "6", "--when-command", "", "--when-path", "**/deploy/*", "no force push, ever")
+	if !strings.Contains(out, "#7 결정 release") || !strings.Contains(out, "걸림 도구 Bash · 경로 **/deploy/*") || !strings.Contains(out, "#6 대체됨") {
+		t.Fatalf("edit: %q", out)
+	}
+	if out = h.mustRun(worker, "rules", "mine"); !strings.Contains(out, "#7 결정 release no force push, ever [도구 Bash · 경로 **/deploy/*]") || !strings.Contains(out, "#5 요령 배포 green first") {
+		t.Fatalf("mine: %q", out)
+	}
+	if out = h.mustRun(worker, "rules", "hit", "7,6,3"); out != "센 줄 #7" {
+		t.Fatalf("hit: %q", out)
+	}
+	if out = h.mustRun(boss, "rules", "show", "7"); !strings.Contains(out, "걸린 수 1") {
+		t.Fatalf("show hits: %q", out)
+	}
+	// #408 T1: list shows decisions by default; tips with --kind tip.
+	if out = h.mustRun(worker, "rules", "list"); strings.Contains(out, "요령") || !strings.Contains(out, "결정") {
+		t.Fatalf("default list: %q", out)
+	}
+	if out = h.mustRun(worker, "rules", "list", "--kind", "all"); !strings.Contains(out, "요령") || !strings.Contains(out, "결정") {
+		t.Fatalf("list --kind all: %q", out)
+	}
+	r = h.run(boss, "rules", "add", "--kind", "tip", "--scope", "all", "--topic", "배 포", "--source", "x", "y")
+	lines := strings.Split(strings.TrimSpace(r.stderr), "\n")
+	if r.code != 2 || len(lines) < 2 || !strings.Contains(lines[len(lines)-1], "topic \"배 포\"") || !strings.Contains(lines[0], "--help") {
+		t.Fatalf("usage error: %+v", r)
 	}
 }

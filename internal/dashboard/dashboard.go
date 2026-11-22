@@ -427,7 +427,7 @@ table.cards td.cardhide{display:none}
 <input id="ruleService" type="search" aria-label="서비스" placeholder="서비스" autocomplete="off" autocapitalize="off" spellcheck="false">
 <select id="ruleTopic" aria-label="주제"><option value="">모든 주제</option></select>
 <label><input type="checkbox" id="ruleAll"> 대체·무효 포함</label></div>
-<table id="rulesTbl" class="stack list"><thead><tr><th class="num">#</th><th>종류</th><th>주제</th><th>범위</th><th>글</th></tr></thead><tbody id="rules"></tbody></table>
+<table id="rulesTbl" class="stack list"><thead><tr><th class="num">#</th><th>종류</th><th>주제</th><th>범위</th><th>글</th><th class="num">걸림</th></tr></thead><tbody id="rules"></tbody></table>
 <details id="ruleAdd"><summary>새 줄</summary>
 <form id="ruleForm" class="ruleform">
 <div class="row"><select id="ruleKind" aria-label="종류"><option value="decision">결정</option><option value="tip">요령</option></select>
@@ -435,7 +435,10 @@ table.cards td.cardhide{display:none}
 <input id="ruleTopicIn" list="ruleTopics" aria-label="주제" placeholder="주제" required autocomplete="off" autocapitalize="off" spellcheck="false"><datalist id="ruleTopics"></datalist>
 <label><input type="checkbox" id="ruleNewTopic"> 새 주제</label>
 <input id="ruleGroup" aria-label="그룹" placeholder="그룹 (all·tag 줄)" autocomplete="off" autocapitalize="off" spellcheck="false"></div>
-<textarea id="ruleText" rows="3" aria-label="글" required></textarea>
+<textarea id="ruleText" rows="3" aria-label="글" placeholder="첫 줄: 요약 · 둘째 줄부터: 하위 항목" required></textarea>
+<div class="row"><input id="ruleWhenTool" aria-label="걸림: 도구" placeholder="도구 (Bash, mcp__*)" autocomplete="off" autocapitalize="off" spellcheck="false">
+<input id="ruleWhenCommand" aria-label="걸림: 명령 정규식" placeholder="명령 정규식" autocomplete="off" autocapitalize="off" spellcheck="false">
+<input id="ruleWhenPath" aria-label="걸림: 경로 glob" placeholder="경로 glob (**/x/*.sql)" autocomplete="off" autocapitalize="off" spellcheck="false"></div>
 <input id="ruleSource" aria-label="출처" placeholder="출처: 질문 ID(q_…) 또는 글" required>
 <div class="row"><button type="submit">올리기</button></div>
 <div id="ruleAddMsg" class="msg" role="status" aria-live="polite"></div>
@@ -1641,13 +1644,34 @@ registerDetail('reports',{
 // detail has its history and the answered questions it came from; an admin
 // fixes a row (a new row replacing it) or voids it. A 409 lists the rows in
 // force on the same scope and topic: replace them or stand alongside.
-const ruleCols=['#','종류','주제','범위','글'];
+const ruleCols=['#','종류','주제','범위','글','걸림'];
 const ruleKinds={decision:'결정',tip:'요령'};
 const ruleStates={active:['유효','success'],replaced:['대체됨','neutral'],void:['무효','danger']};
 const ruleChips=[['decision','결정'],['tip','요령'],['','전체']];
 let rulesData=null,rulesKind='decision',rulesSeq=0;
 function ruleScopeText(s){return !s?'':s.kind==='all'||!s.values||!s.values.length?s.kind:s.kind+':'+s.values.join(',')}
 function ruleFirstLine(t){return String(t||'').split('\n')[0]}
+function ruleMatchText(m){
+  if(!m)return '';
+  const p=[];
+  if(m.tool)p.push('도구 '+m.tool);
+  if(m.command)p.push('명령 /'+m.command+'/');
+  if(m.path)p.push('경로 '+m.path);
+  return p.join(' · ');
+}
+// ruleMatchBody reads the three condition fields; empty ones are left out.
+function ruleMatchBody(tool,command,path){
+  const m={};
+  if(tool.trim())m.tool=tool.trim();
+  if(command)m.command=command;
+  if(path.trim())m.path=path.trim();
+  return Object.keys(m).length?m:null;
+}
+function ruleMatchInputs(m){
+  const mk=(label,ph,v)=>{const i=node('input','');i.placeholder=ph;i.value=v||'';i.setAttribute('aria-label',label);i.autocomplete='off';i.spellcheck=false;return i};
+  m=m||{};
+  return [mk('걸림: 도구','도구 (Bash, mcp__*)',m.tool),mk('걸림: 명령 정규식','명령 정규식',m.command),mk('걸림: 경로 glob','경로 glob (**/x/*.sql)',m.path)];
+}
 function parseRuleScope(v){
   const i=v.indexOf(':'),kind=(i<0?v:v.slice(0,i)).trim();
   return {kind:kind,values:i<0?[]:v.slice(i+1).split(',').map(x=>x.trim()).filter(Boolean)};
@@ -1701,7 +1725,9 @@ function ruleRow(r){
   const off=r.status&&r.status!=='active',tr=node('tr','',off?'done':'');
   const t=cell('',ruleCols[4],'wrap');t.append(node('span',ruleFirstLine(r.text)));
   if(off){const [l,tone]=ruleBadge(r.status);t.append(' ',badge(l,tone))}
-  tr.append(cell('#'+r.id,ruleCols[0],'num'),cell(ruleKinds[r.kind]||r.kind,ruleCols[1]),cell(r.topic,ruleCols[2]),cell(ruleScopeText(r.scope)+(r.group?' @'+r.group:''),ruleCols[3]),t);
+  const mt=ruleMatchText(r.match);if(mt)t.append(' ',node('span',mt,'muted'));
+  const h=cell(String(r.hits||0),ruleCols[5],'num');if(r.last_hit_at)h.title='마지막 '+when(r.last_hit_at);
+  tr.append(cell('#'+r.id,ruleCols[0],'num'),cell(ruleKinds[r.kind]||r.kind,ruleCols[1],'nowrap'),cell(r.topic,ruleCols[2]),cell(ruleScopeText(r.scope)+(r.group?' @'+r.group:''),ruleCols[3]),t,h);
   detailRow(tr,'rules',r.id);
   return tr;
 }
@@ -1732,14 +1758,15 @@ function ruleEditForm(r){
   const f=node('form','','ruleform');
   const text=node('textarea','');text.value=r.text;text.rows=4;text.required=true;text.setAttribute('aria-label','새 글');
   const src=node('input','');src.placeholder='출처: 질문 ID(q_…) 또는 글';src.required=true;src.setAttribute('aria-label','출처');
+  const [wt,wc,wp]=ruleMatchInputs(r.match),when3=node('div','','row');when3.append(wt,wc,wp);
   const save=node('button','고쳐 올리기');save.type='submit';
   const off=node('button','무효로');off.type='button';
   const msg=node('div','','msg');msg.setAttribute('role','status');
   const row=node('div','','row');row.append(save,off);
-  f.append(node('h3','고치기','sechead'),text,src,row,msg);
+  f.append(node('h3','고치기','sechead'),text,when3,src,row,msg);
   f.onsubmit=e=>{
     e.preventDefault();
-    postRule(Object.assign(ruleSourceBody(src.value),{kind:r.kind,text:text.value,topic:r.topic,scope:r.scope,group:r.group||'',device:r.device||'',replace:[r.id]}),msg,n=>{loadRules();openDetail('rules',String(n.id))});
+    postRule(Object.assign(ruleSourceBody(src.value),{kind:r.kind,text:text.value,topic:r.topic,scope:r.scope,group:r.group||'',device:r.device||'',match:ruleMatchBody(wt.value,wc.value,wp.value),replace:[r.id]}),msg,n=>{loadRules();openDetail('rules',String(n.id))});
   };
   off.onclick=async()=>{
     if(!confirm('#'+r.id+' 줄을 무효로 돌린다. 되돌릴 수 없다.'))return;
@@ -1762,6 +1789,8 @@ registerDetail('rules',{
     if(r.sources&&r.sources.length)pairs.push(['출처',r.sources.join(', ')]);
     if(r.source_text)pairs.push(['출처 글',r.source_text]);
     if(r.device)pairs.push(['장치',r.device]);
+    if(r.match)pairs.push(['걸림 조건',ruleMatchText(r.match)]);
+    if(r.hits)pairs.push(['걸린 수',r.hits+(r.last_hit_at?' · 마지막 '+when(r.last_hit_at):'')]);
     pairs.push(['적은 이',r.author||'-'],['시각',when(r.created_at)]);
     if(r.voided_by)pairs.push(['무효로 돌린 이',r.voided_by+' · '+when(r.voided_at)]);
     box.append(dl(pairs));
@@ -2756,8 +2785,8 @@ $('ruleTopic').onchange=()=>loadRules();
 $('ruleAll').onchange=()=>loadRules();
 $('ruleForm').onsubmit=e=>{
   e.preventDefault();
-  const body=Object.assign(ruleSourceBody($('ruleSource').value),{kind:$('ruleKind').value,text:$('ruleText').value,topic:$('ruleTopicIn').value.trim(),new_topic:$('ruleNewTopic').checked,scope:parseRuleScope($('ruleScope').value),group:$('ruleGroup').value.trim()});
-  postRule(body,$('ruleAddMsg'),r=>{$('ruleText').value='';$('ruleSource').value='';loadRules();openDetail('rules',String(r.id))});
+  const body=Object.assign(ruleSourceBody($('ruleSource').value),{kind:$('ruleKind').value,text:$('ruleText').value,topic:$('ruleTopicIn').value.trim(),new_topic:$('ruleNewTopic').checked,scope:parseRuleScope($('ruleScope').value),group:$('ruleGroup').value.trim(),match:ruleMatchBody($('ruleWhenTool').value,$('ruleWhenCommand').value,$('ruleWhenPath').value)});
+  postRule(body,$('ruleAddMsg'),r=>{for(const id of ['ruleText','ruleSource','ruleWhenTool','ruleWhenCommand','ruleWhenPath'])$(id).value='';loadRules();openDetail('rules',String(r.id))});
 };
 $('reloadJobs').onclick=()=>loadJobs();
 $('jobRole').onchange=$('jobState').onchange=()=>loadJobs();

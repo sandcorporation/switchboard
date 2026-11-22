@@ -215,21 +215,24 @@ var commands = []command{
 			{"--ndjson", "", "stream the server's ndjson export unchanged"},
 			optJSON, optProfile,
 		}},
-	{name: "rules", args: "[list | show N | add TEXT | void N | topics | tag list | tag set SERVICE TAG[,TAG] | tag role ROLE +TAG|-TAG|=TAG]", nargs: 4, optArgs: true,
-		summary: "The rules ledger: the decisions and tips in force by service and topic. An admin or a global boss reads every row with its scope, sources, history and the answered questions it came from, adds (a row on the same scope and topic as one in force needs --replace N[,N] or --alongside), voids and sets tags; any other role lists and shows only its own group's rows in force that reach it (all, its service, its tags). A role's tags are its service's (tag set) plus +TAG, minus -TAG (tag role; put -- before a -TAG, =TAG goes back to the service's)",
+	{name: "rules", args: "[list | show N | add TEXT | edit N [TEXT] | void N | topics | tag list | tag set SERVICE TAG[,TAG] | tag role ROLE +TAG|-TAG|=TAG | mine | hit N[,N]]", nargs: 4, optArgs: true,
+		summary: "The rules ledger: the decisions and tips in force by service and topic. An admin or a global boss reads every row with its scope, sources, history and the answered questions it came from, adds (a row on the same scope and topic as one in force needs --replace N[,N] or --alongside), voids and sets tags; any other role lists and shows only its own group's rows in force that reach it (all, its service, its tags). A role's tags are its service's (tag set) plus +TAG, minus -TAG (tag role; put -- before a -TAG, =TAG goes back to the service's). edit N writes a new row replacing N with its fields, changed by TEXT and the options. mine lists the rows a session hook of this role matches tool calls against; hit counts their hits",
 		options: []option{
 			{"--service", "SERVICE", "list: the rows that reach the roles of SERVICE (the part of a role before /)"},
 			{"--topic", "TOPIC", "list: only TOPIC; add: the row's topic, one of `rules topics`"},
-			{"--kind", "decision|tip", "list: only this kind; add: the row's kind"},
-			{"--all", "", "list: also replaced and void rows (admin or global boss)"},
+			{"--kind", "decision|tip|all", "list: this kind (default decision; all for both); add: the row's kind"},
+			{"--all", "", "list: both kinds, also replaced and void rows (admin or global boss)"},
 			{"--scope", "all|service:NAME[,NAME]|tag:NAME[,NAME]", "add: where the row applies (all is the row's group)"},
 			{"--group", "PREFIX", "add: the group of an all or tag row (default: roles in no group; a service row takes its services' group)"},
-			{"--source", "ID[,ID]|TEXT", "add: answered question IDs (q_…) or a text the row comes from (repeatable)"},
+			{"--source", "ID[,ID]|TEXT", "add, edit: answered question IDs (q_…) or a text the row comes from (repeatable)"},
 			{"--new-topic", "", "add: create --topic when it is not a topic yet"},
 			{"--replace", "N[,N]", "add: replace these rows in force"},
 			{"--alongside", "", "add: stand alongside the rows in force on the same scope and topic"},
-			{"--device", "NAME", "add: the mechanism that enforces the row (it is then never put into sessions)"},
-			{"--idem", "KEY", "add: retry-safe key; adding again with the same key returns the first row"},
+			{"--device", "NAME", "add, edit: the mechanism that enforces the row (it is then never put into sessions)"},
+			{"--when-tool", "TOOL", "add, edit: hit on this tool name (exact, or * patterns such as mcp__*); empty clears it"},
+			{"--when-command", "RE", "add, edit: hit when the command text matches this regular expression; empty clears it"},
+			{"--when-path", "GLOB", "add, edit: hit when the file path matches this glob (*, ** and ?); empty clears it"},
+			{"--idem", "KEY", "add, edit: retry-safe key; adding again with the same key returns the first row"},
 			optJSON, optProfile,
 		}},
 	{name: "mail", args: "ACTION [ID]", nargs: 2, optArgs: true, synopsis: "(ACTION: list | show ID | close ID)",
@@ -430,8 +433,9 @@ func runCLI(args []string) int {
 	code, err := dispatch(args)
 	var ue UsageError
 	if errors.As(err, &ue) {
-		fmt.Fprintln(os.Stderr, progName()+": "+ue.msg)
+		// The reason is the last line, where a reader of a long stderr looks.
 		fmt.Fprintln(os.Stderr, "Run '"+progName()+" --help' for usage.")
+		fmt.Fprintln(os.Stderr, progName()+": "+ue.msg)
 		return ExitUsage
 	}
 	if err != nil {
