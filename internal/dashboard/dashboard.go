@@ -2528,8 +2528,9 @@ async function loadRoles(){
 function drawRole(v,box){
   const id='role:'+v.role,revoke=!v.revoked_at,acts=node('div','','detail-acts');
   acts.append(setButton(revoke?'끊기':'되살리기','',async()=>{
-    if(!confirm(revoke?v.role+' 역할을 끊을까요? 이 토큰으로 접속한 세션이 모두 끊깁니다.':v.role+' 역할을 되살릴까요?'))return;
-    try{await apiSend('POST','roles/'+targetPath(v.role)+(revoke?'/revoke':'/restore'));setNote(id,v.role+(revoke?' 역할을 끊었습니다.':' 역할을 되살렸습니다.'),'ok')}
+    const used=revoke&&v.last_used_at&&Date.now()-new Date(v.last_used_at).getTime()<864e5;
+    if(!confirm(revoke?v.role+' 역할을 끊을까요? 이 토큰으로 접속한 세션이 모두 끊깁니다.'+(used?'\n최근 사용: '+when(v.last_used_at)+(v.last_machine?' · '+v.last_machine:''):''):v.role+' 역할을 되살릴까요?'))return;
+    try{await apiSend('POST','roles/'+targetPath(v.role)+(revoke?'/revoke?force=1':'/restore'));setNote(id,v.role+(revoke?' 역할을 끊었습니다.':' 역할을 되살렸습니다.'),'ok')}
     catch(e){setNote(id,e.message,'err')}
     loadRoles();drawDetail();
   }));

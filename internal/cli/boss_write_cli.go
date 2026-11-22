@@ -8,6 +8,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/sandcorporation/switchboard/internal/wire"
 )
@@ -119,10 +120,14 @@ func rolesWrite(c Config, p parsedArgs) (int, error) {
 	role, jsonOut := p.pos[1], p.bool("--json")
 	switch p.pos[0] {
 	case "revoke":
-		if !confirmed(p, os.Stdout, "revoke "+role+": its token and every session on it stop working") {
+		would := "revoke " + role + ": its token and every session on it stop working"
+		if use := recentRoleUse(c, role); use != "" {
+			would += "; " + use
+		}
+		if !confirmed(p, os.Stdout, would) {
 			return ExitUsage, nil
 		}
-		return bossSend(c, "POST", "roles/"+escapePath(role)+"/revoke", nil, jsonOut, os.Stdout, "revoked "+role)
+		return bossSend(c, "POST", "roles/"+escapePath(role)+"/revoke?force=1", nil, jsonOut, os.Stdout, "revoked "+role)
 	case "restore":
 		return bossSend(c, "POST", "roles/"+escapePath(role)+"/restore", nil, jsonOut, os.Stdout, "restored "+role)
 	}
@@ -288,4 +293,35 @@ func hostAutoAsBoss(c Config, action, ref string, runs int, p parsedArgs, stdout
 	default:
 		return bossSend(c, "POST", path+"/"+action, nil, jsonOut, stdout, "scheduled run "+ref+" "+action)
 	}
+}
+
+// recentRoleUse says when and where role last reported if that was within
+// 24 hours, else "" (also when the list cannot be read: the server still
+// refuses a revoke of a role in use without force).
+func recentRoleUse(c Config, role string) string {
+	b, err := slotCall(c, "GET", "/api/boss/roles", nil)
+	if err != nil {
+		return ""
+	}
+	var out struct {
+		Roles []struct {
+			Role        string `json:"role"`
+			LastUsedAt  string `json:"last_used_at"`
+			LastMachine string `json:"last_machine"`
+		} `json:"roles"`
+	}
+	if json.Unmarshal(b, &out) != nil {
+		return ""
+	}
+	for _, v := range out.Roles {
+		if v.Role != role || v.LastUsedAt == "" {
+			continue
+		}
+		at, err := time.Parse(time.RFC3339, v.LastUsedAt)
+		if err != nil || time.Since(at) > 24*time.Hour {
+			return ""
+		}
+		return "last used " + v.LastUsedAt + " on " + v.LastMachine
+	}
+	return ""
 }

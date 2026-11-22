@@ -38,6 +38,10 @@ type RoleView struct {
 	CreatedAt string  `json:"created_at"`
 	RevokedAt *string `json:"revoked_at"`
 	Group     string  `json:"group"`
+	// LastUsedAt and LastMachine are the latest slot report of the role
+	// (RFC 3339); empty when it never reported.
+	LastUsedAt  string `json:"last_used_at"`
+	LastMachine string `json:"last_machine"`
 }
 
 func (s *Service) ListRoles() ([]RoleView, error) {
@@ -61,7 +65,15 @@ func (s *Service) ListRoles() ([]RoleView, error) {
 		}
 		out = append(out, v)
 	}
-	return out, rows.Err()
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+	for i := range out {
+		if u, ok := LastUseOf(s.db, out[i].Role); ok {
+			out[i].LastUsedAt, out[i].LastMachine = u.At.Format(time.RFC3339), u.Machine
+		}
+	}
+	return out, nil
 }
 
 var errNoRole = errors.New("no such role")
@@ -187,6 +199,9 @@ func (s *Service) AdminRolesAPI(w http.ResponseWriter, r *http.Request, rest str
 	}
 	if !wire.ValidRole(role) {
 		http.Error(w, "invalid role", 400)
+		return
+	}
+	if revoke && RoleExists(s.db, role) && s.refuseInUse(w, r, role) {
 		return
 	}
 	v, err := s.SetRevoked(r.Context(), role, revoke)

@@ -177,15 +177,22 @@ func TestRevokeRefusesRoleAndSlotsUntilRestored(t *testing.T) {
 	if w := adminWrite(s, "GET", "/api/admin/roles/team/worker/revoke", ""); w.Code != 405 {
 		t.Fatalf("GET revoke: %d", w.Code)
 	}
-	w := adminWrite(s, "POST", "/api/admin/roles/team/worker/revoke", "")
+	if w := adminWrite(s, "POST", "/api/admin/roles/team/worker/revoke", ""); w.Code != 409 || !strings.Contains(w.Body.String(), `"last_used_at"`) || !strings.Contains(w.Body.String(), `"machine":"m"`) {
+		t.Fatalf("revoke of a role in use without force: %d %s", w.Code, w.Body)
+	}
+	w := adminWrite(s, "POST", "/api/admin/roles/team/worker/revoke?force=1", "")
 	var v identity.RoleView
 	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &v) != nil || v.Role != "team/worker" || v.RevokedAt == nil {
 		t.Fatalf("revoke: %d %s", w.Code, w.Body)
 	}
 	for _, name := range []string{"team/worker", "team/worker-1", "team/worker-2", "team/worker-7"} {
-		if w := callAs(s, "GET", "/api/messages", workerToken, name, nil); w.Code != 401 {
-			t.Fatalf("%s after revoke: %d", name, w.Code)
+		w := callAs(s, "GET", "/api/messages", workerToken, name, nil)
+		if w.Code != 401 || !strings.HasPrefix(w.Body.String(), "role revoked at "+strings.TrimSuffix((*v.RevokedAt)[:19], "Z")) || strings.Contains(w.Body.String(), "team/worker") {
+			t.Fatalf("%s after revoke: %d %s", name, w.Code, w.Body)
 		}
+	}
+	if w := callAs(s, "GET", "/api/messages", "wrong-token", "team/worker", nil); w.Code != 401 || strings.TrimSpace(w.Body.String()) != "unauthorized" {
+		t.Fatalf("wrong token: %d %q", w.Code, w.Body)
 	}
 	if w := callAs(s, "POST", "/api/slots/heartbeat", workerToken, "team/worker", ident("m", "/one")); w.Code != 401 {
 		t.Fatalf("heartbeat after revoke: %d", w.Code)
