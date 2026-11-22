@@ -27,12 +27,14 @@ type AutoMailTo struct {
 	Base, Slot, Machine, Directory string
 }
 
-// autoMailTo is the AutoMailTo of a run of rec: rec's live slot when its
-// folder's slot is live, else rec's machine and folder.
+// autoMailTo is the AutoMailTo of a run of rec: rec's own slot (recordSlot)
+// when it is live, else the folder's live slot (the one heard from last),
+// else rec's machine and folder.
 func (h *Hub) autoMailTo(rec wire.HostedSession) AutoMailTo {
 	to := AutoMailTo{Base: rec.Base}
 	h.mu.Lock()
 	slotOf := h.slotOf
+	bound := h.boundLocked(rec.ID)
 	h.mu.Unlock()
 	if slotOf == nil {
 		return to
@@ -42,10 +44,26 @@ func (h *Hub) autoMailTo(rec wire.HostedSession) AutoMailTo {
 		return to
 	}
 	to.Machine, to.Directory = machines[rec.Node], rec.Directory
-	if sl, ok, err := slotOf(rec.Base, to.Machine, rec.Directory); err == nil && ok && sl.Live {
-		to.Slot = sl.Role
+	if slots, err := slotOf(rec.Base, to.Machine, rec.Directory); err == nil {
+		if sl, ok := recordSlot(slots, rec, bound); ok && sl.Live {
+			to.Slot = sl.Role
+		} else if sl, ok := liveFolderSlot(slots); ok {
+			to.Slot = sl.Role
+		}
 	}
 	return to
+}
+
+// liveFolderSlot is the leased slot of slots heard from last.
+func liveFolderSlot(slots []Slot) (Slot, bool) {
+	var v Slot
+	ok := false
+	for _, sl := range slots {
+		if sl.Live && (!ok || sl.Seen.After(v.Seen)) {
+			v, ok = sl, true
+		}
+	}
+	return v, ok
 }
 
 // SetAutoMail installs the mail function of scheduled runs. Without it a

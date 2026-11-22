@@ -145,31 +145,28 @@ func (s *Service) ActiveSlots(base string) ([]wire.SlotView, error) {
 	return out, rows.Err()
 }
 
-// FolderSlot is the slot of base held at machine in folder: the identity
-// (machine, folder) itself or a session-marked form "<folder> #<8 hex>" of
-// it (mail.Folder). Of several, a leased one wins over an ended one, then
-// the one heard from last. It only reads; ok is false when there is none.
-func (s *Service) FolderSlot(base, machine, folder string) (v wire.SlotView, ok bool, err error) {
-	rows, err := s.db.Query(`SELECT `+slotCols()+` FROM slots WHERE base=? AND machine=? AND substr(directory,1,length(?))=?`, base, machine, folder, folder)
+// FolderSlots are the slots of base held at machine in folder: the identity
+// (machine, folder) itself and every session-marked form "<folder> #<8 hex>"
+// of it (mail.Folder), leased or not, in number order. Several sessions of
+// one role can share a folder, so the caller picks by conversation (#442).
+// It only reads.
+func (s *Service) FolderSlots(base, machine, folder string) ([]wire.SlotView, error) {
+	rows, err := s.db.Query(`SELECT `+slotCols()+` FROM slots WHERE base=? AND machine=? AND substr(directory,1,length(?))=? ORDER BY number`, base, machine, folder, folder)
 	if err != nil {
-		return v, false, err
+		return nil, err
 	}
 	defer rows.Close()
-	now := s.now()
+	var out []wire.SlotView
 	for rows.Next() {
 		c, err := scanSlot(rows)
 		if err != nil {
-			return v, false, err
+			return nil, err
 		}
-		if mail.Folder(c.Directory) != folder {
-			continue
-		}
-		cLive, vLive := c.LeaseExpiresAt.After(now), v.LeaseExpiresAt.After(now)
-		if !ok || cLive && !vLive || cLive == vLive && c.LeaseExpiresAt.After(v.LeaseExpiresAt) {
-			v, ok = c, true
+		if mail.Folder(c.Directory) == folder {
+			out = append(out, c)
 		}
 	}
-	return v, ok, rows.Err()
+	return out, rows.Err()
 }
 
 // inTx runs f in one transaction. The pool has a single connection, so slot

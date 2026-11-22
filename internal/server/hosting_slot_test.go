@@ -246,6 +246,7 @@ func TestHostedSessionFollowsTheConversation(t *testing.T) {
 	r := newHostedRig(t, s, url, clock, "team/worker", workerToken, "/work/app")
 	first := r.record().AgentSessionID
 	g := r.plugin("register", "team/worker", "/work/app", first)
+	r.sync() // binds the run to the slot reporting its conversation (#442)
 	launches, stops := len(r.fake.Launches()), len(r.fake.Stops())
 
 	// Not a conversation id: ignored.
@@ -274,6 +275,7 @@ func TestHostedSessionFollowsTheConversation(t *testing.T) {
 		t.Fatalf("relaunch after clear: %q", l)
 	}
 	g = r.plugin("register", "team/worker", "/work/app", second)
+	r.sync() // the new run binds anew
 
 	// The plugin's session-marked directory matches the folder.
 	third := "33333333-3333-4333-8333-333333333333"
@@ -308,7 +310,86 @@ func TestHostedSessionFollowsTheConversation(t *testing.T) {
 	if got := r.record().AgentSessionID; got != renewed.AgentSessionID {
 		t.Fatalf("followed the previous process's slot back to %s", got)
 	}
-	if sl := r.listed().Slot; sl == nil || sl.SessionID != third {
+	// Nor shown as the record's (#442): no slot reports its conversation yet.
+	if sl := r.listed().Slot; sl != nil {
 		t.Fatalf("slot %+v", sl)
+	}
+}
+
+// A session of the same role launched by hand in the same folder (#442):
+// it holds team/worker-1 and keeps heartbeating, the hosted session's
+// plugin registers the session-marked folder and gets team/worker-2. The
+// record never takes the other session's conversation and lists its own
+// slot; its own /clear is still followed.
+func TestHostedSessionIgnoresAnotherSessionInItsFolder(t *testing.T) {
+	t.Parallel()
+	s, url, clock := hostedSlotServer(t)
+	r := newHostedRig(t, s, url, clock, "team/worker", workerToken, "/work/app")
+	own := r.record().AgentSessionID
+	other := "11111111-1111-4111-8111-111111111111"
+	byHand := r.plugin("register", "team/worker", "/work/app", other)
+	r.sync()
+	if got := r.record().AgentSessionID; got != own {
+		t.Fatalf("took the other session's conversation before its own registered: %s", got)
+	}
+	if sl := r.listed().Slot; sl != nil {
+		t.Fatalf("listed the other session's slot %+v", sl)
+	}
+	g := r.plugin("register", "team/worker", "/work/app #"+own[:8], own)
+	if g.Role != "team/worker-2" || byHand.Role != "team/worker-1" {
+		t.Fatalf("roles %s %s", byHand.Role, g.Role)
+	}
+	for i := 0; i < 3; i++ {
+		clock.add(time.Second)
+		r.plugin("heartbeat", byHand.Role, "/work/app", other)
+		r.plugin("heartbeat", g.Role, g.Directory, own)
+		r.sync()
+		if got := r.record().AgentSessionID; got != own {
+			t.Fatalf("followed the other session's slot to %s", got)
+		}
+	}
+	if h := r.listed(); h.Slot == nil || h.Slot.Role != "team/worker-2" || h.Slot.SessionID != own || h.Presence != wire.PresenceOnline {
+		t.Fatalf("listed slot %+v presence %q", h.Slot, h.Presence)
+	}
+
+	// Its own /clear moves it; the other session's heartbeat does not.
+	next := "55555555-5555-4555-8555-555555555555"
+	g = r.clear(g, "/work/app #"+next[:8], next)
+	r.plugin("heartbeat", byHand.Role, "/work/app", other)
+	r.sync()
+	if got := r.record().AgentSessionID; got != next {
+		t.Fatalf("after its own clear: %s", got)
+	}
+	if h := r.listed(); h.Slot == nil || h.Slot.Role != g.Role || h.Slot.SessionID != next {
+		t.Fatalf("listed slot %+v", h.Slot)
+	}
+}
+
+// Two processes that register the same plain folder share one slot row,
+// whose session id alternates with each heartbeat (#442). The hosted
+// record binds when the row reports its own conversation and never takes
+// the other session's, seen in the folder before.
+func TestHostedSessionIgnoresASharedSlotRow(t *testing.T) {
+	t.Parallel()
+	s, url, clock := hostedSlotServer(t)
+	r := newHostedRig(t, s, url, clock, "team/worker", workerToken, "/work/app")
+	own := r.record().AgentSessionID
+	other := "11111111-1111-4111-8111-111111111111"
+	byHand := r.plugin("register", "team/worker", "/work/app", other)
+	r.sync()
+	g := r.plugin("register", "team/worker", "/work/app", own)
+	if g.Role != byHand.Role {
+		t.Fatalf("roles %s %s", byHand.Role, g.Role)
+	}
+	r.sync()
+	for i := 0; i < 3; i++ {
+		clock.add(time.Second)
+		r.plugin("heartbeat", byHand.Role, "/work/app", other)
+		r.sync()
+		if got := r.record().AgentSessionID; got != own {
+			t.Fatalf("followed the shared row to the other session's %s", got)
+		}
+		r.plugin("heartbeat", g.Role, "/work/app", own)
+		r.sync()
 	}
 }

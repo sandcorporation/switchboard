@@ -660,7 +660,9 @@ func TestQuestionSingleSourceOfTruth_OtherLabelInSameFolderNeverGetsAnswer(t *te
 func (h *sotHarness) hostedAsker() (*hostedRig, wire.SlotGrant) {
 	h.t.Helper()
 	r := newHostedRig(h.t, h.s, h.url, h.clock, sotAsker, sotAskerToken, "/work/q")
-	return r, r.plugin("register", sotAsker, "/work/q", r.record().AgentSessionID)
+	g := r.plugin("register", sotAsker, "/work/q", r.record().AgentSessionID)
+	r.sync() // binds the run to its slot (#442)
+	return r, g
 }
 
 // heartbeatsPastLease keeps the hosted asker's slot g live for three half
