@@ -165,6 +165,11 @@ func (s *Service) list(w http.ResponseWriter, r *http.Request, p identity.Princi
 	writeJSON(w, http.StatusOK, out)
 }
 
+// Jobs lists jobs newest first (at most 500), of role and in state when
+// given (StateLive: not ended): the dashboard's jobs tab and a boss role's
+// jobs view (#397).
+func (s *Service) Jobs(role, state string) ([]wire.Job, error) { return s.query(role, state) }
+
 // StateLive is the list filter for every job not yet ended.
 const StateLive = "live"
 

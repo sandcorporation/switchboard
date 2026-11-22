@@ -89,9 +89,19 @@ func hostAsRole(action, id string, add wire.HostedSessionCreate, jsonOut bool, s
 	case "remove":
 		method, url = http.MethodDelete, url+"/"+id
 	}
-	b, err := roleHostCall(c, method, url, body)
-	if err != nil {
-		return 0, err
+	var b []byte
+	if action == "list" {
+		// A boss role lists every record in view (#397); a role that is
+		// none, or a server without the view, lists those under it.
+		var refused bool
+		if b, refused, err = hostBossCall(c, "terminals"); err != nil && !refused {
+			return 0, err
+		}
+	}
+	if b == nil {
+		if b, err = roleHostCall(c, method, url, body); err != nil {
+			return 0, err
+		}
 	}
 	if jsonOut {
 		_, err = stdout.Write(b)
@@ -120,12 +130,22 @@ func hostAsRole(action, id string, add wire.HostedSessionCreate, jsonOut bool, s
 	return 0, nil
 }
 
-// hostAutoAsRole asks the server for scheduled runs with a role token; the
-// server refuses them (they are the admin's) and the refusal is the error.
-func hostAutoAsRole() (int, error) {
+// hostAutoAsRole runs `host auto ACTION` with a role token: list is a boss
+// role's view (#397); the server refuses every other action (they are the
+// admin's) and the refusal is the error.
+func hostAutoAsRole(action string, jsonOut bool, stdout io.Writer) (int, error) {
 	c, err := loadConfig()
 	if err != nil {
 		return 0, fmt.Errorf("host auto: %w (or, on the host machine, set DB_PATH to name this instance's own database)", err)
+	}
+	if action == "list" {
+		// A role that is no boss (or a server without the view) gets the
+		// server's refusal below, as before.
+		if b, refused, err := hostBossCall(c, "autos"); err == nil {
+			return printBossAutos(b, jsonOut, stdout)
+		} else if !refused {
+			return 0, err
+		}
 	}
 	_, err = roleHostCall(c, http.MethodGet, strings.TrimRight(c.Endpoint, "/")+"/api/host/auto", nil)
 	if err == nil {

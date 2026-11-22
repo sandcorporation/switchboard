@@ -356,6 +356,10 @@ func (s *Server) serveAPI(w http.ResponseWriter, r *http.Request) {
 		s.hostingHub().RoleHostAPI(w, r, caller, strings.TrimPrefix(path, "host/"))
 		return
 	}
+	if view, ok := strings.CutPrefix(path, "boss/"); ok {
+		s.bossAPI(w, r, who, view)
+		return
+	}
 	if path == "permissions" || strings.HasPrefix(path, "permissions/") {
 		s.asks().PermissionAPI(w, r, who, strings.TrimPrefix(strings.TrimPrefix(path, "permissions"), "/"))
 		return

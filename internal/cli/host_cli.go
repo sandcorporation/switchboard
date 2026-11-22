@@ -83,11 +83,12 @@ func cliHost(p parsedArgs, stdout io.Writer) (int, error) {
 		if len(p.extra) > 0 {
 			return 0, usagef("host limit: arguments after -- are for host add")
 		}
-	case "list", "start", "stop", "restart", "new-conversation", "remove":
-		if action == "list" && id != "" {
-			return 0, usagef("host list: unexpected argument %q", id)
+	case "list", "nodes", "start", "stop", "restart", "new-conversation", "remove":
+		listing := action == "list" || action == "nodes"
+		if listing && id != "" {
+			return 0, usagef("host %s: unexpected argument %q", action, id)
 		}
-		if action != "list" && id == "" {
+		if !listing && id == "" {
 			return 0, usagef("host %s requires ID", action)
 		}
 		for _, o := range addOnly {
@@ -99,12 +100,17 @@ func cliHost(p parsedArgs, stdout io.Writer) (int, error) {
 			return 0, usagef("host %s: arguments after -- are for host add", action)
 		}
 	default:
-		return 0, usagef("host: unknown action %q (add, list, set, start, stop, restart, new-conversation, remove, limit, grant, revoke-grant)", action)
+		return 0, usagef("host: unknown action %q (add, list, nodes, set, start, stop, restart, new-conversation, remove, limit, grant, revoke-grant)", action)
 	}
 	add := wire.HostedSessionCreate{
 		Node: p.values["--node"], Base: p.values["--base"], Profile: p.values["--profile"], Directory: p.values["--dir"],
 		Label: p.values["--label"], Parent: p.values["--parent"], Restart: p.values["--restart"], Class: p.values["--class"], Args: p.extra,
 		SkipPermissions: skip,
+	}
+	if action == "nodes" {
+		// The node list is a boss role's view through the server, with or
+		// without DB_PATH (#397).
+		return hostNodes(p.bool("--json"), stdout)
 	}
 	if !adminHost() {
 		return hostAsRole(action, id, add, p.bool("--json"), stdout)
@@ -197,7 +203,7 @@ func cliHostAuto(p parsedArgs, stdout io.Writer) (int, error) {
 		}
 	}
 	if !adminHost() {
-		return hostAutoAsRole()
+		return hostAutoAsRole(action, p.bool("--json"), stdout)
 	}
 	if hostAuto == nil {
 		return 0, usagef("host auto: not available in this binary")

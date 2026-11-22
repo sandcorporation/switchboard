@@ -91,6 +91,16 @@ switchboard wait --timeout 1800
 switchboard events --after 41 --timeout 25
 ```
 
+Boss roles read the dashboard's views with their own token (read-only; writes stay on the dashboard). Each takes `--json` (the server's JSON unchanged) and `--profile`:
+
+| Dashboard | CLI |
+|---|---|
+| 메일 | `switchboard mail list [--open] [--from ROLE] [--to ROLE] [--since 24h\|7d] [--limit N]` (newest first, one line each), `switchboard mail show ID` (the state is left as it is; another role's mail records the view, as `read` does) |
+| 작업 | `switchboard jobs [--state live\|STATE]` (every role's jobs and schedules in view, commands and prompts left out; `job list` is your own) |
+| 터미널 | `switchboard host list`, `switchboard host nodes`, `switchboard host auto list` without `DB_PATH` (a role that is no boss lists the records under its grant, as before) |
+| 설정 | `switchboard settings` (question settings, recent refusals; for a global boss the server summary, the admin sign-in mode and which secret settings are set, by name only) |
+| 역할 | `switchboard roles` (roles with group and revoked state, leased slots, groups) |
+
 `switchboard inbox` prints:
 
 ```text
@@ -300,6 +310,7 @@ All `/api/*` routes except registration require `Authorization: Bearer <role-tok
   | Questions, decisions, permissions | own base; a global boss also those of internal askers | own base; the group's `boss_role` also those of its group |
   | Who answers (questions, permissions; with nobody, permissions get 409 and questions go to the dashboard) | global bosses | the group's `boss_role` only; a global boss gets the group's questions only as a watcher in question settings |
   | Metrics, progress, alerts | global bosses | 403 (a group boss too) |
+  | Boss views (`GET /api/boss/…`: mail, jobs, roles, settings, terminals) | global bosses: every role; the server summary and secret setting names in settings | the group's `boss_role`: mail with a sender or recipient in its group, and its group's jobs, roles, question settings, refusals, records, their nodes and scheduled runs; no server summary; other roles 403 |
   | Reports (`POST`, `GET /api/reports`) | global bosses | the group's `boss_role`; linked mail must have a sender or recipient in its group |
 - **Invites and join.** A global boss role (`POST /api/invites`, else 403) or a signed-in admin (`POST /api/admin/invites`, write guard) creates a one-time code with `{prefix, role?, ttl?}`: `ttl` is a Go duration or whole days (`7d`), default `72h`, at most `30d`; `role`, when given, pins the invite to that role under `<prefix>/`. The answer (201) is `{id, prefix, role, expires_at, created_by, created_at, code, group_created}`; the code (128 random bits, base32 with dashes) appears only there and is stored as a hash. When the prefix has no group, the group is created with `boss_role` `<prefix>/boss`; if roles already exist under `<prefix>/` this is refused with 409 (they would become group roles and lose access), and a revoked group also gets 409. `GET /api/admin/invites` lists open invites; `DELETE /api/admin/invites/{id}` cancels one (404 when not open). `POST /api/join {code, role?, credential}` needs nothing but the code: the role defaults to the invite's role and must equal it when set, otherwise it must be under the invite's prefix (403); the credential needs 24+ characters and is stored hashed; 409 when the role exists. A code works once: unknown, used, cancelled and expired codes all get the same 410, and those count per client IP like failed logins (429 after 5 in 15 minutes). The answer is `{role, group, boss_role, status: "joined"}`. `GET /api/admin/collaborators` answers each group with `roles` (`role, created_at, revoked_at, online, last_seen`) and open `invites`; the dashboard 협업자 tab shows it, creates invites (the code shown once), cancels invites and revokes roles and groups, each after a confirm.
 
