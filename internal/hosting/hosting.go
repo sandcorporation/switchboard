@@ -541,7 +541,7 @@ func (s *Service) Delete(id string) (wire.HostedSession, error) {
 
 // Nodes lists the node registry, by name.
 func (s *Service) Nodes() ([]wire.NodeView, error) {
-	rows, err := s.db.Query(`SELECT name,machine,os,version,created_at,last_seen_at,revoked_at,adapters,default_adapter FROM nodes ORDER BY name`)
+	rows, err := s.db.Query(`SELECT name,machine,os,version,created_at,last_seen_at,revoked_at,adapters,default_adapter,agent_usage FROM nodes ORDER BY name`)
 	if err != nil {
 		return nil, err
 	}
@@ -550,11 +550,14 @@ func (s *Service) Nodes() ([]wire.NodeView, error) {
 	for rows.Next() {
 		var n wire.NodeView
 		var seen, revoked sql.NullInt64
-		var adapters string
-		if err := rows.Scan(&n.Name, &n.Machine, &n.OS, &n.Version, &n.CreatedAt, &seen, &revoked, &adapters, &n.DefaultAdapter); err != nil {
+		var adapters, usage string
+		if err := rows.Scan(&n.Name, &n.Machine, &n.OS, &n.Version, &n.CreatedAt, &seen, &revoked, &adapters, &n.DefaultAdapter, &usage); err != nil {
 			return nil, err
 		}
 		n.Adapters = decodeList(adapters)
+		if usage != "" {
+			_ = json.Unmarshal([]byte(usage), &n.Usage)
+		}
 		if seen.Valid {
 			n.LastSeenAt = &seen.Int64
 		}

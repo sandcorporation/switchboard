@@ -134,5 +134,5 @@ func (Adapter) DetectLimit(rows []string, at time.Time) (agent.LimitHit, bool) {
 // permission flags and settings key. --session-id and --resume are not here:
 // switchboard's own CLI has flags of those names.
 func (Adapter) Words() []string {
-	return []string{Name, "--dangerously-skip-permissions", "skipDangerousModePermissionPrompt", "--permission-mode", "AI_AGENT"}
+	return []string{Name, "--dangerously-skip-permissions", "skipDangerousModePermissionPrompt", "--permission-mode", "AI_AGENT", "rate_limits", configDirEnv}
 }

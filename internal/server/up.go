@@ -267,6 +267,7 @@ func prepareNode(v, name, tokenFile, endpoint, backendDir string) (*nodePart, er
 	}
 	cfg.Endpoint = endpoint
 	cfg.Term = info.term
+	cfg.Switchboard, cfg.StatusDir = statusPaths(backendDir, tokenFile)
 	if m := cfg.DroppedMarkers(); len(m) > 0 {
 		log.Printf("node: agent session markers not passed to hosted sessions: %s", strings.Join(m, ", "))
 	}
@@ -275,6 +276,31 @@ func prepareNode(v, name, tokenFile, endpoint, backendDir string) (*nodePart, er
 	}
 	return &nodePart{cfg: cfg, backend: b, backendName: info.name, socket: info.socket, endpoint: endpoint,
 		hello: wire.NodeHello{Name: name, Machine: cfg.Machine, OS: runtime.GOOS, Version: v, Backend: info.name, Max: cfg.Max, Adapters: cfg.InstalledAdapters(), DefaultAdapter: cfg.DefaultAdapterName()}}, nil
+}
+
+// NodeStatusLineCLI is the binary's `node statusline` (#434).
+func NodeStatusLineCLI(adapter, out string) {
+	node.StatusLine(adapter, out, node.StatusIO{})
+}
+
+// statusPaths are this binary and the directory its `node statusline`
+// leaves usage reports in (#434): status/<instance> under the backend's
+// directory, else the user cache directory. Empty when either is unknown:
+// sessions then run without it.
+func statusPaths(backendDir, tokenFile string) (exe, dir string) {
+	exe, err := os.Executable()
+	if err != nil {
+		return "", ""
+	}
+	base := backendDir
+	if base == "" {
+		cache, err := os.UserCacheDir()
+		if err != nil {
+			return "", ""
+		}
+		base = filepath.Join(cache, config.ConfigDirName)
+	}
+	return exe, filepath.Join(base, "status", instanceFor(tokenFile))
 }
 
 // backendOptions is what the node's terminal backend is built from.

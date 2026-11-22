@@ -52,7 +52,8 @@ func binaryCommands() cli.Commands {
 		Node: func(host, tokenFile, joinCode string, restartSessions, allowChecks bool) error {
 			return Node(version, host, tokenFile, joinCode, restartSessions, allowChecks)
 		},
-		NodeInvite: NodeInviteCLI,
+		NodeInvite:     NodeInviteCLI,
+		NodeStatusLine: NodeStatusLineCLI,
 	}
 }
 

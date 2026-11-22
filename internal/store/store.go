@@ -877,6 +877,9 @@ func migrateHostingAdapters(db *sql.DB) error {
 		{"nodes", "adapters", `TEXT NOT NULL DEFAULT ''`},
 		{"nodes", "default_adapter", `TEXT NOT NULL DEFAULT ''`},
 		{"host_grants", "adapters", `TEXT NOT NULL DEFAULT ''`},
+		// nodes.agent_usage: the usage of the node's agent accounts, JSON
+		// of the last state frame's (#434).
+		{"nodes", "agent_usage", `TEXT NOT NULL DEFAULT ''`},
 	})
 }
 

@@ -322,12 +322,14 @@ var commands = []command{
 			{"--port", "PORT", "loopback port to listen on"},
 			{"--node", "NAME", "name of this machine's node, as host add --node names it (default local)"},
 		}},
-	{name: "node", args: "[invite NAME]", nargs: 2, optArgs: true,
+	{name: "node", args: "[invite NAME | statusline]", nargs: 2, optArgs: true,
 		summary: "Run a node for this machine attached to a hosting instance (on loopback, or at its remote listener SWITCHBOARD_HOSTING_REMOTE_LISTEN); node invite NAME prints a one-time join code (15 min) from this instance's database (DB_PATH)",
 		options: []option{
 			{"--host", "URL", "the instance's URL, e.g. http://127.0.0.1:8090 or http://100.64.0.10:8091"}, // leak-guard:allow
 			{"--join", "CODE", "exchange a code from node invite for this node's token, saved to --token-file"},
 			{"--token-file", "PATH", "node token file (default node.token in the config directory; up writes DIR/node.token)"},
+			{"--adapter", "NAME", "statusline: the session's agent adapter (the node sets it as the agent's status command)"},
+			{"--out", "FILE", "statusline: where the usage report goes"},
 			{"--restart-sessions", "", "stop every hosted session on this machine at start and relaunch each with resume"},
 			{"--allow-checks", "", "run the prechecks of scheduled runs (host auto add --check) on this machine (default: refuse them; up's own node: SWITCHBOARD_HOSTING_ALLOW_CHECKS=on)"},
 		}},
@@ -414,6 +416,10 @@ type NodeFunc func(hostURL, tokenFile, joinCode string, restartSessions, allowCh
 // NodeInviteFunc runs `node invite NAME` against the server's database.
 type NodeInviteFunc func(name string, stdout io.Writer) (int, error)
 
+// NodeStatusLineFunc runs `node statusline --adapter NAME --out FILE`: it
+// reads the agent's status on stdin and prints the status line.
+type NodeStatusLineFunc func(adapter, out string)
+
 // Commands are the commands the binary supplies because they run the server
 // or open its database.
 type Commands struct {
@@ -425,6 +431,8 @@ type Commands struct {
 	Up         UpFunc
 	Node       NodeFunc
 	NodeInvite NodeInviteFunc
+	// NodeStatusLine is `node statusline` (#434).
+	NodeStatusLine NodeStatusLineFunc
 }
 
 var (

@@ -37,6 +37,12 @@ type Config struct {
 	Endpoint string
 	// History is the scrollback lines kept per session.
 	History int
+	// Switchboard is this binary's path and StatusDir where its
+	// `node statusline` leaves each session's usage report (#434). With
+	// both set, a session of an adapter that reports usage runs it as the
+	// agent's status command; empty, none does.
+	Switchboard string
+	StatusDir   string
 	// Max caps the sessions running at once (0: config.DefaultHostingMax);
 	// records beyond it wait, oldest-created first (#190).
 	Max int
@@ -139,9 +145,15 @@ func (c Config) Argv(r Record, launched bool) []string {
 		a, exe = agent.Default(), c.Agent
 	}
 	argv := append([]string{exe}, a.LaunchArgs(r.AgentSessionID, launched)...)
-	if r.SkipPermissions && agent.ExecName(exe) == a.Executable() {
-		argv = append(argv, a.PermissionSkipArgs(r.Args)...)
+	own := agent.ExecName(exe) == a.Executable()
+	var added []string
+	if r.SkipPermissions && own {
+		added = a.PermissionSkipArgs(r.Args)
 	}
+	if rep, ok := a.(agent.Reporter); ok && own && c.Switchboard != "" && c.StatusDir != "" {
+		added = rep.ReportArgs(added, r.Args, c.statusCommand(a.Name(), r.ID))
+	}
+	argv = append(argv, added...)
 	for _, arg := range r.Args {
 		if agent.RefusedArg(a, arg) {
 			continue
