@@ -77,6 +77,8 @@ func Run(o RunOptions, version string) error {
 		logf("keeper: shut down")
 		return nil
 	case err := <-errc:
+		// Logged here: the keeper's stderr goes nowhere (detached).
+		logf("keeper: serve: %v; shutting down", err)
 		k.Shutdown(DefaultGrace)
 		return err
 	}

@@ -132,6 +132,7 @@ func (k *Keeper) Serve(l net.Listener) error {
 	}
 	k.lns[l] = struct{}{}
 	k.mu.Unlock()
+	failed := 0
 	for {
 		c, err := l.Accept()
 		if err != nil {
@@ -146,8 +147,19 @@ func (k *Keeper) Serve(l net.Listener) error {
 				continue
 			}
 			k.mu.Unlock()
-			return err // l stays registered: Shutdown closes it
+			// One failed connect (a client that went away while the pipe
+			// connected it, #464) does not end the keeper and its
+			// sessions: the listener takes the next one. Only a closed
+			// listener or one failing every time does.
+			failed++
+			if errors.Is(err, net.ErrClosed) || failed >= AcceptRetries {
+				return err // l stays registered: Shutdown closes it
+			}
+			k.o.Logf("keeper: accept: %v; retrying", err)
+			time.Sleep(acceptPause)
+			continue
 		}
+		failed = 0
 		go k.serveConn(c)
 	}
 }
@@ -491,6 +503,12 @@ func (k *Keeper) Shutdown(grace time.Duration) {
 		close(k.done)
 	})
 }
+
+// AcceptRetries is how many accepts in a row may fail before Serve gives
+// up; acceptPause is the wait between them.
+const AcceptRetries = 50
+
+var acceptPause = 100 * time.Millisecond
 
 // DefaultIdleLimit is how long a keeper with no sessions and no connection
 // waits before it ends on its own.

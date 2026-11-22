@@ -951,6 +951,9 @@ func TestClientStartsAKeeperThatWentAway(t *testing.T) {
 		current = newKeeper(t, "v1")
 		return nil
 	}
+	every := conpty.ReviveEvery
+	conpty.ReviveEvery = 0
+	t.Cleanup(func() { conpty.ReviveEvery = every })
 	var logged []string
 	c, how, err := conpty.Connect(ctx(t), conpty.ConnectOptions{Dial: dial, Version: "v1", Start: start, Grace: time.Second, Wait: 2 * time.Second,
 		Logf: func(f string, a ...any) { logged = append(logged, fmt.Sprintf(f, a...)) }})
@@ -980,5 +983,73 @@ func TestClientStartsAKeeperThatWentAway(t *testing.T) {
 	err = c.Launch(ctx(t), shell("sb-b"))
 	if err == nil || !strings.Contains(err.Error(), "restart") || !strings.Contains(err.Error(), "exe not found") {
 		t.Fatalf("launch with no keeper and a failing start: %v", err)
+	}
+
+	// Starts are spaced: within ReviveEvery of the last one a request
+	// fails at once without starting.
+	conpty.ReviveEvery = time.Hour
+	mu.Lock()
+	startErr = nil
+	mu.Unlock()
+	err = c.Launch(ctx(t), shell("sb-b"))
+	if err == nil || !strings.Contains(err.Error(), "last tried") || starts != 2 {
+		t.Fatalf("launch within the restart interval: %v, %d starts", err, starts)
+	}
+}
+
+// flakyListener fails the first n accepts, then serves conns.
+type flakyListener struct {
+	net.Listener
+	mu   sync.Mutex
+	fail int
+}
+
+func (l *flakyListener) Accept() (net.Conn, error) {
+	l.mu.Lock()
+	if l.fail > 0 {
+		l.fail--
+		l.mu.Unlock()
+		return nil, errors.New("pipe: client went away")
+	}
+	l.mu.Unlock()
+	return l.Listener.Accept()
+}
+
+// TestServeOutlivesAFailedAccept: a failed connect does not end the keeper
+// (it did, taking its sessions, #464); a listener failing every time does.
+func TestServeOutlivesAFailedAccept(t *testing.T) {
+	old := conpty.SetAcceptPause(time.Millisecond)
+	t.Cleanup(func() { conpty.SetAcceptPause(old) })
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	k := conpty.NewKeeper(conpty.KeeperOptions{Spawn: newSpawner().spawn, Version: "v1", Logf: t.Logf})
+	t.Cleanup(func() { k.Shutdown(time.Second) })
+	served := make(chan error, 1)
+	go func() { served <- k.Serve(&flakyListener{Listener: l, fail: 3}) }()
+	c := conpty.NewClient(func(ctx context.Context) (net.Conn, error) {
+		var d net.Dialer
+		return d.DialContext(ctx, "tcp", l.Addr().String())
+	})
+	t.Cleanup(func() { _ = c.Close() })
+	if _, err := c.Version(ctx(t)); err != nil {
+		t.Fatalf("version after failed accepts: %v", err)
+	}
+	select {
+	case err := <-served:
+		t.Fatalf("Serve returned after failed accepts: %v", err)
+	default:
+	}
+
+	k2 := conpty.NewKeeper(conpty.KeeperOptions{Spawn: newSpawner().spawn, Version: "v1", Logf: t.Logf})
+	t.Cleanup(func() { k2.Shutdown(time.Second) })
+	l2, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = l2.Close() })
+	if err := k2.Serve(&flakyListener{Listener: l2, fail: conpty.AcceptRetries}); err == nil {
+		t.Fatal("Serve kept going on a listener that always fails")
 	}
 }
