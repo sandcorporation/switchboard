@@ -12,7 +12,7 @@ import (
 	"github.com/sandcorporation/switchboard/internal/wire"
 )
 
-// cliReportRead is `report list [--open]` and `report show R<ID>` (GET
+// cliReportRead is `report list [--open]` and `report show ID` (GET
 // /api/reports, boss roles only; a group's boss sees its own group's
 // reports). --json prints the server's JSON unchanged (for `list` the list
 // only; a script reads each report's threads with `show`).
@@ -25,7 +25,7 @@ func cliReportRead(c Config, p parsedArgs, out io.Writer) (int, error) {
 		return reportList(c, p, out)
 	case "show":
 		if len(p.pos) != 2 {
-			return 0, usagef("report show needs a report ID (R<ID>)")
+			return 0, usagef("report show needs a report ID")
 		}
 		id, err := strconv.ParseInt(strings.TrimPrefix(p.pos[1], "R"), 10, 64)
 		if err != nil || id <= 0 {
@@ -121,9 +121,9 @@ func reportShow(c Config, id int64, p parsedArgs, out io.Writer) (int, error) {
 	return ExitOK, nil
 }
 
-// reportLine is `R<id> <status> 열린 지시 a/b <created> <title>`.
+// reportLine is `<id> <status> 열린 지시 a/b <created> <title>`.
 func reportLine(rp wire.Report) string {
-	return fmt.Sprintf("R%d %s 열린 지시 %d/%d %s %s", rp.ID, rp.Status, rp.OpenDirectives, rp.Directives, reportTime(rp.CreatedAt), rp.Title)
+	return fmt.Sprintf("%d %s 열린 지시 %d/%d %s %s", rp.ID, rp.Status, rp.OpenDirectives, rp.Directives, reportTime(rp.CreatedAt), rp.Title)
 }
 
 // threadLine is `#<id> <sender> → <recipient> <sent> <recipient's status>

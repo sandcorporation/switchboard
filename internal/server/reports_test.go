@@ -352,21 +352,21 @@ func TestReportCLI(t *testing.T) {
 	h.configure(nil, "a")
 	list := h.mustRun(nil, "report", "list")
 	lines := strings.Split(list, "\n")
-	if len(lines) != 2 || !strings.HasPrefix(lines[0], "R2 open 열린 지시 3/3 ") || !strings.HasSuffix(lines[0], " Linked") || !strings.HasPrefix(lines[1], "R1 done 열린 지시 0/0 ") {
+	if len(lines) != 2 || !strings.HasPrefix(lines[0], "2 open 열린 지시 3/3 ") || !strings.HasSuffix(lines[0], " Linked") || !strings.HasPrefix(lines[1], "1 done 열린 지시 0/0 ") {
 		t.Fatalf("list:\n%s", list)
 	}
 	openList := h.mustRun(nil, "report", "list", "--open")
-	if strings.Contains(openList, "R1 ") || !strings.Contains(openList, "\n  #1 a → b ") || !strings.Contains(openList, " pending 살아 있음 one") {
+	if strings.Contains(openList, "1 done ") || !strings.Contains(openList, "\n  #1 a → b ") || !strings.Contains(openList, " pending 살아 있음 one") {
 		t.Fatalf("list --open:\n%s", openList)
 	}
-	if show := h.mustRun(nil, "report", "show", "R2"); !strings.Contains(show, "요청 do two things") || !strings.Contains(show, "열림 #2 a → b ") || !strings.Contains(show, "# Done") {
+	if show := h.mustRun(nil, "report", "show", "2"); !strings.Contains(show, "요청 do two things") || !strings.Contains(show, "열림 #2 a → b ") || !strings.Contains(show, "# Done") {
 		t.Fatalf("show:\n%s", show)
 	}
 	var js wire.ReportList
 	if err := json.Unmarshal([]byte(h.mustRun(nil, "report", "list", "--open", "--json")), &js); err != nil || len(js.Reports) != 1 {
 		t.Fatalf("list --json: %v %+v", err, js)
 	}
-	if r := h.run(nil, "report", "show", "R99"); r.code == 0 || !strings.Contains(r.stderr, "404") {
+	if r := h.run(nil, "report", "show", "99"); r.code == 0 || !strings.Contains(r.stderr, "404") {
 		t.Fatalf("show missing: %+v", r)
 	}
 	if r := h.run(nil, "report", "nope"); r.code == 0 {
