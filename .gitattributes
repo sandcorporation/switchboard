@@ -1,2 +1,4 @@
 # Terminal scenes and recordings are byte-exact; keep LF on Windows checkouts.
 internal/term/testdata/** -text
+# The workspace files are embedded and served as they are; keep LF everywhere.
+internal/dashboard/workspace/** text eol=lf

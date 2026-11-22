@@ -559,18 +559,21 @@ func (s *Server) adminRoutes(w http.ResponseWriter, r *http.Request, path string
 		// the page loads only then.
 		// terminal_refused is why this request could not open a terminal
 		// (hosting_terminal.go): off, loopback or allow; omitted when it can.
-		var assets []string
+		// workspace_assets are the host-mode workspace's files (#444).
+		var assets, workspace []string
 		var refused string
 		if s.hosting {
 			assets = dashboard.TerminalAssets
+			workspace = dashboard.WorkspaceAssets
 			refused = s.terminalRefusal(r)
 		}
 		writeJSON(w, struct {
 			adminauth.Identity
 			Hosting         bool     `json:"hosting"`
 			TerminalAssets  []string `json:"terminal_assets,omitempty"`
+			WorkspaceAssets []string `json:"workspace_assets,omitempty"`
 			TerminalRefused string   `json:"terminal_refused,omitempty"`
-		}{who, s.hosting, assets, refused})
+		}{who, s.hosting, assets, workspace, refused})
 	case "slots":
 		out, err := s.presence().ActiveSlots("")
 		if err != nil {

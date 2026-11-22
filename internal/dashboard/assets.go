@@ -27,6 +27,22 @@ var TerminalAssets = []string{
 	AssetsPrefix + "xterm/addon-fit.js",
 }
 
+// workspace holds the host-mode workspace (#444): the panel layout, the
+// terminal panels, the frame and its stylesheet. layout.test.cjs (node unit
+// tests) is not embedded.
+//
+//go:embed workspace/layout.js workspace/term.js workspace/workspace.js workspace/workspace.css
+var workspace embed.FS
+
+// WorkspaceAssets are the workspace's files, loaded by the page only when the
+// admin bootstrap reports hosting on: the stylesheet, then scripts in order.
+var WorkspaceAssets = []string{
+	AssetsPrefix + "workspace/workspace.css",
+	AssetsPrefix + "workspace/layout.js",
+	AssetsPrefix + "workspace/term.js",
+	AssetsPrefix + "workspace/workspace.js",
+}
+
 var assetTypes = map[string]string{
 	".js":  "text/javascript; charset=utf-8",
 	".css": "text/css; charset=utf-8",
@@ -43,7 +59,13 @@ func Assets(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	b, err := fs.ReadFile(vendored, "assets/"+name)
+	var b []byte
+	var err error
+	if strings.HasPrefix(name, "workspace/") {
+		b, err = fs.ReadFile(workspace, name)
+	} else {
+		b, err = fs.ReadFile(vendored, "assets/"+name)
+	}
 	if err != nil {
 		http.NotFound(w, r)
 		return

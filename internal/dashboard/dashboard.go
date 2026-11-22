@@ -12,7 +12,9 @@ import (
 )
 
 // Page serves the admin overview. It only calls same-origin /api/admin/*
-// endpoints, sends no Authorization header and stores nothing in the browser.
+// endpoints and sends no Authorization header. It stores nothing in the
+// browser, except that with hosting on the workspace keeps its panel layout
+// in localStorage.
 // Its only writes are question answers, permission answers, question
 // settings, role revokes and restores, the Terminals tab's record writes and
 // terminal socket tickets, sent with the admin write guard headers. Message
@@ -557,6 +559,7 @@ async function loadMe(){
     const r=await fetch('/api/admin/me',{credentials:'same-origin',headers:{'Accept':'application/json'}});
     if(!r.ok)return;
     const m=await r.json();adminMode=m.mode||'';hostingOn=m.hosting===true;termAssets=Array.isArray(m.terminal_assets)?m.terminal_assets:[];termRefused=typeof m.terminal_refused==='string'?m.terminal_refused:'';
+    if(hostingOn)loadWorkspace(Array.isArray(m.workspace_assets)?m.workspace_assets:[]);
     $('tab-terminals').hidden=!hostingOn;setViewButton('nodes').hidden=!hostingOn;
     if(hostingOn&&curTab==='settings')route();
     if(hostingOn&&location.hash.startsWith('#terminal'))route();
@@ -2210,175 +2213,39 @@ async function adapterOptions(sel,nodeName,cur){
 $('termAddClose').onclick=()=>$('termAdd').close();
 // The drawer takes its own Esc, so an open detail panel stays open.
 $('termAdd').addEventListener('keydown',e=>{if(e.key==='Escape'){e.preventDefault();$('termAdd').close()}});
-// ---- 터미널 화면: a snapshot then output over the terminal socket; text reaches the page only through the terminal renderer ----
-// One screen (#termPane) moves between #termHold and the open detail (터미널
-// 화면, or 세션 터미널), so a redraw keeps the connection. termGc closes it
-// once the detail no longer shows it.
-let termLib=null,termView=null,termWide=false;
-// tp finds an element of the screen, also while it is out of the page.
-const termPaneEl=$('termPane'),tp=id=>id==='termPane'?termPaneEl:termPaneEl.querySelector('#'+id);
-function loadTermLib(){
-  if(!termLib)termLib=(async()=>{
-    for(const u of termAssets){
-      await new Promise((ok,fail)=>{
-        let el;
-        if(u.endsWith('.css')){el=document.createElement('link');el.rel='stylesheet';el.href=u}
-        else{el=document.createElement('script');el.src=u}
-        el.onload=ok;el.onerror=()=>fail(Error('불러오기 실패: '+u));document.head.append(el);
-      });
-    }
-    if(typeof Terminal!=='function')throw Error('불러오기 실패');
-  })().catch(e=>{termLib=null;throw e});
-  return termLib;
-}
+// ---- 터미널 화면 ----
+// With hosting on the page loads the workspace (internal/dashboard/workspace,
+// files listed by /api/admin/me as workspace_assets): the three-column frame
+// and the terminal panels, one socket and renderer per panel. ws is that
+// workspace; null until it has loaded, and always with hosting off.
+// #termHold keeps the old single screen's markup, unused.
+let ws=null,wsFailed='';
 // termRefusedText is why this address cannot open a terminal
 // (terminal_refused from /api/admin/me, SWITCHBOARD_HOSTING_TERMINAL).
 const termRefusedText={off:'터미널이 꺼져 있음',loopback:'이 주소에서는 터미널이 꺼져 있음 (이 기계에서만 열림)',allow:'이 주소는 터미널 허용 대역 밖'};
-// termPaneFor(v) returns the screen for a detail body; the terminal opens
-// once the body holds it, and stays open while the same record is shown.
+// termPaneFor(v) is what a detail body shows for the terminal: the workspace
+// opens it as a centre panel.
 function termPaneFor(v){
   if(termRefused)return node('p',termRefusedText[termRefused]||'이 주소에서는 터미널이 꺼져 있음','msg err');
-  if(!termView||termView.id!==v.id)setTimeout(()=>{if((!termView||termView.id!==v.id)&&$('detailBody').contains(tp('termPane')))termOpen(v)},0);
-  return tp('termPane');
+  if(ws)return ws.termPaneFor(v);
+  return wsFailed?node('p',wsFailed,'msg err'):node('p','불러오는 중…','muted');
 }
-function termGc(){if(!$('detailBody').contains(tp('termPane')))termClose()}
-// termSend sends one client frame on an open input socket.
-function termSend(t,m){if(t.mode==='input'&&t.ws&&t.ws.readyState===1)t.ws.send(JSON.stringify(m))}
-// termInput sends typed or pasted text, split under the host's 64 KiB frame limit.
-const termEnc=new TextEncoder();
-function termInput(t,d){
-  if(t.mode!=='input')return;
-  let chunk='',n=0;
-  for(const ch of d){
-    const b=termEnc.encode(ch).length;
-    if(n+b>32768){termSend(t,{type:'input',data:chunk});chunk='';n=0}
-    chunk+=ch;n+=b;
+function termGc(){if(ws)ws.termGc()}
+// loadAssets adds stylesheets and scripts (same origin) in order.
+async function loadAssets(list){
+  for(const u of list){
+    await new Promise((ok,fail)=>{
+      let el;
+      if(u.endsWith('.css')){el=document.createElement('link');el.rel='stylesheet';el.href=u}
+      else{el=document.createElement('script');el.src=u}
+      el.onload=ok;el.onerror=()=>fail(Error('불러오기 실패: '+u));document.head.append(el);
+    });
   }
-  if(chunk)termSend(t,{type:'input',data:chunk});
 }
-// termFit fits the screen to its box: an input terminal takes the box's
-// size (the host gets it); a view terminal keeps the host's size and scales
-// its font to the box's width.
-function termFit(t,always){
-  if(t.closed||!t.term)return;
-  if(t.mode!=='input'){termScale(t);return}
-  const c=t.term.cols,r=t.term.rows;
-  if(t.fit)try{t.fit.fit()}catch(e){}
-  if(always&&t.term.cols===c&&t.term.rows===r)termSend(t,{type:'resize',cols:t.term.cols,rows:t.term.rows});
-}
-// termMinFont is the smallest font a view terminal scales down to (#253): 5px
-// where the box is wide, 11px on a phone, where the box then scrolls
-// sideways inside itself instead of shrinking 120 columns into unreadable.
-function termMinFont(){return window.matchMedia&&window.matchMedia('(max-width:600px)').matches?11:5}
-function termScale(t){
-  if(t.closed||!t.term||t.mode==='input')return;
-  let d;try{d=t.fit&&t.fit.proposeDimensions()}catch(e){}
-  if(!d||!(d.cols>0))return;
-  const f=t.term.options.fontSize,want=Math.max(termMinFont(),Math.min(15,Math.floor(f*d.cols/t.term.cols*4)/4));
-  if(want<f||want>=f+0.5)t.term.options.fontSize=want;
-}
-function termModeShow(t){
-  const typing=t.mode==='input';
-  tp('termMode').setAttribute('aria-pressed',String(typing));
-  tp('termPane').classList.toggle('typing',typing);
-  if(t.term)t.term.options.disableStdin=!typing;
-}
-tp('termMode').onclick=()=>{
-  const t=termView;if(!t||!t.term)return;
-  t.mode=t.mode==='input'?'view':'input';termModeShow(t);
-  if(t.mode==='input')t.term.options.fontSize=15;
-  const ws=t.ws;t.ws=null;if(ws)ws.close();
-  t.tries=0;clearTimeout(t.timer);termConnect(t);
-  if(t.mode==='input')t.term.focus();
-};
-// 넓히기 lays the detail over the list (desktop). Esc: a typing terminal
-// takes it; otherwise it first returns to the normal width, and only then
-// does the panel's own Esc close the detail.
-function termWiden(on){
-  termWide=on;$('appMain').classList.toggle('detail-wide',on);
-  tp('termWide').setAttribute('aria-pressed',String(on));tp('termWide').textContent=on?'원래 크기':'넓히기';
-}
-tp('termWide').onclick=()=>termWiden(!termWide);
-document.addEventListener('keydown',e=>{
-  if(e.key!=='Escape'||!termWide||e.defaultPrevented)return;
-  if(e.target.closest&&e.target.closest('dialog'))return;
-  if(termView&&termView.mode==='input'&&tp('termScreen').contains(e.target))return;
-  e.preventDefault();termWiden(false);
-},true);
-tp('termScreen').addEventListener('keydown',e=>{if(e.key==='Escape'&&termView&&termView.mode==='input')e.preventDefault()});
-const termConnText={connecting:'연결 중',open:'연결됨',retry:'다시 연결 중',closed:'끊김'};
-function termConnSet(s){tp('termConn').textContent=termConnText[s]||s}
-async function termOpen(v){
-  termStop();
-  const t={id:v.id,ws:null,term:null,fit:null,ro:null,timer:0,fitTimer:0,tries:0,closed:false,mode:'view'};termView=t;
-  termModeShow(t);tp('termStateText').textContent='';setMsg(tp('termPaneMsg'),'');
-  termConnSet('connecting');
-  try{await loadTermLib()}catch(e){termConnSet('closed');setMsg(tp('termPaneMsg'),e.message,'err');return}
-  if(t.closed)return;
-  t.term=new Terminal({cols:v.cols||120,rows:v.rows||40,disableStdin:true,scrollback:5000});
-  if(typeof FitAddon==='object'&&FitAddon.FitAddon){t.fit=new FitAddon.FitAddon();t.term.loadAddon(t.fit)}
-  // Esc in view mode is the page's (넓히기, then the panel); in input mode the terminal's.
-  t.term.attachCustomKeyEventHandler(e=>!(e.key==='Escape'&&t.mode!=='input'));
-  t.term.open(tp('termScreen'));
-  t.term.onData(d=>termInput(t,d));
-  t.term.onResize(s=>{termSend(t,{type:'resize',cols:s.cols,rows:s.rows});if(t.mode!=='input')setTimeout(()=>termScale(t),0)});
-  if(typeof ResizeObserver==='function'){
-    t.ro=new ResizeObserver(()=>{clearTimeout(t.fitTimer);t.fitTimer=setTimeout(()=>termFit(t),150)});
-    t.ro.observe(tp('termScreen'));
-  }
-  termScale(t);
-  termConnect(t);
-}
-async function termConnect(t){
-  if(t.closed)return;
-  termConnSet(t.tries?'retry':'connecting');
-  let tk;
-  try{tk=await apiSend('POST','terminals/'+encodeURIComponent(t.id)+'/ticket',{mode:t.mode})}
-  catch(e){
-    if(e.status===404||e.status===401){termConnSet('closed');setMsg(tp('termPaneMsg'),e.message,'err');return}
-    termRetry(t);return;
-  }
-  if(t.closed)return;
-  const ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/api/admin/terminals/'+encodeURIComponent(t.id)+'/socket?ticket='+encodeURIComponent(tk.ticket));
-  ws.binaryType='arraybuffer';t.ws=ws;
-  ws.onmessage=ev=>{
-    if(t.closed||t.ws!==ws)return;
-    if(typeof ev.data==='string'){
-      let m;try{m=JSON.parse(ev.data)}catch(e){return}
-      if(m.type==='hello'){
-        t.tries=0;termConnSet('open');
-        if(t.mode==='input')termFit(t,true);
-        else if(m.cols>0&&m.rows>0&&(m.cols!==t.term.cols||m.rows!==t.term.rows))t.term.resize(m.cols,m.rows);
-      }
-      if(m.type==='size'&&t.mode!=='input'&&m.cols>0&&m.rows>0)t.term.resize(m.cols,m.rows);
-      if(m.type==='refused')setMsg(tp('termPaneMsg'),m.error||'거부됨','err');
-      if(m.type==='hello'||m.type==='state')tp('termStateText').textContent=termState[m.state]||m.state;
-      return;
-    }
-    t.term.write(new Uint8Array(ev.data));
-  };
-  ws.onclose=()=>{if(t.ws===ws&&!t.closed)termRetry(t)};
-}
-function termRetry(t){
-  if(t.closed)return;
-  t.tries++;termConnSet('retry');
-  clearTimeout(t.timer);t.timer=setTimeout(()=>termConnect(t),Math.min(30000,500*2**Math.min(t.tries,6)));
-}
-// termStop ends the open terminal; termClose also puts the screen back in
-// #termHold and returns to the normal width.
-function termStop(){
-  const t=termView;if(!t)return;
-  termView=null;t.closed=true;clearTimeout(t.timer);clearTimeout(t.fitTimer);
-  if(t.ro)t.ro.disconnect();
-  tp('termPane').classList.remove('typing');
-  if(t.ws)t.ws.close();
-  if(t.term)t.term.dispose();
-  tp('termScreen').replaceChildren();
-}
-function termClose(){
-  termStop();
-  if(termWide)termWiden(false);
-  if(!$('termHold').contains(tp('termPane')))$('termHold').append(tp('termPane'));
+let wsLoading=null;
+function loadWorkspace(list){
+  if(ws||wsLoading||!list.length)return;
+  wsLoading=loadAssets(list).then(()=>{ws=wsStart()}).catch(e=>{wsFailed=e.message}).then(()=>{if(detailCur)drawDetail()});
 }
 $('termForm').onsubmit=async e=>{
   e.preventDefault();
@@ -2734,7 +2601,7 @@ function liveMark(kinds){
   for(const k of kinds){
     if(detailCur&&(details[detailCur.tab].kinds||[detailCur.tab]).includes(k))liveDetail=true;
     if(!liveReload[k])continue;
-    if(k===curTab)liveDirty.add(k);
+    if(tabShown(k))liveDirty.add(k);
     else{if(tabLoaded.has(k))liveStale.add(k);if(liveCounts[k])liveCounts[k]()}
   }
   if((liveDirty.size||liveDetail)&&!liveTimer)liveTimer=setTimeout(liveFlush,300);
@@ -2743,7 +2610,7 @@ function liveFlush(){
   liveTimer=0;
   const a=document.activeElement,busy=a&&a.matches&&a.matches('input,textarea,select')&&($('panel-'+curTab).contains(a)||$('detail').contains(a));
   if(busy){liveTimer=setTimeout(liveFlush,2000);return}
-  for(const k of liveDirty){if(k===curTab)liveReload[k]();else if(tabLoaded.has(k))liveStale.add(k)}
+  for(const k of liveDirty){if(tabShown(k))liveReload[k]();else if(tabLoaded.has(k))liveStale.add(k)}
   liveDirty.clear();
   if(liveDetail){liveDetail=false;drawDetail()}
 }
@@ -2776,13 +2643,22 @@ function showTab(name){
     const on=n===name,t=$('tab-'+n);
     t.setAttribute('aria-selected',on?'true':'false');
     t.tabIndex=on?0:-1;
-    $('panel-'+n).hidden=!on;
+    // In the workspace every section shows wherever its panel is.
+    $('panel-'+n).hidden=ws?false:!on;
     if(on)$('crumbTab').textContent=t.querySelector('.tab-name').textContent;
   }
+  loadTab(name);
+  if(ws)ws.showMenu(name);
+}
+// loadTab loads a tab's section the first time it shows, and again when a
+// live change marked it stale meanwhile.
+function loadTab(name){
   if(!tabLoaded.has(name)){tabLoaded.add(name);if(tabLoaders[name])tabLoaders[name]()}
   else if(liveStale.has(name))liveReload[name]();
   liveStale.delete(name);
 }
+// tabShown: the current tab, or (workspace) any section on screen.
+function tabShown(k){return k===curTab||!!(ws&&ws.shown(k))}
 // Routes: #progress #sessions #metrics #mail #permissions #questions #settings, #settings-roles
 // #settings-nodes #settings-reminders (설정 tab views), #decisions (질문 tab,
 // 결정 view), #q=<id> (rewritten to #questions/<id>/answer), #terminal=<id> (an older link: it becomes
