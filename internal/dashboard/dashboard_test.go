@@ -667,3 +667,10 @@ func TestDashboardNarrowOverlaysKeepScrollInside(t *testing.T) {
 	}
 
 }
+
+// The 규칙 tab opens on decisions, as `rules list` does (#406, #408).
+func TestRulesTabDefaultsToDecisions(t *testing.T) {
+	if !strings.Contains(dashboardHTML, "rulesKind='decision'") {
+		t.Fatal("the 규칙 tab no longer opens on 결정")
+	}
+}

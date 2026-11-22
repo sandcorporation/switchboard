@@ -53,13 +53,13 @@ func TestRulesCLI(t *testing.T) {
 	if out = h.mustRun(boss, "rules", "tag", "set", "b", "ci-tips"); out != "b: ci-tips" {
 		t.Fatalf("tag set: %q", out)
 	}
-	if out = h.mustRun(worker, "rules", "list"); !strings.Contains(out, "#3 요령 ci rerun once") || strings.Contains(out, "other service") {
+	if out = h.mustRun(worker, "rules", "list", "--kind", "tip"); !strings.Contains(out, "#3 요령 ci rerun once") || strings.Contains(out, "other service") {
 		t.Fatalf("worker list with the tag: %q", out)
 	}
 	if out = h.mustRun(boss, "rules", "tag", "role", "b", "--", "-ci-tips"); out != "b -ci-tips → (태그 없음)" {
 		t.Fatalf("tag role: %q", out)
 	}
-	if out = h.mustRun(worker, "rules", "list"); strings.Contains(out, "rerun once") {
+	if out = h.mustRun(worker, "rules", "list", "--kind", "all"); strings.Contains(out, "rerun once") {
 		t.Fatalf("worker list without the tag: %q", out)
 	}
 	if out = h.mustRun(boss, "rules", "tag", "list"); out != "b: ci-tips\nb -ci-tips → (태그 없음)" {
@@ -87,7 +87,7 @@ func TestRulesCLI(t *testing.T) {
 	// #408 T1: a Korean topic, a text of several lines (list shows the
 	// first, show the whole), and a usage error's reason as the last line.
 	h.mustRun(boss, "rules", "add", "--kind", "tip", "--scope", "service:b", "--topic", "배포", "--new-topic", "--source", "x", "green first\n- then tag\n- then notes")
-	if out = h.mustRun(worker, "rules", "list", "--topic", "배포"); out != "#5 요령 배포 green first" {
+	if out = h.mustRun(worker, "rules", "list", "--kind", "tip", "--topic", "배포"); out != "#5 요령 배포 green first" {
 		t.Fatalf("korean topic list: %q", out)
 	}
 	if out = h.mustRun(worker, "rules", "show", "5"); out != "#5 요령 배포\n\ngreen first\n- then tag\n- then notes" {
@@ -113,6 +113,13 @@ func TestRulesCLI(t *testing.T) {
 	}
 	if out = h.mustRun(boss, "rules", "show", "7"); !strings.Contains(out, "걸린 수 1") {
 		t.Fatalf("show hits: %q", out)
+	}
+	// #408 T1: list shows decisions by default; tips with --kind tip.
+	if out = h.mustRun(worker, "rules", "list"); strings.Contains(out, "요령") || !strings.Contains(out, "결정") {
+		t.Fatalf("default list: %q", out)
+	}
+	if out = h.mustRun(worker, "rules", "list", "--kind", "all"); !strings.Contains(out, "요령") || !strings.Contains(out, "결정") {
+		t.Fatalf("list --kind all: %q", out)
 	}
 	r = h.run(boss, "rules", "add", "--kind", "tip", "--scope", "all", "--topic", "배 포", "--source", "x", "y")
 	lines := strings.Split(strings.TrimSpace(r.stderr), "\n")

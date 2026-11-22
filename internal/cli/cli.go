@@ -220,8 +220,8 @@ var commands = []command{
 		options: []option{
 			{"--service", "SERVICE", "list: the rows that reach the roles of SERVICE (the part of a role before /)"},
 			{"--topic", "TOPIC", "list: only TOPIC; add: the row's topic, one of `rules topics`"},
-			{"--kind", "decision|tip", "list: only this kind; add: the row's kind"},
-			{"--all", "", "list: also replaced and void rows (admin or global boss)"},
+			{"--kind", "decision|tip|all", "list: this kind (default decision; all for both); add: the row's kind"},
+			{"--all", "", "list: both kinds, also replaced and void rows (admin or global boss)"},
 			{"--scope", "all|service:NAME[,NAME]|tag:NAME[,NAME]", "add: where the row applies (all is the row's group)"},
 			{"--group", "PREFIX", "add: the group of an all or tag row (default: roles in no group; a service row takes its services' group)"},
 			{"--source", "ID[,ID]|TEXT", "add, edit: answered question IDs (q_…) or a text the row comes from (repeatable)"},

@@ -151,6 +151,14 @@ func rulesList(c Config, p parsedArgs, out io.Writer) (int, error) {
 	if p.bool("--all") {
 		q.Set("all", "1")
 	}
+	// Decisions by default (#406, #408): tips with --kind tip, both with
+	// --kind all or --all.
+	switch kind, ok := p.values["--kind"]; {
+	case kind == "all":
+		q.Del("kind")
+	case !ok && !p.bool("--all"):
+		q.Set("kind", wire.RuleDecision)
+	}
 	path := "/api/rules"
 	if len(q) > 0 {
 		path += "?" + q.Encode()
