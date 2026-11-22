@@ -379,6 +379,10 @@ func (h *Hub) readViewer(ctx context.Context, ws *websocket.Conn, v *viewer) {
 // relay fans a terminal frame from node c out to the viewers of its record.
 func (h *Hub) relay(c *nodeConn, b []byte) {
 	kind, id, payload, ok := wire.DecodeTermFrame(b)
+	if ok && kind == wire.FileData {
+		h.fileData(c, id, payload)
+		return
+	}
 	if !ok || (kind != wire.TermSnapshot && kind != wire.TermOutput) {
 		return
 	}

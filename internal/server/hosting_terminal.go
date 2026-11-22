@@ -81,14 +81,15 @@ func adminSignInConfigured(getenv func(string) string) bool {
 }
 
 // terminalPath reports whether an /api/admin/ path (prefix removed) is the
-// terminal's ticket or socket route.
+// terminal's ticket or socket route, or its session folder's files (#447),
+// which the terminal setting guards the same way.
 func terminalPath(path string) bool {
 	rest, ok := strings.CutPrefix(path, "terminals/")
 	if !ok {
 		return false
 	}
 	id, sub, ok := strings.Cut(rest, "/")
-	return ok && id != "" && (sub == "ticket" || sub == "socket")
+	return ok && id != "" && (sub == "ticket" || sub == "socket" || sub == "files" || sub == "files/raw")
 }
 
 // Terminal refusal reasons, as /api/admin/me reports them ("" serves).

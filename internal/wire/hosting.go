@@ -433,6 +433,9 @@ type NodeFrame struct {
 	// Check and CheckResult ride on check and check-result frames (#334).
 	Check       *NodeCheck       `json:"check,omitempty"`
 	CheckResult *NodeCheckResult `json:"check_result,omitempty"`
+	// File and FileResult ride on file and file-result frames (#447).
+	File       *NodeFile       `json:"file,omitempty"`
+	FileResult *NodeFileResult `json:"file_result,omitempty"`
 }
 
 // NodeCheck asks a node to run Command (sh -c, or cmd /c on Windows) in a

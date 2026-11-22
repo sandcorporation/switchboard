@@ -211,6 +211,8 @@ func (l *Link) session(ctx context.Context, url string) (attached bool, err erro
 	if l.Profiles != nil {
 		header.Set(config.HeaderPrefix+config.NodeCredentialsHeaderName, l.Profiles.Header())
 	}
+	// This node answers file frames (#447).
+	header.Set(config.HeaderPrefix+config.NodeFilesHeaderName, "1")
 	ws, resp, err := websocket.Dial(dctx, url, &websocket.DialOptions{HTTPHeader: header})
 	cancel()
 	if err != nil {
@@ -234,6 +236,12 @@ func (l *Link) session(ctx context.Context, url string) (attached bool, err erro
 		return ws.Write(wctx, websocket.MessageBinary, wire.EncodeTermFrame(kind, id, b))
 	}, l.Logf)
 	defer rl.stop()
+	writeFile := func(ref string, b []byte) error {
+		wctx, done := context.WithTimeout(sctx, linkWriteTimeout)
+		defer done()
+		return ws.Write(wctx, websocket.MessageBinary, wire.EncodeTermFrame(wire.FileData, ref, b))
+	}
+	files := make(chan struct{}, fileWorkers)
 	hello := l.Hello
 	if err := write(wire.NodeFrame{Type: wire.NodeHelloType, Hello: &hello}); err != nil {
 		return false, err
@@ -247,6 +255,10 @@ func (l *Link) session(ctx context.Context, url string) (attached bool, err erro
 				readErr <- err
 				stop()
 				return
+			}
+			if f.Type == wire.NodeFileType {
+				l.file(sctx, f, files, write, writeFile)
+				continue
 			}
 			l.receive(ctx, f, sctx, rl, write)
 		}
@@ -293,6 +305,37 @@ func (l *Link) session(ctx context.Context, url string) (attached bool, err erro
 		case <-l.changed:
 		}
 	}
+}
+
+// fileWorkers is how many file frames one connection answers at once; the
+// read loop waits for a free one.
+const fileWorkers = 4
+
+// file answers a file frame (#447) off the read loop: a read's bytes in a
+// FileData frame, then the file-result frame, in that order. Neither the
+// path's content nor the bytes are logged.
+func (l *Link) file(sctx context.Context, f wire.NodeFrame, slots chan struct{}, write func(wire.NodeFrame) error, writeFile func(string, []byte) error) {
+	if f.File == nil || len(f.File.Ref) > 255 {
+		return
+	}
+	req := *f.File
+	select {
+	case slots <- struct{}{}:
+	case <-sctx.Done():
+		return
+	}
+	go func() {
+		defer func() { <-slots }()
+		res, data := l.Node.File(f.ID, req)
+		if req.Op == wire.FileRead && res.Code == "" {
+			if err := writeFile(req.Ref, data); err != nil {
+				return
+			}
+		}
+		if err := write(wire.NodeFrame{Type: wire.NodeFileResultType, ID: f.ID, FileResult: &res}); err != nil {
+			l.Logf("node: file answer for %s: %v", f.ID, err)
+		}
+	}()
 }
 
 // receive applies one host frame; attach and detach drive rl, the relay of
