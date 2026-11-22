@@ -42,6 +42,7 @@ func main() {
 		Node: func(host, tokenFile, joinCode string, restartSessions, allowChecks bool) error {
 			return server.Node(version, host, tokenFile, joinCode, restartSessions, allowChecks)
 		},
-		NodeInvite: server.NodeInviteCLI,
+		NodeInvite:     server.NodeInviteCLI,
+		NodeStatusLine: server.NodeStatusLineCLI,
 	}))
 }

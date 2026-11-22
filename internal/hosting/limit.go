@@ -179,6 +179,13 @@ func (s *Service) markCleared(at int64) error {
 	return err
 }
 
+// setNodeUsage stores the usage of node's agent accounts (#434); usage is
+// their JSON, "" none.
+func (s *Service) setNodeUsage(node, usage string) error {
+	_, err := s.db.Exec(`UPDATE nodes SET agent_usage=? WHERE name=?`, usage, node)
+	return err
+}
+
 // setNodeLimit stores the limit node's screens show (#190).
 func (s *Service) setNodeLimit(node string, l wire.NodeLimit) error {
 	var since, reset any

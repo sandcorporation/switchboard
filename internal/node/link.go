@@ -74,6 +74,7 @@ type Link struct {
 	mu     sync.Mutex
 	states []wire.HostedNodeState
 	limit  wire.NodeLimit
+	usage  []wire.AgentUsage
 }
 
 // ErrRevoked is Run's error when the host answers the node channel with
@@ -185,9 +186,9 @@ func (l *Link) report() {
 	for _, s := range sts {
 		out = append(out, wire.HostedNodeState{ID: s.ID, Launched: s.Launched, AgentSessionID: s.AgentSessionID, Runtime: s.Wire()})
 	}
-	limit := l.Node.Limit()
+	limit, usage := l.Node.Limit(), l.Node.Usage()
 	l.mu.Lock()
-	l.states, l.limit = out, limit
+	l.states, l.limit, l.usage = out, limit, usage
 	l.mu.Unlock()
 	signal(l.changed)
 }
@@ -198,7 +199,7 @@ func (l *Link) current() wire.NodeFrame {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	limit := l.limit
-	return wire.NodeFrame{Type: wire.NodeStateType, States: l.states, Limit: &limit}
+	return wire.NodeFrame{Type: wire.NodeStateType, States: l.states, Limit: &limit, Usage: l.usage}
 }
 
 // session runs one connection; attached reports whether it got as far as

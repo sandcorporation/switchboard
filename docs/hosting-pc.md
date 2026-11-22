@@ -1136,6 +1136,7 @@ Warning: with `PERMS` `skip` the agent runs every tool without asking anyone.
 
 - `host add … --adapter NAME` (or the dashboard's 어댑터) launches a session with that adapter; empty is the node's default. `host grant … --adapter NAME[,NAME]` limits what a role may choose.
 - A node lists the adapters whose executable it finds; `GET /api/admin/nodes` shows them in `adapters` and `default_adapter`. A session naming one the node lacks is refused.
+- Remaining usage: a node started by `up` or `node` sets the default adapter's status line to `switchboard node statusline` through `--settings` (joined with the permission skip's; a `--settings` of your own after `--` turns it off). It stores the account's remaining percentage (100 less the larger of the five-hour and seven-day use) and reset time, then runs the status line command of your settings files with the same input (5 s limit) and shows its output. `GET /api/admin/nodes` lists `usage` per adapter and account (the `CLAUDE_CONFIG_DIR` name, empty for the default); `remaining` is missing until the first response, for accounts without limit values, and after a window fills again, and 0 while a session shows a usage-limit message.
 - Another agent CLI without code: set `SWITCHBOARD_HOSTING_ADAPTERS` on the node to a JSON file and restart the node. A bad file stops the node at start.
 
 ```json

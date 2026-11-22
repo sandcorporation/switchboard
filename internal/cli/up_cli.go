@@ -38,6 +38,17 @@ func cliUp(p parsedArgs) (int, error) {
 // [--restart-sessions] [--allow-checks]` and
 // `node invite NAME`, and runs the binary's command.
 func cliNode(p parsedArgs, stdout io.Writer) (int, error) {
+	if len(p.pos) == 1 && p.pos[0] == "statusline" {
+		// The agent runs it for every status line: it never fails, and
+		// shows only the operator's own status command's output.
+		if binary.NodeStatusLine != nil {
+			binary.NodeStatusLine(p.values["--adapter"], p.values["--out"])
+		}
+		return ExitOK, nil
+	}
+	if p.values["--adapter"] != "" || p.values["--out"] != "" {
+		return 0, usagef("--adapter and --out are for node statusline")
+	}
 	if len(p.pos) > 0 {
 		if p.pos[0] != "invite" || len(p.pos) != 2 {
 			return 0, usagef("node: unknown subcommand %q (only 'invite NAME')", strings.Join(p.pos, " "))

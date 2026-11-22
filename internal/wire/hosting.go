@@ -184,6 +184,22 @@ type NodeView struct {
 	// without an adapter launches with.
 	Adapters       []string `json:"adapters,omitempty"`
 	DefaultAdapter string   `json:"default_adapter,omitempty"`
+	// Usage is the remaining usage of the node's agent accounts, as its
+	// last state frame reported it (#434).
+	Usage []AgentUsage `json:"usage,omitempty"`
+}
+
+// AgentUsage is what one agent account on a node has left (#434): the
+// account is the node, the adapter and the adapter's account name ("" its
+// default). Remaining (percent, 0 to 100) is nil when not known: no session
+// reported it yet, or its window filled again since. ResetsAt (Unix ms) is
+// when the tightest window fills again; At (Unix ms) when it was read.
+type AgentUsage struct {
+	Adapter   string `json:"adapter"`
+	Account   string `json:"account,omitempty"`
+	Remaining *int   `json:"remaining,omitempty"`
+	ResetsAt  *int64 `json:"resets_at,omitempty"`
+	At        int64  `json:"at,omitempty"`
 }
 
 // NodeJoin is the body of POST /api/node/join: a one-time code from
@@ -322,6 +338,8 @@ type NodeFrame struct {
 	Credential *NodeCredential `json:"credential,omitempty"`
 	// Limit rides on state frames (#190).
 	Limit *NodeLimit `json:"limit,omitempty"`
+	// Usage rides on state frames (#434); a host before it ignores it.
+	Usage []AgentUsage `json:"usage,omitempty"`
 	// Check and CheckResult ride on check and check-result frames (#334).
 	Check       *NodeCheck       `json:"check,omitempty"`
 	CheckResult *NodeCheckResult `json:"check_result,omitempty"`

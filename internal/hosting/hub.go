@@ -62,7 +62,9 @@ type Hub struct {
 	autoAlert AutoAlert
 	// nodeLimit is the last usage limit each node reported; limited and
 	// limitKnown are the subscription limit as last published (#190).
-	nodeLimit  map[string]wire.NodeLimit
+	nodeLimit map[string]wire.NodeLimit
+	// nodeUsage is the agent usage JSON each node last reported (#434).
+	nodeUsage  map[string]string
 	limited    bool
 	limitKnown bool
 	slotOf     SlotOf
@@ -510,7 +512,26 @@ func (h *Hub) receive(c *nodeConn, f wire.NodeFrame) {
 				h.nodeLimit[c.name], limitChanged = *f.Limit, true
 			}
 		}
+		usage := ""
+		if len(f.Usage) > 0 {
+			if b, err := json.Marshal(f.Usage); err == nil {
+				usage = string(b)
+			}
+		}
+		prevUsage, seenUsage := h.nodeUsage[c.name]
+		usageChanged := !seenUsage || prevUsage != usage
+		if usageChanged {
+			if h.nodeUsage == nil {
+				h.nodeUsage = map[string]string{}
+			}
+			h.nodeUsage[c.name] = usage
+		}
 		h.mu.Unlock()
+		if usageChanged {
+			if err := h.svc.setNodeUsage(c.name, usage); err != nil {
+				log.Printf("hosting: node %s usage: %v", c.name, err)
+			}
+		}
 		if limitChanged {
 			if err := h.svc.setNodeLimit(c.name, *f.Limit); err != nil {
 				log.Printf("hosting: node %s limit: %v", c.name, err)
