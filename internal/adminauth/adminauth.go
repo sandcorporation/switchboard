@@ -120,6 +120,10 @@ func Configure(c *Config, getenv func(string) string) error {
 	return nil
 }
 
+// OIDCClientSecretSet reports whether an OIDC client secret is configured
+// (a boss role's settings view names it without its value, #397).
+func (c *Config) OIDCClientSecretSet() bool { return c.oidc != nil && c.oidc.clientSecret != "" }
+
 // StartLine is the one line up and serve log at start-up for the admin
 // access in force: "admin auth: " and builtin, oidc (public client, PKCE),
 // oidc (confidential client), proxy secret (deprecated) or off. The install

@@ -111,26 +111,31 @@ func (s *Service) QuestionSettingsAPI(w http.ResponseWriter, r *http.Request, ta
 }
 
 func (s *Service) listQuestionSettings(w http.ResponseWriter) {
-	rows, err := s.db.Query(`SELECT `+questionCols+` FROM question_settings ORDER BY target<>?, target`, defaultQuestionTarget)
+	out, err := s.QuestionSettingsList()
 	if err != nil {
 		http.Error(w, "query failed", 500)
 		return
+	}
+	writeJSON(w, out)
+}
+
+// QuestionSettingsList is every question setting, the default first: the
+// dashboard's settings tab and a boss role's settings view (#397).
+func (s *Service) QuestionSettingsList() ([]QuestionSettings, error) {
+	rows, err := s.db.Query(`SELECT `+questionCols+` FROM question_settings ORDER BY target<>?, target`, defaultQuestionTarget)
+	if err != nil {
+		return nil, err
 	}
 	defer rows.Close()
 	out := []QuestionSettings{}
 	for rows.Next() {
 		v, err := scanQuestionSettings(rows)
 		if err != nil {
-			http.Error(w, "query failed", 500)
-			return
+			return nil, err
 		}
 		out = append(out, v)
 	}
-	if rows.Err() != nil {
-		http.Error(w, "query failed", 500)
-		return
-	}
-	writeJSON(w, out)
+	return out, rows.Err()
 }
 
 func (s *Service) putQuestionSettings(w http.ResponseWriter, r *http.Request, target string) {

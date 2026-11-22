@@ -385,3 +385,29 @@ func (s *Service) revokeGroup(r *http.Request, prefix string) (Group, error) {
 	}
 	return s.loadGroup(prefix)
 }
+
+// BossScope is what a boss role's read-only views show (#397): see reports
+// whether a role (or base) is in view. A global boss sees every role; a
+// group boss sees the roles of the live groups it is boss of and of its own
+// group, the same groups it answers for. ok is false for a role that is no
+// boss at all.
+func (s *Service) BossScope(p Principal) (see func(string) bool, ok bool) {
+	if s.IsGlobalBoss(p) {
+		return func(string) bool { return true }, true
+	}
+	of := s.bossOf(p)
+	if len(of) == 0 {
+		return nil, false
+	}
+	in := map[string]bool{}
+	for _, prefix := range of {
+		in[prefix] = true
+	}
+	if g, ok := s.GroupOf(p.Base); ok {
+		in[g.Prefix] = true
+	}
+	return func(role string) bool {
+		g, ok := s.GroupOf(role)
+		return ok && in[g.Prefix]
+	}, true
+}

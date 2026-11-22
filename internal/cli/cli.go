@@ -215,6 +215,28 @@ var commands = []command{
 			{"--ndjson", "", "stream the server's ndjson export unchanged"},
 			optJSON, optProfile,
 		}},
+	{name: "mail", args: "ACTION [ID]", nargs: 2, optArgs: true, synopsis: "(ACTION: list | show ID)",
+		summary: "Read every role's mail, the dashboard's mail tab (boss roles only; a group boss sees its groups): list newest first, or show one message, leaving its state and recording the view",
+		options: []option{
+			{"--open", "", "list: only mail not complete"},
+			{"--from", "ROLE", "list: only mail from ROLE"},
+			{"--to", "ROLE", "list: only mail to ROLE"},
+			{"--since", "DURATION", "list: only mail sent within DURATION, e.g. 90m, 24h, 7d"},
+			{"--limit", "N", "list: at most N messages, 1-500 (default 100)"},
+			optJSON, optProfile,
+		}},
+	{name: "jobs",
+		summary: "List the server's job ledger and schedules of every role in view, the dashboard's jobs tab (boss roles only; commands and prompts left out). `job list` is the same ledger for your own jobs",
+		options: []option{
+			{"--state", "STATE", "only jobs and schedules in STATE (live: not ended)"},
+			optJSON, optProfile,
+		}},
+	{name: "roles",
+		summary: "List roles (group, revoked or not), leased numbered slots and groups (boss roles only; a group boss sees its groups)",
+		options: []option{optJSON, optProfile}},
+	{name: "settings",
+		summary: "Show the dashboard's settings: question settings, recent refused questions and, for a global boss, the server summary and which secret settings are set (names only, never values) (boss roles only)",
+		options: []option{optJSON, optProfile}},
 	{name: "permission", args: "ACTION [ID]", nargs: 2, optArgs: true, synopsis: "(ACTION: request | show ID | answer ID | list)",
 		summary: "Ask for, show, answer or list tool permission requests (only a boss role answers; the requester's parent is notified)",
 		options: []option{
@@ -232,8 +254,8 @@ var commands = []command{
 			{"--status", "STATUS", "list: only pending, answered or withdrawn questions"},
 			optJSON, optProfile,
 		}},
-	{name: "host", args: "ACTION [ID]", nargs: 3, optArgs: true, extra: true, synopsis: "(ACTION: add | list | set ID | start ID | stop ID | restart ID | new-conversation ID | remove ID | limit [on|off] | grant ROLE | grant list | revoke-grant ROLE | auto add ID | auto list | auto show AUTO-ID | auto run AUTO-ID | auto pause AUTO-ID | auto resume AUTO-ID | auto rm AUTO-ID) [-- AGENT ARGS...]",
-		summary: "Manage hosted sessions in this instance's database (DB_PATH, not the container default): add a record, list them, change one's permission mode, set one to run or stop, restart one with resume (clears a crash loop), start one in a new conversation, remove one, show or set the subscription limit; grant: let a role add, list, start, stop and remove sessions under itself with its own token (base roles, nodes and directory roots; without DB_PATH, host runs as the profile's role within its grant); auto: scheduled runs of a session (at each cron time in this machine's zone the host launches it when stopped and mails the prompt to its base role)",
+	{name: "host", args: "ACTION [ID]", nargs: 3, optArgs: true, extra: true, synopsis: "(ACTION: add | list | nodes | set ID | start ID | stop ID | restart ID | new-conversation ID | remove ID | limit [on|off] | grant ROLE | grant list | revoke-grant ROLE | auto add ID | auto list | auto show AUTO-ID | auto run AUTO-ID | auto pause AUTO-ID | auto resume AUTO-ID | auto rm AUTO-ID) [-- AGENT ARGS...]",
+		summary: "Manage hosted sessions in this instance's database (DB_PATH, not the container default): add a record, list them, change one's permission mode, set one to run or stop, restart one with resume (clears a crash loop), start one in a new conversation, remove one, show or set the subscription limit; grant: let a role add, list, start, stop and remove sessions under itself with its own token (base roles, nodes and directory roots; without DB_PATH, host runs as the profile's role within its grant, and list and auto list of a boss role show every record in view); nodes: the node list for a boss role, through the server; auto: scheduled runs of a session (at each cron time in this machine's zone the host launches it when stopped and mails the prompt to its base role)",
 		options: []option{
 			{"--node", "NAME", "add: node the session runs on"},
 			{"--base", "ROLE", "add: base role (must exist)"},
@@ -539,6 +561,14 @@ func dispatch(args []string) (int, error) {
 		return cliJob(c, p)
 	case "schedule":
 		return cliSchedule(c, p)
+	case "mail":
+		return cliMail(c, p)
+	case "jobs":
+		return cliJobs(c, p)
+	case "roles":
+		return cliRoles(c, p)
+	case "settings":
+		return cliSettings(c, p)
 	case "permission":
 		return cliPermission(c, p)
 	case "question":
