@@ -38,16 +38,22 @@ func New(db *sql.DB, now func() time.Time, ids *identity.Service, base func(stri
 
 func writeJSON(w http.ResponseWriter, v any) { _ = json.NewEncoder(w).Encode(v) }
 
-// API serves POST /api/reports for a boss role (403 otherwise). A retry
+// API serves /api/reports for a boss role (403 otherwise): POST (rest "")
+// posts a report, GET lists the reports the role may see
+// (?status=open|done) and GET /{id} reads one with its threads. A retry
 // with the same idempotency key (header Idempotency-Key, else the body's
 // idempotency_key) returns the first report with 200.
-func (s *Service) API(w http.ResponseWriter, r *http.Request, p identity.Principal) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
+func (s *Service) API(w http.ResponseWriter, r *http.Request, p identity.Principal, rest string) {
 	if !s.ids.IsBoss(p) {
 		http.Error(w, "reports are for boss roles (SWITCHBOARD_BOSS_ROLES or a group's boss role)", http.StatusForbidden)
+		return
+	}
+	if r.Method == http.MethodGet {
+		s.read(w, r, p, rest)
+		return
+	}
+	if r.Method != http.MethodPost || rest != "" {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 	var q wire.ReportRequest
@@ -178,14 +184,29 @@ func (s *Service) resolve(p identity.Principal, ids []int64) (roots, received, b
 }
 
 // AdminAPI serves GET /api/admin/reports (rest "") and
-// GET /api/admin/reports/{id}.
+// GET /api/admin/reports/{id}: every report.
 func (s *Service) AdminAPI(w http.ResponseWriter, r *http.Request, rest string) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	s.serve(w, r, rest, func(string) bool { return true })
+}
+
+// read answers a boss role's GET: the same JSON as the admin API, limited to
+// the reports whose author the role may see (a group's boss: its own group).
+func (s *Service) read(w http.ResponseWriter, r *http.Request, p identity.Principal, rest string) {
+	s.serve(w, r, rest, func(author string) bool { return s.ids.MaySee(p, author) })
+}
+
+func (s *Service) serve(w http.ResponseWriter, r *http.Request, rest string, visible func(author string) bool) {
 	if rest == "" {
-		list, err := s.List()
+		status := r.URL.Query().Get("status")
+		if status != "" && status != wire.ReportOpen && status != wire.ReportDone {
+			http.Error(w, "status must be open or done", http.StatusBadRequest)
+			return
+		}
+		list, err := s.list(visible, status)
 		if err != nil {
 			http.Error(w, "query failed", http.StatusInternalServerError)
 			return
@@ -193,12 +214,15 @@ func (s *Service) AdminAPI(w http.ResponseWriter, r *http.Request, rest string) 
 		writeJSON(w, list)
 		return
 	}
-	id, err := wire.ParseID(rest)
+	id, err := wire.ParseID(strings.TrimPrefix(rest, "R"))
 	if err != nil {
 		http.Error(w, "invalid id", http.StatusBadRequest)
 		return
 	}
 	d, err := s.Detail(id)
+	if err == nil && !visible(d.Author) {
+		err = sql.ErrNoRows
+	}
 	if errors.Is(err, sql.ErrNoRows) {
 		http.NotFound(w, r)
 		return
@@ -212,6 +236,12 @@ func (s *Service) AdminAPI(w http.ResponseWriter, r *http.Request, rest string) 
 
 // List is every report, newest first, without bodies.
 func (s *Service) List() (wire.ReportList, error) {
+	return s.list(func(string) bool { return true }, "")
+}
+
+// list is the reports whose author is visible, newest first, without bodies;
+// status "open" or "done" keeps only those.
+func (s *Service) list(visible func(author string) bool, status string) (wire.ReportList, error) {
 	out := wire.ReportList{Reports: []wire.Report{}}
 	rows, err := s.db.Query(`SELECT id,author,title,request,created_at FROM reports ORDER BY id DESC`)
 	if err != nil {
@@ -225,7 +255,9 @@ func (s *Service) List() (wire.ReportList, error) {
 			return out, err
 		}
 		rp.CreatedAt, _ = time.Parse(time.RFC3339Nano, created)
-		out.Reports = append(out.Reports, rp)
+		if visible(rp.Author) {
+			out.Reports = append(out.Reports, rp)
+		}
 	}
 	rows.Close()
 	if err = rows.Err(); err != nil {
@@ -247,6 +279,15 @@ func (s *Service) List() (wire.ReportList, error) {
 		rp := &out.Reports[i]
 		rp.Mail = nonNil(links[rp.ID])
 		summarize(rp, threads)
+	}
+	if status != "" {
+		kept := out.Reports[:0]
+		for _, rp := range out.Reports {
+			if rp.Status == status {
+				kept = append(kept, rp)
+			}
+		}
+		out.Reports = kept
 	}
 	return out, nil
 }
@@ -341,9 +382,10 @@ type threadMail struct {
 	mail.FlowMail
 	Status  string
 	NoReply bool
+	Live    bool // the recipient's base role is not revoked (mail.LiveRecipient)
 }
 
-const threadCols = `m.id,m.sender,m.recipient,m.subject,m.body,m.created_at,COALESCE(m.task_id,''),COALESCE(m.thread_id,0),COALESCE(m.reply_to,0),m.directive,m.no_reply,`
+const threadCols = `m.id,m.sender,m.recipient,m.subject,m.body,m.created_at,COALESCE(m.task_id,''),COALESCE(m.thread_id,0),COALESCE(m.reply_to,0),m.directive,m.no_reply,CASE WHEN ` + mail.LiveRecipient + ` THEN 1 ELSE 0 END,`
 
 func (s *Service) queryMail(where string, args ...any) ([]threadMail, error) {
 	rows, err := s.db.Query(`SELECT `+threadCols+mail.StatusExpr+` FROM messages m `+mail.StatusJoin+` WHERE `+where+` ORDER BY m.id`, args...)
@@ -355,7 +397,7 @@ func (s *Service) queryMail(where string, args ...any) ([]threadMail, error) {
 	for rows.Next() {
 		var m threadMail
 		var created string
-		if err = rows.Scan(&m.ID, &m.Sender, &m.Recipient, &m.Subject, &m.Body, &created, &m.TaskID, &m.ThreadID, &m.ReplyTo, &m.Directive, &m.NoReply, &m.Status); err != nil {
+		if err = rows.Scan(&m.ID, &m.Sender, &m.Recipient, &m.Subject, &m.Body, &created, &m.TaskID, &m.ThreadID, &m.ReplyTo, &m.Directive, &m.NoReply, &m.Live, &m.Status); err != nil {
 			return nil, err
 		}
 		m.Created, _ = time.Parse(time.RFC3339Nano, created)
@@ -375,7 +417,7 @@ func idArgs(ids []int64) []any {
 }
 
 func toReportMail(m threadMail, withBody bool) wire.ReportMail {
-	rm := wire.ReportMail{ID: m.ID, Sender: m.Sender, Recipient: m.Recipient, Subject: m.Subject, CreatedAt: m.Created, Status: m.Status}
+	rm := wire.ReportMail{ID: m.ID, Sender: m.Sender, Recipient: m.Recipient, Subject: m.Subject, CreatedAt: m.Created, Status: m.Status, RecipientLive: m.Live}
 	if withBody {
 		rm.Body = m.Body
 	}

@@ -388,8 +388,8 @@ func (s *Server) serveAPI(w http.ResponseWriter, r *http.Request) {
 		s.progressAPI(w, r, s.ids().IsGlobalBoss(who))
 		return
 	}
-	if path == "reports" {
-		s.reports().API(w, r, who)
+	if path == "reports" || strings.HasPrefix(path, "reports/") {
+		s.reports().API(w, r, who, strings.TrimPrefix(strings.TrimPrefix(path, "reports"), "/"))
 		return
 	}
 	if path == "jobs" || strings.HasPrefix(path, "jobs/") {

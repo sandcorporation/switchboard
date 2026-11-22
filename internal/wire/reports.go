@@ -72,7 +72,7 @@ type Report struct {
 	OpenDirectives int `json:"open_directives"`
 }
 
-// ReportList is GET /api/admin/reports, newest first.
+// ReportList is GET /api/admin/reports and GET /api/reports, newest first.
 type ReportList struct {
 	Reports []Report `json:"reports"`
 }
@@ -89,6 +89,9 @@ type ReportMail struct {
 	CreatedAt time.Time `json:"created_at"`
 	Status    string    `json:"status"`
 	Answers   bool      `json:"answers,omitempty"`
+	// RecipientLive is false when the recipient's role is revoked, so no
+	// session can read the mail.
+	RecipientLive bool `json:"recipient_live"`
 }
 
 // ReportThread is a linked thread: its root directive and the replies in
@@ -104,7 +107,7 @@ type ReportThread struct {
 	Open      bool         `json:"open"`
 }
 
-// ReportDetail is GET /api/admin/reports/{id}.
+// ReportDetail is GET /api/admin/reports/{id} and GET /api/reports/{id}.
 type ReportDetail struct {
 	Report
 	Threads []ReportThread `json:"threads"`
