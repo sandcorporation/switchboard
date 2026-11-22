@@ -398,12 +398,12 @@ func TestHubHandsLastRunToAReattachingNode(t *testing.T) {
 	if err := h.Sync(); err != nil {
 		t.Fatal(err)
 	}
-	first := &nodeConn{name: "pc", out: make(chan wire.NodeFrame, nodeQueue), cancel: func() {}}
+	first := &nodeConn{name: "pc", out: make(chan nodeOut, nodeQueue), cancel: func() {}}
 	h.attach(first)
 	h.receive(first, wire.NodeFrame{Type: wire.NodeStateType, States: []wire.HostedNodeState{{ID: rec.ID, Runtime: wire.HostedRuntime{State: "running", Run: 4}}}})
 
 	// The node process restarts and attaches again.
-	second := &nodeConn{name: "pc", out: make(chan wire.NodeFrame, nodeQueue), cancel: func() {}}
+	second := &nodeConn{name: "pc", out: make(chan nodeOut, nodeQueue), cancel: func() {}}
 	h.attach(second)
 	f := <-second.out
 	if f.Type != wire.NodeAssign || len(f.Sessions) != 1 || f.Sessions[0].LastRun != 4 {

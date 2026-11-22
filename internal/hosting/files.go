@@ -1,6 +1,8 @@
 package hosting
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sandcorporation/switchboard/internal/config"
 	"github.com/sandcorporation/switchboard/internal/wire"
 )
 
@@ -28,6 +31,7 @@ const (
 	fileOffline     = "offline"     // the record's node is not attached
 	fileTimeout     = "timeout"     // the node did not answer in time
 	fileBadRequest  = "bad-request" // refused before asking the node
+	fileReadOnly    = "read-only"   // a save on a node that does not write (#448)
 )
 
 // pendingFile is a file frame waiting for its answer from conn.
@@ -51,6 +55,12 @@ func (e *fileErr) Error() string { return e.msg }
 // askFile sends a file frame for record id to its node and waits for the
 // answer: the result and a read's bytes, or a *fileErr.
 func (h *Hub) askFile(id string, req wire.NodeFile) (wire.NodeFileResult, []byte, error) {
+	return h.askFileData(id, req, nil)
+}
+
+// askFileData is askFile; a write (#448) sends data first, in FileData
+// frames of at most wire.FileChunkMax, and only to a node that writes.
+func (h *Hub) askFileData(id string, req wire.NodeFile, data []byte) (wire.NodeFileResult, []byte, error) {
 	rec, err := h.svc.Get(id)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
@@ -67,6 +77,9 @@ func (h *Hub) askFile(id string, req wire.NodeFile) (wire.NodeFileResult, []byte
 	case !c.files:
 		h.mu.Unlock()
 		return wire.NodeFileResult{}, nil, &fileErr{fileUnsupported, "node " + rec.Node + " does not support files"}
+	case req.Op == wire.FileWrite && !c.write:
+		h.mu.Unlock()
+		return wire.NodeFileResult{}, nil, &fileErr{fileReadOnly, "node " + rec.Node + " does not save files"}
 	}
 	if h.files == nil {
 		h.files = map[string]*pendingFile{}
@@ -75,7 +88,15 @@ func (h *Hub) askFile(id string, req wire.NodeFile) (wire.NodeFileResult, []byte
 	req.Ref = "f" + strconv.FormatInt(h.fileSeq, 10)
 	p := &pendingFile{conn: c, ch: make(chan fileAnswer, 1)}
 	h.files[req.Ref] = p
-	sent := h.sendLocked(c, wire.NodeFrame{Type: wire.NodeFileType, ID: id, File: &req})
+	sent := true
+	if req.Op == wire.FileWrite {
+		req.Length = int64(len(data))
+		for off := 0; sent && off < len(data); off += wire.FileChunkMax {
+			end := min(off+wire.FileChunkMax, len(data))
+			sent = h.sendBinLocked(c, wire.EncodeTermFrame(wire.FileData, req.Ref, data[off:end]))
+		}
+	}
+	sent = sent && h.sendLocked(c, wire.NodeFrame{Type: wire.NodeFileType, ID: id, File: &req})
 	h.mu.Unlock()
 	defer func() {
 		h.mu.Lock()
@@ -101,6 +122,17 @@ func (h *Hub) askFile(id string, req wire.NodeFile) (wire.NodeFileResult, []byte
 		return a.res, a.data, nil
 	case <-t.C:
 		return wire.NodeFileResult{}, nil, &fileErr{fileTimeout, fmt.Sprintf("node %s did not answer within %s", rec.Node, fileWait)}
+	}
+}
+
+// sendBinLocked queues binary frame b for c, as sendLocked does a frame.
+func (h *Hub) sendBinLocked(c *nodeConn, b []byte) bool {
+	select {
+	case c.out <- nodeOut{bin: b}:
+		return true
+	default:
+		c.cancel()
+		return false
 	}
 }
 
@@ -146,7 +178,11 @@ func fileStatus(code string) int {
 		return http.StatusNotFound
 	case wire.FileNotFile, wire.FileNotDir, fileBadRequest:
 		return http.StatusBadRequest
-	case fileUnsupported:
+	case wire.FileConflict:
+		return http.StatusConflict
+	case wire.FileTooBig:
+		return http.StatusRequestEntityTooLarge
+	case fileUnsupported, fileReadOnly:
 		return http.StatusNotImplemented
 	case fileOffline:
 		return http.StatusServiceUnavailable
@@ -194,6 +230,12 @@ func (h *Hub) fileRequest(w http.ResponseWriter, r *http.Request) (string, bool)
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return "", false
 	}
+	return h.filePath(w, r)
+}
+
+// filePath checks the admin's sign-in and the path of a files request of
+// any method; false when it answered.
+func (h *Hub) filePath(w http.ResponseWriter, r *http.Request) (string, bool) {
 	a := h.adminHooks()
 	if a.Session == nil {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
@@ -341,6 +383,31 @@ func (h *Hub) rawAPI(w http.ResponseWriter, r *http.Request, id string) {
 		}
 	}
 	hd.Set("Content-Type", FileContentType(p))
+	if code == http.StatusOK && r.Method == http.MethodGet && size <= wire.FileTextMax {
+		// A whole text-sized read (#448): read it all first, so the answer
+		// carries the fingerprint a save sends back. Bytes that changed
+		// while being read give a fingerprint no file has: that save is a
+		// conflict.
+		var body []byte
+		for int64(len(body)) < size {
+			_, data, err := h.askFile(id, wire.NodeFile{Op: wire.FileRead, Path: p, Offset: int64(len(body)), Length: size - int64(len(body))})
+			if err != nil {
+				writeFileErr(w, err)
+				return
+			}
+			if len(data) == 0 {
+				break
+			}
+			body = append(body, data...)
+		}
+		sum := sha256.Sum256(body)
+		fp := wire.FileFingerprint{Size: size, MTime: st.Stat.MTime, SHA256: hex.EncodeToString(sum[:])}
+		hd.Set(config.HeaderPrefix+config.FileFingerprintHeaderName, fp.String())
+		hd.Set("Content-Length", strconv.Itoa(len(body)))
+		w.WriteHeader(code)
+		_, _ = w.Write(body)
+		return
+	}
 	hd.Set("Content-Length", strconv.FormatInt(last-first+1, 10))
 	w.WriteHeader(code)
 	if r.Method == http.MethodHead {
@@ -361,4 +428,71 @@ func (h *Hub) rawAPI(w http.ResponseWriter, r *http.Request, id string) {
 		}
 		off += int64(len(data))
 	}
+}
+
+// saveAPI serves PUT /api/admin/terminals/{id}/files/raw?path= (#448): the
+// body (wire.FileSave) replaces the regular file at path, if it still has
+// the fingerprint of the config.FileFingerprintHeaderName header ("*":
+// whatever it has). A changed file is 409, more than wire.FileTextMax 413.
+// The server's admin guard has already checked the write (JSON, the
+// dashboard header, same site). The save is recorded by path and size,
+// never its content.
+func (h *Hub) saveAPI(w http.ResponseWriter, r *http.Request, id string) {
+	p, ok := h.filePath(w, r)
+	if !ok {
+		return
+	}
+	var expect *wire.FileFingerprint
+	switch fp := r.Header.Get(config.HeaderPrefix + config.FileFingerprintHeaderName); fp {
+	case "*":
+	case "":
+		writeFileErr(w, &fileErr{fileBadRequest, "a save needs the fingerprint the file was read with, or *"})
+		return
+	default:
+		f, ok := wire.ParseFileFingerprint(fp)
+		if !ok {
+			writeFileErr(w, &fileErr{fileBadRequest, "bad fingerprint"})
+			return
+		}
+		expect = &f
+	}
+	if p == "" {
+		writeFileErr(w, &fileErr{wire.FileNotFile, "the session folder is not a file"})
+		return
+	}
+	// JSON escapes a control byte in six: room for that, no more.
+	var body wire.FileSave
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 6*wire.FileTextMax+64)).Decode(&body); err != nil {
+		var tooBig *http.MaxBytesError
+		if errors.As(err, &tooBig) {
+			writeFileErr(w, &fileErr{wire.FileTooBig, "more than 2 MiB"})
+			return
+		}
+		writeFileErr(w, &fileErr{fileBadRequest, "bad body"})
+		return
+	}
+	if len(body.Text) > wire.FileTextMax {
+		writeFileErr(w, &fileErr{wire.FileTooBig, "more than 2 MiB"})
+		return
+	}
+	res, _, err := h.askFileData(id, wire.NodeFile{Op: wire.FileWrite, Path: p, Expect: expect}, []byte(body.Text))
+	if err != nil {
+		writeFileErr(w, err)
+		return
+	}
+	if res.Stat.SHA256 == "" {
+		writeFileErr(w, &fileErr{wire.FileFailed, "the node's answer has no hash"})
+		return
+	}
+	h.fileSaved(r, id, p, res.Stat.Size)
+	fp := wire.FileFingerprint{Size: res.Stat.Size, MTime: res.Stat.MTime, SHA256: res.Stat.SHA256}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	_ = json.NewEncoder(w).Encode(wire.FileSaved{Path: p, Stat: *res.Stat, Fingerprint: fp.String()})
+}
+
+// fileSaved records a save as an admin action: the session, the path and
+// the size, never the content.
+func (h *Hub) fileSaved(r *http.Request, id, p string, size int64) {
+	h.svc.recordActionDetail(r, wire.ActionFileSave, id, p+" · "+strconv.FormatInt(size, 10)+" B")
 }

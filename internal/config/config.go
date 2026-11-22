@@ -41,6 +41,17 @@ const NodeCredentialsHeaderName = "Node-Credentials"
 // supported on the others.
 const NodeFilesHeaderName = "Node-Files"
 
+// NodeFileWriteHeaderName is HeaderPrefix + this on GET /api/node/socket
+// (#448): a node that also writes files (wire.FileWrite) sends it ("1").
+// The host sends no write to the others; a save there is refused.
+const NodeFileWriteHeaderName = "Node-File-Write"
+
+// FileFingerprintHeaderName is HeaderPrefix + this (#448): on a whole read
+// of a text file (GET …/files/raw, at most wire.FileTextMax) the content's
+// wire.FileFingerprint, and on a save (PUT …/files/raw) the one the file is
+// expected to have, or "*" to save whatever it is now.
+const FileFingerprintHeaderName = "File-Fingerprint"
+
 // CLIMinName is SWITCHBOARD_CLI_MIN without the prefix: the minimum client
 // major.minor (#308), read with EnvFrom. Unset or invalid: the server's own.
 const CLIMinName = "CLI_MIN"

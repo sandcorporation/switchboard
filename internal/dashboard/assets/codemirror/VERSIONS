@@ -1,0 +1,10 @@
+Vendored unmodified from the npm registry; served by the binary (dashboard.Assets).
+The file editor (#448) loads them when it first opens a file.
+
+codemirror  5.65.21  MIT  codemirror-5.65.21.tgz  sha1 cacf320606c5450ad3b3da34bb9c666afec21068
+            lib/codemirror.js -> codemirror.js, lib/codemirror.css -> codemirror.css,
+            mode/<m>/<m>.js -> mode-<m>.js for go javascript python markdown yaml shell,
+            LICENSE -> LICENSE.codemirror
+
+Refresh: npm pack codemirror@<version>, check the sha1 against
+`npm view codemirror@<version> dist.shasum`, copy the files above, update this file.

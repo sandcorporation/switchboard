@@ -17,7 +17,9 @@
 // and below the column is a drawer.
 // Its 파일 view (#447, wsFiles) is the session folder's tree; a file opens as
 // a centre panel (file:<id>:<path>): by extension an <img>, <audio> or
-// <video> streaming /files/raw (Range seeks), else a read-only text view.
+// <video> streaming /files/raw (Range seeks), else the editor (#448), saved
+// with 저장 or Ctrl+S; a file changed elsewhere since it was read offers
+// 다시 읽기 and 그래도 저장.
 function wsStart(){
   const L=wsLayout,S=wsSide,F=wsFiles,KEY='switchboard.workspace',SKEY=KEY+'.side',DT='application/x-switchboard-panel';
   const mq=window.matchMedia('(max-width:600px)');
@@ -42,7 +44,7 @@ function wsStart(){
   function title(p){
     const m=menuOf(p);
     if(m){const t=$('tab-'+m);return t?t.querySelector('.tab-name').textContent:m}
-    const f=F.fileOf(p);if(f)return F.base(f.path);
+    const f=F.fileOf(p);if(f)return F.base(f.path)+(fileDirty(files.get(p))?' •':'');
     const it=S.itemOf(p);
     if(titles.has(p)||!it)return titles.get(p)||p.slice(5);
     return it.tab==='questions'?'질문':'권한 요청';
@@ -200,6 +202,7 @@ function wsStart(){
     const m=menuOf(p);if(m&&m!==curTab)selectTab(m);
   }
   function closePanel(p){
+    if(F.fileOf(p)&&fileDirty(files.get(p))&&!confirm('저장하지 않은 고침을 버림'))return;
     const m=menuOf(p),w=wraps.get(p);
     if(m)main.append($('panel-'+m));
     else if(S.itemOf(p)){const it=items.get(p);if(it)it.seq++;items.delete(p)}
@@ -395,20 +398,75 @@ function wsStart(){
     if(files.has(p))drawFile(p);
     sideDrawer(false);commit();
   }
-  // filePane is a file panel's element: the path, its size and the text.
+  // filePane is a file panel's element: the path, its size, 저장 and the
+  // editor (#448), or why the file does not open as text.
   function filePane(p){
     let f=files.get(p);if(f)return f.el;
-    const x=F.fileOf(p),el=node('div','','ws-file'),head=node('div','','ws-item-head'),h=node('h2',x.path),meta=node('span','','ws-file-meta'),re=node('button','↻','ws-files-re'),body=node('div','','ws-file-body');
+    const x=F.fileOf(p),el=node('div','','ws-file'),head=node('div','','ws-item-head'),h=node('h2',x.path),meta=node('span','','ws-file-meta'),
+      save=node('button','저장','sc-btn sc-btn--sm ws-file-save'),re=node('button','↻','ws-files-re'),bar=node('div','','ws-file-bar'),body=node('div','','ws-file-body');
+    save.type='button';save.hidden=true;save.disabled=true;save.title='저장 (Ctrl+S)';
     re.type='button';re.title='다시 읽기';re.setAttribute('aria-label','다시 읽기');h.title=x.path;
-    head.append(h,meta,re);el.append(head,body);
-    f={el:el,meta:meta,body:body,seq:0};files.set(p,f);
-    re.onclick=()=>drawFile(p);
+    bar.hidden=true;bar.setAttribute('role','status');
+    head.append(h,meta,save,re);el.append(head,bar,body);
+    f={el:el,meta:meta,save:save,bar:bar,body:body,seq:0,ed:null,fp:'',busy:false};files.set(p,f);
+    re.onclick=()=>{if(fileDirty(f)&&!confirm('저장하지 않은 고침을 버림'))return;drawFile(p)};
+    save.onclick=()=>saveFile(p,false);
     drawFile(p);
     return el;
+  }
+  function fileDirty(f){return !!(f&&f.ed&&!f.ed.clean())}
+  // fileBar shows a line above the editor: a message, and buttons.
+  function fileBar(f,text,cls,buttons){
+    if(!text){f.bar.hidden=true;f.bar.replaceChildren();return}
+    f.bar.className='ws-file-bar '+(cls||'');
+    f.bar.replaceChildren(node('span',text),...(buttons||[]));f.bar.hidden=false;
+  }
+  function fileMarks(p){
+    const f=files.get(p);if(!f||!f.ed)return;
+    f.save.disabled=!fileDirty(f)||f.busy;
+    retitle(p);
+  }
+  // editorLib loads the editor's files once; null after a failure, so the
+  // next file tries again (and opens in a plain text box meanwhile).
+  let editorLib=null;
+  function loadEditor(){
+    if(!editorLib)editorLib=loadAssets(editorAssets).then(()=>{if(typeof CodeMirror!=='function')throw Error('불러오기 실패')}).catch(e=>{editorLib=null;throw e});
+    return editorLib;
+  }
+  // makeEditor puts an editor of text into parent: CodeMirror with the
+  // path's colouring, or a plain text box without it. clean() is whether
+  // it has the text last marked (mark()).
+  function makeEditor(parent,text,path,cm,changed,save){
+    if(cm){
+      const ed=CodeMirror(parent,{value:text,mode:F.modeOf(path),lineNumbers:true,indentUnit:F.modeOf(path)==='go'?8:2,indentWithTabs:F.modeOf(path)==='go',
+        tabSize:F.modeOf(path)==='go'?8:4,lineWrapping:false,extraKeys:{'Ctrl-S':save,'Cmd-S':save}});
+      let gen=ed.changeGeneration();
+      ed.on('changes',changed);
+      // A panel moved, shown or resized draws again.
+      if(typeof ResizeObserver==='function')new ResizeObserver(()=>ed.refresh()).observe(parent);
+      return {clean:()=>ed.isClean(gen),mark:()=>{gen=ed.changeGeneration()},get:()=>ed.getValue(),focus:()=>ed.focus()};
+    }
+    const ta=node('textarea','','ws-text ws-edit');ta.value=text;ta.spellcheck=false;ta.setAttribute('aria-label',path);
+    let saved=text;
+    ta.oninput=changed;
+    ta.onkeydown=e=>{if((e.ctrlKey||e.metaKey)&&e.key==='s'){e.preventDefault();save()}};
+    parent.append(ta);
+    return {clean:()=>ta.value===saved,mark:()=>{saved=ta.value},get:()=>ta.value,focus:()=>ta.focus()};
+  }
+  // readFile is the text of session id's path and its fingerprint.
+  async function readFile(id,path){
+    let r;
+    try{r=await fetch('/api/admin/'+F.url(id,path,true),{credentials:'same-origin',headers:{'Accept':'*/*'}})}
+    catch(e){throw Error('네트워크 오류 · 연결과 로그인 확인')}
+    if(r.status===401)signedOut();
+    if(r.redirected)throw Error('로그인 필요 · 다시 로그인한 뒤 새로 고침');
+    if(!r.ok){let b='';try{b=await r.text()}catch(e){}throw Error(F.problem(r.status,b))}
+    return {bytes:new Uint8Array(await r.arrayBuffer()),fp:r.headers.get(F.FP_HEADER)||''};
   }
   async function drawFile(p){
     const f=files.get(p),x=F.fileOf(p);if(!f||!x)return;
     const seq=++f.seq;
+    f.ed=null;f.fp='';f.save.hidden=true;fileBar(f,'');retitle(p);
     try{
       const ls=await filesGet(x.session,x.path,false);
       if(seq!==f.seq)return;
@@ -425,13 +483,52 @@ function wsStart(){
         f.body.replaceChildren(m);return;
       }
       if(ls.stat.size>F.TEXT_MAX){f.body.replaceChildren(node('p','너무 큼','empty'));return}
-      const b=await filesGet(x.session,x.path,true);
+      const [rd,cm]=await Promise.all([readFile(x.session,x.path),loadEditor().then(()=>true,()=>false)]);
       if(seq!==f.seq)return;
-      const t=F.textOf(b.length,b);
+      const t=F.textOf(rd.bytes.length,rd.bytes);
       if(t.why){f.body.replaceChildren(node('p',t.why,'empty'));return}
-      const pre=node('pre','','ws-text');pre.textContent=t.text;pre.tabIndex=0;
-      f.body.replaceChildren(pre);
+      f.meta.textContent=F.size(rd.bytes.length);
+      f.body.replaceChildren();
+      f.fp=rd.fp;
+      f.ed=makeEditor(f.body,t.text,x.path,cm,()=>fileMarks(p),()=>saveFile(p,false));
+      f.save.hidden=!f.fp;
+      fileMarks(p);
     }catch(e){if(seq===f.seq)f.body.replaceChildren(node('p',e.message,'msg err'))}
+  }
+  // saveFile writes the editor's text back; anyway saves over a change
+  // made elsewhere since the read (그래도 저장).
+  async function saveFile(p,anyway){
+    const f=files.get(p),x=F.fileOf(p);if(!f||!x||!f.ed||f.busy||!f.fp)return;
+    if(!anyway&&f.ed.clean())return;
+    const text=f.ed.get(),seq=f.seq;
+    if(new TextEncoder().encode(text).length>F.TEXT_MAX){fileBar(f,'너무 큼','err');return}
+    f.busy=true;fileMarks(p);fileBar(f,'저장 중…','muted');
+    let r;
+    try{r=await fetch('/api/admin/'+F.url(x.session,x.path,true),{method:'PUT',credentials:'same-origin',
+      headers:{'Accept':'application/json','Content-Type':'application/json','X-Switchboard-Dashboard':'1',[F.FP_HEADER]:anyway?'*':f.fp},
+      body:JSON.stringify({text:text})})}
+    catch(e){r=null}
+    f.busy=false;
+    if(seq!==f.seq||files.get(p)!==f)return;
+    if(!r){fileBar(f,'네트워크 오류 · 연결과 로그인 확인','err');fileMarks(p);return}
+    if(r.status===401)signedOut();
+    if(r.ok){
+      let out=null;try{out=await r.json()}catch(e){}
+      if(!out||!out.fingerprint){fileBar(f,'로그인 필요 · 다시 로그인한 뒤 새로 고침','err');fileMarks(p);return}
+      f.fp=out.fingerprint;f.meta.textContent=F.size(out.stat.size);
+      // Typing during the save stays unsaved.
+      if(f.ed.get()===text)f.ed.mark();
+      fileBar(f,'');fileMarks(p);
+      return;
+    }
+    let b='';try{b=await r.text()}catch(e){}
+    if(r.status===409){
+      const again=node('button','다시 읽기','sc-btn sc-btn--sm sc-btn--secondary'),over=node('button','그래도 저장','sc-btn sc-btn--sm');
+      again.type=over.type='button';
+      again.onclick=()=>drawFile(p);over.onclick=()=>saveFile(p,true);
+      fileBar(f,F.problem(409,b),'warn',[again,over]);
+    }else fileBar(f,r.status===403&&!b.includes('"code"')?'쓰기 거부(403) · 같은 주소에서 열었는지 확인':F.problem(r.status,b),'err');
+    fileMarks(p);
   }
   // itemPane is an item panel's element, drawn by its tab's detail spec.
   function itemPane(p){

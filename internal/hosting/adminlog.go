@@ -43,12 +43,18 @@ const AdminActionKeep = 200
 // without an actor (a test, the CLI) records nothing. A failed write is
 // logged, never fatal: the action itself has happened.
 func (s *Service) recordAction(r *http.Request, action, target string) {
+	s.recordActionDetail(r, action, target, "")
+}
+
+// recordActionDetail is recordAction with a detail (a path and a size,
+// never a value).
+func (s *Service) recordActionDetail(r *http.Request, action, target, detail string) {
 	a, ok := actorOf(r.Context())
 	if !ok {
 		return
 	}
-	if _, err := s.db.Exec(`INSERT INTO admin_actions(at,admin,method,action,target,addr) VALUES(?,?,?,?,?,?)`,
-		s.clock().UnixMilli(), a.Admin, a.Method, action, target, a.Addr); err != nil {
+	if _, err := s.db.Exec(`INSERT INTO admin_actions(at,admin,method,action,target,addr,detail) VALUES(?,?,?,?,?,?,?)`,
+		s.clock().UnixMilli(), a.Admin, a.Method, action, target, a.Addr, detail); err != nil {
 		log.Printf("hosting: admin action %s: %v", action, err)
 	}
 }
@@ -59,7 +65,7 @@ func (s *Service) AdminActions(target string, limit int) ([]wire.AdminAction, er
 	if limit <= 0 || limit > AdminActionKeep {
 		limit = AdminActionKeep
 	}
-	q := `SELECT at,admin,method,action,target,addr FROM admin_actions`
+	q := `SELECT at,admin,method,action,target,addr,detail FROM admin_actions`
 	args := []any{}
 	if target != "" {
 		q += ` WHERE target=?`
@@ -75,7 +81,7 @@ func (s *Service) AdminActions(target string, limit int) ([]wire.AdminAction, er
 	out := []wire.AdminAction{}
 	for rows.Next() {
 		var a wire.AdminAction
-		if err := rows.Scan(&a.At, &a.Admin, &a.Method, &a.Action, &a.Target, &a.Addr); err != nil {
+		if err := rows.Scan(&a.At, &a.Admin, &a.Method, &a.Action, &a.Target, &a.Addr, &a.Detail); err != nil {
 			return nil, err
 		}
 		out = append(out, a)

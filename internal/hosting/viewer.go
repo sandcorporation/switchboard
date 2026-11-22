@@ -235,7 +235,7 @@ func toNode(c *nodeConn, f wire.NodeFrame) bool {
 	t := time.NewTimer(nodeInputWait)
 	defer t.Stop()
 	select {
-	case c.out <- f:
+	case c.out <- nodeOut{NodeFrame: f}:
 		return true
 	case <-t.C:
 		return false

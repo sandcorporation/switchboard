@@ -92,17 +92,25 @@ type Hub struct {
 	fileSeq int64
 }
 
+// nodeOut is one frame queued for a node: the JSON frame, or with bin the
+// binary frame instead (a write's bytes, #448), in queue order.
+type nodeOut struct {
+	wire.NodeFrame
+	bin []byte
+}
+
 type nodeConn struct {
 	name   string
-	out    chan wire.NodeFrame
+	out    chan nodeOut
 	cancel context.CancelFunc
 	sent   string // the last assign list sent
 	// takes is whether the node asked for role credentials (#343); held
 	// is the credential ids it holds.
 	takes bool
 	held  map[string]bool
-	// files is whether the node answers file frames (#447).
-	files bool
+	// files is whether the node answers file frames (#447); write whether
+	// it also writes (#448).
+	files, write bool
 }
 
 // NewHub returns the hub over svc. publish may be nil.
@@ -299,7 +307,7 @@ func (h *Hub) withLastRunLocked(recs []wire.HostedSession) []wire.HostedSession 
 
 func (h *Hub) sendLocked(c *nodeConn, f wire.NodeFrame) bool {
 	select {
-	case c.out <- f:
+	case c.out <- nodeOut{NodeFrame: f}:
 		return true
 	default:
 		c.cancel()
@@ -428,9 +436,10 @@ func (h *Hub) nodeSocket(w http.ResponseWriter, r *http.Request, name string) {
 	ws.SetReadLimit(nodeReadLimit)
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
-	c := &nodeConn{name: name, out: make(chan wire.NodeFrame, nodeQueue), cancel: cancel}
+	c := &nodeConn{name: name, out: make(chan nodeOut, nodeQueue), cancel: cancel}
 	c.held, c.takes = parseHeld(r.Header.Values(config.HeaderPrefix + config.NodeCredentialsHeaderName))
 	c.files = r.Header.Get(config.HeaderPrefix+config.NodeFilesHeaderName) == "1"
+	c.write = c.files && r.Header.Get(config.HeaderPrefix+config.NodeFileWriteHeaderName) == "1"
 	go func() {
 		for {
 			select {
@@ -438,7 +447,12 @@ func (h *Hub) nodeSocket(w http.ResponseWriter, r *http.Request, name string) {
 				return
 			case f := <-c.out:
 				wctx, done := context.WithTimeout(ctx, nodeWriteTimeout)
-				err := wsjson.Write(wctx, ws, f)
+				var err error
+				if f.bin != nil {
+					err = ws.Write(wctx, websocket.MessageBinary, f.bin)
+				} else {
+					err = wsjson.Write(wctx, ws, f.NodeFrame)
+				}
 				done()
 				if err != nil {
 					cancel()
@@ -723,6 +737,8 @@ func (h *Hub) AdminTerminalsAPI(w http.ResponseWriter, r *http.Request, rest str
 			h.eventsAPI(w, r, id)
 		case sub == "/files":
 			h.filesAPI(w, r, id)
+		case sub == "/files/raw" && r.Method == http.MethodPut:
+			h.saveAPI(w, r, id)
 		case sub == "/files/raw":
 			h.rawAPI(w, r, id)
 		default:

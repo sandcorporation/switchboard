@@ -65,3 +65,18 @@ test('kindOf picks the panel by extension',()=>{
   assert.strictEqual(F.kindOf('a.png/notes'),'text');
   assert.strictEqual(F.kindOf('main.go'),'text');
 });
+
+test('the editor colours Go, JS, JSON, Python, Markdown, YAML and the shell; the rest is plain',()=>{
+  const want={'main.go':'go','go.mod':'go','a/b.js':'javascript','x.MJS':'javascript','p.json':'application/json','s.py':'python',
+    'README.md':'markdown','c.yaml':'yaml','c.yml':'yaml','run.sh':'shell','.bashrc':'shell','.zshrc':'shell','.profile':'shell'};
+  for(const [p,m] of Object.entries(want))assert.strictEqual(F.modeOf(p),m,p);
+  for(const p of ['notes.txt','Makefile','Dockerfile','.gitignore','a.html','dir.d/x','x.'])assert.strictEqual(F.modeOf(p),null,p);
+});
+
+test('a save names the fingerprint header and its refusals',()=>{
+  assert.strictEqual(F.FP_HEADER,'X-Switchboard-File-Fingerprint');
+  assert.strictEqual(F.problem(409,'{"code":"conflict","error":"x"}'),'다른 곳에서 바뀜');
+  assert.strictEqual(F.problem(413,'{"code":"too-big","error":"x"}'),'너무 큼');
+  assert.strictEqual(F.problem(501,'{"code":"read-only","error":"x"}'),'이 노드는 저장을 지원하지 않음');
+  assert.strictEqual(F.problem(501,'{"code":"unsupported","error":"x"}'),'이 노드는 파일을 지원하지 않음');
+});

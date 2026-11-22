@@ -319,6 +319,9 @@ const (
 	ActionSessionAdd    = "session.add"
 	ActionSessionChange = "session.change"
 	ActionSessionRemove = "session.remove"
+	// ActionFileSave is a save of a session folder file (#448): the target
+	// is the session, the detail its path and size, never the content.
+	ActionFileSave = "file.save"
 )
 
 // AdminAction is one row of GET /api/admin/admin-actions (#446): who did
@@ -331,6 +334,9 @@ type AdminAction struct {
 	Action string `json:"action"`
 	Target string `json:"target"`
 	Addr   string `json:"addr"`
+	// Detail names more of the action where the target is not enough: a
+	// file save's "path · N B" (#448).
+	Detail string `json:"detail,omitempty"`
 }
 
 // NodeJoin is the body of POST /api/node/join: a one-time code from

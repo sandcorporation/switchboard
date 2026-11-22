@@ -10,7 +10,8 @@ import (
 
 // vendored holds third-party files served by the binary, never from a CDN:
 // xterm.js and its fit addon for the terminal view (assets/xterm/VERSIONS
-// pins them; the licences sit beside them) and the design system stylesheet
+// pins them; the licences sit beside them), CodeMirror for the file editor
+// (assets/codemirror, #448) and the design system stylesheet
 // (assets/sandcorp.css, inlined into the page by DesignCSS).
 //
 //go:embed assets
@@ -25,6 +26,21 @@ var TerminalAssets = []string{
 	AssetsPrefix + "xterm/xterm.css",
 	AssetsPrefix + "xterm/xterm.js",
 	AssetsPrefix + "xterm/addon-fit.js",
+}
+
+// EditorAssets are the file editor's files (#448): CodeMirror 5 and its
+// modes for Go, JavaScript (and JSON), Python, Markdown, YAML and the shell
+// (assets/codemirror/VERSIONS pins them). The bootstrap lists them with
+// hosting on; the workspace loads them when it first opens a file.
+var EditorAssets = []string{
+	AssetsPrefix + "codemirror/codemirror.css",
+	AssetsPrefix + "codemirror/codemirror.js",
+	AssetsPrefix + "codemirror/mode-go.js",
+	AssetsPrefix + "codemirror/mode-javascript.js",
+	AssetsPrefix + "codemirror/mode-python.js",
+	AssetsPrefix + "codemirror/mode-markdown.js",
+	AssetsPrefix + "codemirror/mode-yaml.js",
+	AssetsPrefix + "codemirror/mode-shell.js",
 }
 
 // workspace holds the host-mode workspace (#444): the panel layout, the
