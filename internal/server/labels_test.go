@@ -325,9 +325,9 @@ func TestLabelAddressRules(t *testing.T) {
 	if again := sendFrom(t, s, label22, "once", "k1", 200); again.Recipient != "team/worker" || again.HeldID != first.ID {
 		t.Fatalf("retry after move: %+v", again)
 	}
-	// The held ID is gone; nobody can address a held message as a recipient.
-	if w := call(s, "GET", "/api/messages/"+itoa(first.ID), "secret-a", nil, ""); w.Code != 404 {
-		t.Fatalf("old ID: %d", w.Code)
+	// The held ID follows the message to its new ID (#392).
+	if w := call(s, "GET", "/api/messages/"+itoa(first.ID), "secret-a", nil, ""); w.Code != 200 || strings.Contains(w.Body.String(), `"id":`+itoa(first.ID)+`,`) {
+		t.Fatalf("old ID: %d %s", w.Code, w.Body)
 	}
 	// A client cannot forge the label fields.
 	w := call(s, "POST", "/api/messages", "secret-a", map[string]any{"recipient": "b", "subject": "s", "addressed_to": label22, "held_id": 5}, "")
