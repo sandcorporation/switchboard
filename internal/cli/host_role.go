@@ -41,13 +41,13 @@ func cliHostGrant(p parsedArgs, stdout io.Writer) (int, error) {
 	if len(p.extra) > 0 {
 		return 0, usagef("host %s: arguments after -- are for host add", action)
 	}
-	grantOpts := map[string]bool{"--base": true, "--node": true, "--dir-root": true, "--adapter": true, "--json": true}
+	grantOpts := map[string]bool{"--base": true, "--node": true, "--dir-root": true, "--adapter": true, "--group": true, "--json": true}
 	for o := range p.values {
 		if !grantOpts[o] || (o != "--json" && (action == "revoke-grant" || role == "list")) {
 			return 0, usagef("host %s: %s is not one of its options", action, o)
 		}
 	}
-	g := wire.HostGrant{Role: role, Bases: p.multi["--base"], Nodes: p.multi["--node"], DirRoots: p.multi["--dir-root"], Adapters: p.multi["--adapter"]}
+	g := wire.HostGrant{Role: role, Bases: p.multi["--base"], Nodes: p.multi["--node"], DirRoots: p.multi["--dir-root"], Adapters: p.multi["--adapter"], Groups: p.multi["--group"]}
 	switch {
 	case role == "":
 		return 0, usagef("host %s requires ROLE", action)
@@ -207,13 +207,20 @@ func printRoleHosted(w io.Writer, list []wire.HostedSession) {
 		return
 	}
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "ID\tNODE\tBASE\tCLASS\tLABEL\tDESIRED\tSTATE\tDIRECTORY")
+	fmt.Fprintln(tw, "ID\tNODE\tBASE\tGROUP\tLABEL\tDESIRED\tSTATE\tDIRECTORY")
 	for _, h := range list {
 		label := h.Label
 		if label == "" {
 			label = "-"
 		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", h.ID, h.Node, h.Base, h.Class, label, h.Desired, h.Runtime.State, h.Directory)
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", h.ID, h.Node, h.Base, dashEmpty(h.Group), label, h.Desired, h.Runtime.State, h.Directory)
 	}
 	tw.Flush()
+}
+
+func dashEmpty(v string) string {
+	if v == "" {
+		return "-"
+	}
+	return v
 }

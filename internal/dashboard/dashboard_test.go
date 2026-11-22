@@ -125,12 +125,14 @@ func TestDashboardHeaderFromOneConstant(t *testing.T) {
 	}
 }
 
-// Collaborator groups and invites have no dashboard view (#140).
+// Collaborator groups and invites have no dashboard view (#140). Work
+// groups (#435, 묶음, at terminals/work-groups) are another thing: the ban
+// is on the collaborator group API (groups, groups/…).
 func TestDashboardHasNoCollaboratorsView(t *testing.T) {
 	w := httptest.NewRecorder()
 	Page(w, httptest.NewRequest("GET", "/", nil))
 	body := w.Body.String()
-	for _, banned := range []string{"collaborators", "협업자", "invite", "groups/", "묶음"} {
+	for _, banned := range []string{"collaborators", "협업자", "invite", "'groups/", "api('groups"} {
 		if strings.Contains(body, banned) {
 			t.Fatalf("dashboard still has %q", banned)
 		}
@@ -212,7 +214,7 @@ func TestDashboardTerminalsTabOnlyWithHosting(t *testing.T) {
 		`confirm(`,
 		`<button type="button" data-view="nodes" aria-pressed="false" hidden>노드</button>`,
 		`setViewButton('nodes').hidden=!hostingOn;`,
-		`if(!setViewHash[v]||(v==='nodes'&&!hostingOn))v='qsettings';`,
+		`if(!setViewHash[v]||((v==='nodes'||v==='groups')&&!hostingOn))v='qsettings';`,
 		`api('nodes')`,
 		`apiSend('DELETE','nodes/'+encodeURIComponent(v.name))`,
 		// 예약 (#336): the record's scheduled runs over the admin API.
@@ -544,14 +546,14 @@ func TestDashboardSettingsDetail(t *testing.T) {
 	Page(w, httptest.NewRequest("GET", "/", nil))
 	body := w.Body.String()
 	for _, want := range []string{
-		`<div class="viewswitch" id="setViews" role="group" aria-label="설정 고르기"><button type="button" data-view="qsettings" aria-pressed="true">질문 설정</button><button type="button" data-view="roles" aria-pressed="false">역할</button><button type="button" data-view="nodes" aria-pressed="false" hidden>노드</button><button type="button" data-view="reminders" aria-pressed="false">다시 알림</button></div>`,
+		`<div class="viewswitch" id="setViews" role="group" aria-label="설정 고르기"><button type="button" data-view="qsettings" aria-pressed="true">질문 설정</button><button type="button" data-view="roles" aria-pressed="false">역할</button><button type="button" data-view="nodes" aria-pressed="false" hidden>노드</button><button type="button" data-view="groups" aria-pressed="false" hidden>묶음</button><button type="button" data-view="reminders" aria-pressed="false">다시 알림</button></div>`,
 		`<table id="settingsTbl" class="stack list cards">`,
 		`<table id="refusalsTbl" class="stack list cards"><thead><tr><th>역할</th><th>맞은 대상</th><th>대신 물을 역할</th><th class="num">횟수</th><th>마지막 거절</th></tr></thead><tbody id="refusalsTable"></tbody></table>`,
 		"const [rows,refused]=await Promise.all([api('question-settings'),api('question-refusals')]);",
 		`<table id="rolesTbl" class="stack list cards">`,
 		`<table id="nodesTbl" class="stack list cards">`,
 		`<dialog id="setAdd" class="sc-drawer" aria-labelledby="setAddTitle">`,
-		"const setViewHash={qsettings:'settings',roles:'settings-roles',nodes:'settings-nodes',reminders:'settings-reminders'};",
+		"const setViewHash={qsettings:'settings',roles:'settings-roles',nodes:'settings-nodes',groups:'settings-groups',reminders:'settings-reminders'};",
 		"registerDetail('settings',{",
 		"detailRow(tr,'settings','qs:'+v.target);",
 		"detailRow(tr,'settings','role:'+v.role);",

@@ -284,8 +284,8 @@ var commands = []command{
 			{"--status", "STATUS", "list: only pending, answered or withdrawn questions"},
 			optJSON, optProfile,
 		}},
-	{name: "host", args: "ACTION [ID]", nargs: 3, optArgs: true, extra: true, synopsis: "(ACTION: add | list | nodes | set ID | start ID | stop ID | restart ID | new-conversation ID | remove ID | events ID | log ID | revoke-node NAME | limit [on|off] | grant ROLE | grant list | revoke-grant ROLE | auto add ID | auto list | auto show AUTO-ID | auto run AUTO-ID | auto pause AUTO-ID | auto resume AUTO-ID | auto rm AUTO-ID) [-- AGENT ARGS...]",
-		summary: "Manage hosted sessions in this instance's database (DB_PATH, not the container default): add a record, list them, change one's permission mode, set one to run or stop, restart one with resume (clears a crash loop), start one in a new conversation, remove one, show or set the subscription limit; grant: let a role add, list, start, stop and remove sessions under itself with its own token (base roles, nodes and directory roots; without DB_PATH, host runs as the profile's role within its grant, and list and auto list of a boss role show every record in view); nodes: the node list for a boss role, through the server; auto: scheduled runs of a session (at each cron time in this machine's zone the host launches it when stopped and mails the prompt to its base role); a boss role's token without DB_PATH makes the dashboard's terminal actions on the sessions in view (#399, recorded): set (also --label, --parent, --class, --restart, -- ARGS), start, stop, restart, new-conversation, remove, events, log, limit, revoke-node, auto show, run, pause, resume and rm",
+	{name: "host", args: "ACTION [ID]", nargs: 3, optArgs: true, extra: true, synopsis: "(ACTION: add | list | nodes | set ID | start ID | stop ID | restart ID | new-conversation ID | remove ID | events ID | log ID | revoke-node NAME | limit [on|off|NODE/ADAPTER[/ACCOUNT] --remaining N|none] | grant ROLE | grant list | revoke-grant ROLE | group add NAME | group set NAME | group rm NAME | group list | auto add ID | auto list | auto show AUTO-ID | auto run AUTO-ID | auto pause AUTO-ID | auto resume AUTO-ID | auto rm AUTO-ID) [-- AGENT ARGS...]",
+		summary: "Manage hosted sessions in this instance's database (DB_PATH, not the container default): add a record, list them, change one's permission mode, set one to run or stop, restart one with resume (clears a crash loop), start one in a new conversation, remove one, show or set the subscription limit; grant: let a role add, list, start, stop and remove sessions under itself with its own token (base roles, nodes and directory roots; without DB_PATH, host runs as the profile's role within its grant, and list and auto list of a boss role show every record in view); nodes: the node list for a boss role, through the server; group: work groups, each with a threshold (a session of the group takes no new work while its agent account has less than that percentage left; a boss role's token without DB_PATH works through the server); auto: scheduled runs of a session (at each cron time in this machine's zone the host launches it when stopped and mails the prompt to its base role); a boss role's token without DB_PATH makes the dashboard's terminal actions on the sessions in view (#399, recorded): set (also --label, --parent, --group, --restart, -- ARGS), start, stop, restart, new-conversation, remove, events, log, limit, revoke-node, auto show, run, pause, resume and rm",
 		options: []option{
 			{"--node", "NAME", "add: node the session runs on"},
 			{"--base", "ROLE", "add: base role (must exist)"},
@@ -294,7 +294,9 @@ var commands = []command{
 			{"--label", "TEXT", "add: label (SWITCHBOARD_LABEL); auto add: the mail subject (default \"scheduled run ID\")"},
 			{"--parent", "ROLE", "add: parent role (SWITCHBOARD_PARENT)"},
 			{"--restart", "POLICY", "add: always (default), on-failure or never"},
-			{"--class", "CLASS", "add: lead, coordinator, execute (default) or review"},
+			{"--group", "NAME", "add: work group (default: none, which always takes work); grant: work groups the role may choose (NAME[,NAME]; default: none)"},
+			{"--threshold", "PERCENT|none", "group add, group set: remaining limit (0 to 100) below which the group's sessions take no new work (default: none)"},
+			{"--remaining", "PERCENT|none", "limit NODE/ADAPTER[/ACCOUNT]: the operator's remaining limit (0 to 100) of that agent account, over what the agent reports; none clears it"},
 			{"--adapter", "NAME", "add: agent adapter the session launches with (default: the node's); grant: adapters the role may choose (NAME[,NAME]; default: any)"},
 			{"--dir-root", "PATH[,PATH]", "grant: directory roots the role's sessions must be under (with --base ROLE[,ROLE] and --node NAME[,NAME])"},
 			{"--ask-permissions", "", "add: launch the agent in its normal permission mode (default: with its permission-skip arguments)"},
@@ -427,6 +429,7 @@ type Commands struct {
 	Host       HostFunc
 	HostAuto   HostAutoFunc
 	HostGrant  HostGrantFunc
+	HostGroup  HostGroupFunc
 	Serve      ServeFunc
 	Up         UpFunc
 	Node       NodeFunc
@@ -446,7 +449,7 @@ var (
 // Run runs the client command in args (the arguments after the program name)
 // and returns the process exit code.
 func Run(args []string, buildVersion string, cmds Commands) int {
-	version, admin, host, hostAuto, hostGrant, binary = buildVersion, cmds.Admin, cmds.Host, cmds.HostAuto, cmds.HostGrant, cmds
+	version, admin, host, hostAuto, hostGrant, hostGroup, binary = buildVersion, cmds.Admin, cmds.Host, cmds.HostAuto, cmds.HostGrant, cmds.HostGroup, cmds
 	return runCLI(args)
 }
 

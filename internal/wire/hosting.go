@@ -1,5 +1,11 @@
 package wire
 
+import (
+	"fmt"
+	"strconv"
+	"strings"
+)
+
 // Hosted sessions (#173): the host's records of what should run on a node.
 // Timestamps are Unix milliseconds.
 
@@ -20,14 +26,18 @@ type HostedSession struct {
 	Env            map[string]string `json:"env"`
 	Restart        string            `json:"restart"`
 	Desired        string            `json:"desired"`
-	// Class is what the session does: "lead", "coordinator", "execute"
-	// (default) or "review" (#190).
-	Class string `json:"class"`
+	// Group is the work group the session belongs to (#435); empty is
+	// none: no threshold, it always accepts work.
+	Group string `json:"group,omitempty"`
 	// Adapter names the agent adapter the session launches with (#434);
 	// empty is the node's default.
 	Adapter string `json:"adapter,omitempty"`
-	// AcceptingWork is false for an execute or review session while the
-	// subscription limit holds (HostingLimit): it takes no new work items.
+	// Account is the agent account the node last reported the session uses
+	// (#435), "" its adapter's default.
+	Account string `json:"account,omitempty"`
+	// AcceptingWork is false while the remaining limit of the session's
+	// agent account is below its group's threshold (#435): it takes no new
+	// work items.
 	AcceptingWork bool `json:"accepting_work"`
 	// SkipPermissions launches the agent with its permission-skip
 	// arguments (#220): on for new records, off for records made before.
@@ -94,7 +104,7 @@ type HostedRuntime struct {
 
 // HostedSessionCreate is the body of POST /api/admin/terminals and what
 // `host add` sends. Empty Restart means "always", empty Desired "running",
-// empty Class "execute", nil SkipPermissions true.
+// nil SkipPermissions true.
 type HostedSessionCreate struct {
 	Node      string            `json:"node"`
 	Base      string            `json:"base"`
@@ -106,7 +116,12 @@ type HostedSessionCreate struct {
 	Env       map[string]string `json:"env"`
 	Restart   string            `json:"restart"`
 	Desired   string            `json:"desired"`
-	Class     string            `json:"class"`
+	// Class is the session class of a CLI before #435 (v0.47.0 sends it
+	// with every add). The host decodes strictly, refusing unknown fields,
+	// so it is still taken, and dropped: work groups replaced the classes.
+	Class string `json:"class,omitempty"`
+	// Group is the work group (#435); empty is none.
+	Group string `json:"group,omitempty"`
 	// Adapter is the agent adapter (#434); empty is the node's default.
 	Adapter string `json:"adapter,omitempty"`
 	// SkipPermissions is nil for the default (skip); `host add
@@ -124,21 +139,35 @@ type HostedSessionChange struct {
 	Env     *map[string]string `json:"env,omitempty"`
 	Restart *string            `json:"restart,omitempty"`
 	Desired *string            `json:"desired,omitempty"`
-	Class   *string            `json:"class,omitempty"`
+	// Class is taken from a CLI before #435 and dropped (see
+	// HostedSessionCreate.Class).
+	Class *string `json:"class,omitempty"`
+	// Group is the work group (#435); "" leaves the group.
+	Group *string `json:"group,omitempty"`
 	// Adapter applies at the next launch; "" is the node's default.
 	Adapter *string `json:"adapter,omitempty"`
 	// SkipPermissions applies at the next launch or restart.
 	SkipPermissions *bool `json:"skip_permissions,omitempty"`
 }
 
-// Session classes (#190). While the subscription limit holds, lead and
-// coordinator sessions keep taking work; execute and review sessions do not.
-const (
-	ClassLead        = "lead"
-	ClassCoordinator = "coordinator"
-	ClassExecute     = "execute"
-	ClassReview      = "review"
-)
+// WorkGroup is a work group (#435): a name the operator chooses and the
+// remaining-limit threshold of its sessions. Threshold is a percentage, 0 to
+// 100; a session of the group takes no new work while its agent account has
+// less left. Nil is no threshold.
+type WorkGroup struct {
+	Name      string `json:"name"`
+	Threshold *int   `json:"threshold"`
+	// Sessions counts the hosted sessions in the group.
+	Sessions  int   `json:"sessions"`
+	CreatedAt int64 `json:"created_at"`
+	UpdatedAt int64 `json:"updated_at"`
+}
+
+// WorkGroupChange is the body of PUT /api/admin/terminals/work-groups/{name}:
+// the new threshold, null for none.
+type WorkGroupChange struct {
+	Threshold *int `json:"threshold"`
+}
 
 // HostingLimit is GET /api/admin/terminals/limit and `host limit`: whether
 // the agent subscription's usage limit holds (#190). Source is "operator"
@@ -152,6 +181,64 @@ type HostingLimit struct {
 	Since     *int64 `json:"since"`
 	ResetAt   *int64 `json:"reset_at"`
 	ClearedAt *int64 `json:"cleared_at"`
+	// Accounts are the agent accounts the host knows of (#435): of a
+	// node's usage report, of a hosted session, or with a value set by
+	// hand.
+	Accounts []AccountLimit `json:"accounts,omitempty"`
+}
+
+// AccountLimit is one agent account's remaining limit as the host decides
+// it (#435), in HostingLimit.Accounts: the account is the node, the adapter
+// and the adapter's account name ("" its default). Remaining is a
+// percentage, nil when not known. Source is where it came from: "operator"
+// (host limit on: every account 0), "manual" (set by hand, Manual), "adapter"
+// (the agent reported it), "screen" (a session shows the usage-limit
+// message: 0). ResetsAt is when the adapter's or the message's window fills
+// again; a value read before it passed is dropped then. ClearedAt is when
+// the account last went from 0 to more or to not known.
+type AccountLimit struct {
+	Node      string `json:"node"`
+	Adapter   string `json:"adapter"`
+	Account   string `json:"account,omitempty"`
+	Remaining *int   `json:"remaining"`
+	Source    string `json:"source,omitempty"`
+	ResetsAt  *int64 `json:"resets_at,omitempty"`
+	Manual    *int   `json:"manual,omitempty"`
+	ClearedAt *int64 `json:"cleared_at,omitempty"`
+	// Sessions counts the hosted sessions on the account.
+	Sessions int `json:"sessions"`
+}
+
+// AccountLimitChange is the body of PUT /api/admin/terminals/limit/accounts:
+// the operator's value for one account, Remaining nil to clear it.
+type AccountLimitChange struct {
+	Node      string `json:"node"`
+	Adapter   string `json:"adapter"`
+	Account   string `json:"account"`
+	Remaining *int   `json:"remaining"`
+}
+
+// ParseAccountLimit reads NODE/ADAPTER[/ACCOUNT]=PERCENT|none, the form
+// `host limit NODE/ADAPTER[/ACCOUNT] --remaining PERCENT|none` hands on.
+func ParseAccountLimit(arg string) (AccountLimitChange, error) {
+	var c AccountLimitChange
+	key, val, ok := strings.Cut(arg, "=")
+	parts := strings.Split(key, "/")
+	if !ok || len(parts) < 2 || len(parts) > 3 || parts[0] == "" || parts[1] == "" {
+		return c, fmt.Errorf("account: want NODE/ADAPTER[/ACCOUNT], not %q", key)
+	}
+	c.Node, c.Adapter = parts[0], parts[1]
+	if len(parts) == 3 {
+		c.Account = parts[2]
+	}
+	if val != "none" {
+		n, err := strconv.Atoi(val)
+		if err != nil || n < 0 || n > 100 {
+			return c, fmt.Errorf("remaining: want 0 to 100 or none, not %q", val)
+		}
+		c.Remaining = &n
+	}
+	return c, nil
 }
 
 // HostingLimitChange is the body of PUT /api/admin/terminals/limit: the
@@ -187,6 +274,9 @@ type NodeView struct {
 	// Usage is the remaining usage of the node's agent accounts, as its
 	// last state frame reported it (#434).
 	Usage []AgentUsage `json:"usage,omitempty"`
+	// Accounts are the node's agent accounts with the remaining limit the
+	// host decides for each (#435), the operator's value among them.
+	Accounts []AccountLimit `json:"accounts,omitempty"`
 }
 
 // AgentUsage is what one agent account on a node has left (#434): the
@@ -401,8 +491,11 @@ type HostedNodeState struct {
 	Launched bool   `json:"launched"`
 	// AgentSessionID is the conversation Launched is about; the host
 	// ignores Launched for a conversation the record no longer holds.
-	AgentSessionID string        `json:"agent_session_id,omitempty"`
-	Runtime        HostedRuntime `json:"runtime"`
+	AgentSessionID string `json:"agent_session_id,omitempty"`
+	// Account is the agent account the record's session reported using
+	// (#435), "" its adapter's default; a host before it ignores it.
+	Account string        `json:"account,omitempty"`
+	Runtime HostedRuntime `json:"runtime"`
 }
 
 // TerminalTicketRequest is the body of POST /api/admin/terminals/{id}/ticket.

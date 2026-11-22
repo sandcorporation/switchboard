@@ -243,6 +243,14 @@ func hostAsBoss(c Config, action, id string, change wire.HostedSessionChange, ad
 			_, err = fmt.Fprintln(stdout, strings.TrimSpace(string(b)))
 			return ExitOK, err
 		}
+		if strings.Contains(id, "/") {
+			a, err := wire.ParseAccountLimit(id)
+			if err != nil {
+				return 0, usagef("host limit: %v", err)
+			}
+			key, val, _ := strings.Cut(id, "=")
+			return bossSend(c, "PUT", "terminals/limit/accounts", a, jsonOut, stdout, "remaining limit of "+key+" set to "+val)
+		}
 		return bossSend(c, "PUT", "terminals/limit", map[string]bool{"limited": id == "on"}, jsonOut, stdout, "subscription limit "+id)
 	case "events", "log":
 		b, err := slotCall(c, "GET", "/api/boss/"+term+"/"+action, nil)

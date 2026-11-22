@@ -24,10 +24,10 @@ func limitService(t *testing.T) (*Service, *time.Time) {
 	return s, now
 }
 
-func add(t *testing.T, s *Service, dir, class, desired string) wire.HostedSession {
+func add(t *testing.T, s *Service, dir, group, desired string) wire.HostedSession {
 	t.Helper()
 	c := record()
-	c.Directory, c.Class, c.Desired = dir, class, desired
+	c.Directory, c.Group, c.Desired = dir, group, desired
 	h, err := s.Create(c)
 	if err != nil {
 		t.Fatalf("create %s: %v", dir, err)
@@ -35,28 +35,55 @@ func add(t *testing.T, s *Service, dir, class, desired string) wire.HostedSessio
 	return h
 }
 
-func TestClassDefaultsToExecuteAndIsChecked(t *testing.T) {
+func pct(n int) *int { return &n }
+
+func addGroup(t *testing.T, s *Service, name string, threshold *int) {
+	t.Helper()
+	if _, err := s.AddGroup(wire.WorkGroup{Name: name, Threshold: threshold}); err != nil {
+		t.Fatalf("add group %s: %v", name, err)
+	}
+}
+
+// A session has no group by default; a group must exist, and one a
+// session is in cannot be removed (#435).
+func TestGroupIsCheckedAndKept(t *testing.T) {
 	s, _ := limitService(t)
 	h := add(t, s, "/w/a", "", "")
-	if h.Class != wire.ClassExecute || !h.AcceptingWork {
-		t.Fatalf("defaults: class %q accepting %v", h.Class, h.AcceptingWork)
+	if h.Group != "" || !h.AcceptingWork {
+		t.Fatalf("defaults: group %q accepting %v", h.Group, h.AcceptingWork)
 	}
-	lead := wire.ClassLead
-	if h, err := s.Update(h.ID, wire.HostedSessionChange{Class: &lead}); err != nil || h.Class != wire.ClassLead {
-		t.Fatalf("update class: %+v %v", h, err)
-	}
-	if got, _ := s.Get(h.ID); got.Class != wire.ClassLead {
-		t.Fatalf("stored class %q", got.Class)
-	}
-	bad := "boss"
 	var invalid InvalidError
-	if _, err := s.Update(h.ID, wire.HostedSessionChange{Class: &bad}); !errors.As(err, &invalid) {
-		t.Fatalf("class %q: %v", bad, err)
+	slow := "slow"
+	if _, err := s.Update(h.ID, wire.HostedSessionChange{Group: &slow}); !errors.As(err, &invalid) {
+		t.Fatalf("unknown group: %v", err)
 	}
-	c := record()
-	c.Directory, c.Class = "/w/b", "boss"
-	if _, err := s.Create(c); !errors.As(err, &invalid) {
-		t.Fatalf("create class boss: %v", err)
+	addGroup(t, s, "slow", pct(20))
+	if h, err := s.Update(h.ID, wire.HostedSessionChange{Group: &slow}); err != nil || h.Group != "slow" {
+		t.Fatalf("update group: %+v %v", h, err)
+	}
+	if got, _ := s.Get(h.ID); got.Group != "slow" {
+		t.Fatalf("stored group %q", got.Group)
+	}
+	if _, err := s.RemoveGroup("slow"); !errors.Is(err, ErrGroupInUse) {
+		t.Fatalf("remove a group in use: %v", err)
+	}
+	if _, err := s.AddGroup(wire.WorkGroup{Name: "slow"}); !errors.Is(err, ErrGroupExists) {
+		t.Fatalf("second slow: %v", err)
+	}
+	for _, bad := range []wire.WorkGroup{{Name: "a b"}, {Name: ""}, {Name: "fast", Threshold: pct(101)}, {Name: "fast", Threshold: pct(-1)}} {
+		if _, err := s.AddGroup(bad); !errors.As(err, &invalid) {
+			t.Fatalf("add %+v: %v", bad, err)
+		}
+	}
+	none := ""
+	if _, err := s.Update(h.ID, wire.HostedSessionChange{Group: &none}); err != nil {
+		t.Fatal(err)
+	}
+	if g, err := s.RemoveGroup("slow"); err != nil || g.Name != "slow" {
+		t.Fatalf("remove: %+v %v", g, err)
+	}
+	if _, err := s.Group("slow"); !errors.Is(err, ErrNoGroup) {
+		t.Fatalf("removed group: %v", err)
 	}
 }
 
@@ -126,17 +153,27 @@ func accepting(t *testing.T, s *Service) map[string]bool {
 	}
 	out := map[string]bool{}
 	for _, h := range list {
-		out[h.Class] = h.AcceptingWork
+		out[h.Label] = h.AcceptingWork
 	}
 	return out
 }
 
-func TestOperatorLimitStopsNewWorkForExecuteAndReviewOnly(t *testing.T) {
+// The operator's switch is 0% left for every account (#435): a session
+// whose group has a threshold above it takes no new work; one without a
+// group, or of a group without a threshold, still does.
+func TestOperatorLimitStopsNewWorkByGroupThreshold(t *testing.T) {
 	s, _ := limitService(t)
-	for i, class := range []string{wire.ClassLead, wire.ClassCoordinator, wire.ClassExecute, wire.ClassReview} {
-		add(t, s, "/w/"+strconv.Itoa(i), class, "")
+	addGroup(t, s, "fast", nil)
+	addGroup(t, s, "slow", pct(20))
+	addGroup(t, s, "zero", pct(0))
+	for i, group := range []string{"", "fast", "slow", "zero"} {
+		c := record()
+		c.Directory, c.Group, c.Label = "/w/"+strconv.Itoa(i), group, "g-"+group
+		if _, err := s.Create(c); err != nil {
+			t.Fatal(err)
+		}
 	}
-	all := map[string]bool{"lead": true, "coordinator": true, "execute": true, "review": true}
+	all := map[string]bool{"g-": true, "g-fast": true, "g-slow": true, "g-zero": true}
 	if got := accepting(t, s); !mapsEqual(got, all) {
 		t.Fatalf("before the limit: %v", got)
 	}
@@ -144,9 +181,19 @@ func TestOperatorLimitStopsNewWorkForExecuteAndReviewOnly(t *testing.T) {
 	if err != nil || !l.Limited || l.Source != LimitOperator {
 		t.Fatalf("set: %+v %v", l, err)
 	}
-	want := map[string]bool{"lead": true, "coordinator": true, "execute": false, "review": false}
+	want := map[string]bool{"g-": true, "g-fast": true, "g-slow": false, "g-zero": true}
 	if got := accepting(t, s); !mapsEqual(got, want) {
 		t.Fatalf("limited: %v", got)
+	}
+	// One threshold moves the whole group.
+	if _, err := s.SetGroupThreshold("slow", nil); err != nil {
+		t.Fatal(err)
+	}
+	if got := accepting(t, s); !mapsEqual(got, all) {
+		t.Fatalf("slow without a threshold: %v", got)
+	}
+	if _, err := s.SetGroupThreshold("slow", pct(20)); err != nil {
+		t.Fatal(err)
 	}
 	if l, err = s.SetLimit(false); err != nil || l.Limited || l.ClearedAt == nil {
 		t.Fatalf("clear: %+v %v", l, err)

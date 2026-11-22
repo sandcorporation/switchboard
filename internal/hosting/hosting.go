@@ -198,8 +198,10 @@ func (s *Service) validate(c *wire.HostedSessionCreate) error {
 	if c.Desired == "" {
 		c.Desired = DesiredRunning
 	}
-	if c.Class == "" {
-		c.Class = wire.ClassExecute
+	// c.Class, from a CLI before #435, is dropped: work groups replaced it.
+	c.Class = ""
+	if err := s.checkGroup(c.Group); err != nil {
+		return err
 	}
 	if err := s.checkAdapter(c.Node, c.Adapter); err != nil {
 		return err
@@ -210,7 +212,7 @@ func (s *Service) validate(c *wire.HostedSessionCreate) error {
 	if c.Env == nil {
 		c.Env = map[string]string{}
 	}
-	for _, err := range []error{checkLabel(c.Label), checkParent(c.Parent), checkArgsFor(c.Adapter, c.Args), checkEnv(c.Env), checkRestart(c.Restart), checkDesired(c.Desired), checkClass(c.Class)} {
+	for _, err := range []error{checkLabel(c.Label), checkParent(c.Parent), checkArgsFor(c.Adapter, c.Args), checkEnv(c.Env), checkRestart(c.Restart), checkDesired(c.Desired)} {
 		if err != nil {
 			return err
 		}
@@ -265,7 +267,7 @@ func (s *Service) create(c wire.HostedSessionCreate, dirRoot string) (wire.Hoste
 	h := wire.HostedSession{
 		ID: "hs_" + suffix, Node: c.Node, Base: c.Base, Label: c.Label, Parent: c.Parent, Profile: c.Profile,
 		Directory: c.Directory, AgentSessionID: sid, Args: c.Args, Env: c.Env, Restart: c.Restart, Desired: c.Desired,
-		Class: c.Class, Adapter: c.Adapter, AcceptingWork: true, SkipPermissions: c.SkipPermissions == nil || *c.SkipPermissions, Cols: defaultCols, Rows: defaultRows, CreatedAt: now, UpdatedAt: now, Runtime: unknownRuntime(),
+		Group: c.Group, Adapter: c.Adapter, AcceptingWork: true, SkipPermissions: c.SkipPermissions == nil || *c.SkipPermissions, Cols: defaultCols, Rows: defaultRows, CreatedAt: now, UpdatedAt: now, Runtime: unknownRuntime(),
 		DirRoot: dirRoot,
 	}
 	args, _ := json.Marshal(h.Args)
@@ -281,8 +283,8 @@ func (s *Service) create(c wire.HostedSessionCreate, dirRoot string) (wire.Hoste
 	if err != nil {
 		return wire.HostedSession{}, err
 	}
-	res, err := s.db.Exec(`INSERT INTO hosted_sessions(id,node,base,label,parent,profile,directory,agent_session_id,launched,args,env,restart,desired,class,skip_permissions,cols,rows,created_at,updated_at,dir_root,adapter) SELECT ?,?,?,?,?,?,?,?,0,?,?,?,?,?,?,?,?,?,?,?,? WHERE ?<>? OR `+cond,
-		append([]any{h.ID, h.Node, h.Base, h.Label, h.Parent, h.Profile, h.Directory, h.AgentSessionID, string(args), string(env), h.Restart, h.Desired, h.Class, boolInt(h.SkipPermissions), h.Cols, h.Rows, now, now, h.DirRoot, h.Adapter, h.Desired, DesiredRunning}, gargs...)...)
+	res, err := s.db.Exec(`INSERT INTO hosted_sessions(id,node,base,label,parent,profile,directory,agent_session_id,launched,args,env,restart,desired,work_group,skip_permissions,cols,rows,created_at,updated_at,dir_root,adapter) SELECT ?,?,?,?,?,?,?,?,0,?,?,?,?,?,?,?,?,?,?,?,? WHERE ?<>? OR `+cond,
+		append([]any{h.ID, h.Node, h.Base, h.Label, h.Parent, h.Profile, h.Directory, h.AgentSessionID, string(args), string(env), h.Restart, h.Desired, h.Group, boolInt(h.SkipPermissions), h.Cols, h.Rows, now, now, h.DirRoot, h.Adapter, h.Desired, DesiredRunning}, gargs...)...)
 	if err != nil && strings.Contains(err.Error(), "UNIQUE") {
 		return wire.HostedSession{}, ErrDuplicate
 	}
@@ -292,7 +294,7 @@ func (s *Service) create(c wire.HostedSessionCreate, dirRoot string) (wire.Hoste
 	if n, _ := res.RowsAffected(); n == 0 {
 		return wire.HostedSession{}, CapacityError{Node: h.Node, Max: max}
 	}
-	h.AcceptingWork = s.acceptingWork(h.Class)
+	h.AcceptingWork = s.acceptingWork(h)
 	return h, nil
 }
 
@@ -305,7 +307,7 @@ func boolInt(b bool) int {
 
 func unknownRuntime() wire.HostedRuntime { return wire.HostedRuntime{State: StateUnknown} }
 
-const sessionColumns = `id,node,base,label,parent,profile,directory,agent_session_id,launched,args,env,restart,desired,class,skip_permissions,cols,rows,restart_gen,start_gen,created_at,updated_at,dir_root,adapter`
+const sessionColumns = `id,node,base,label,parent,profile,directory,agent_session_id,launched,args,env,restart,desired,work_group,skip_permissions,cols,rows,restart_gen,start_gen,created_at,updated_at,dir_root,adapter,agent_account`
 
 type rowScanner interface{ Scan(dest ...any) error }
 
@@ -313,7 +315,7 @@ func scanSession(r rowScanner) (wire.HostedSession, error) {
 	var h wire.HostedSession
 	var launched, skip int
 	var args, env string
-	if err := r.Scan(&h.ID, &h.Node, &h.Base, &h.Label, &h.Parent, &h.Profile, &h.Directory, &h.AgentSessionID, &launched, &args, &env, &h.Restart, &h.Desired, &h.Class, &skip, &h.Cols, &h.Rows, &h.RestartGen, &h.StartGen, &h.CreatedAt, &h.UpdatedAt, &h.DirRoot, &h.Adapter); err != nil {
+	if err := r.Scan(&h.ID, &h.Node, &h.Base, &h.Label, &h.Parent, &h.Profile, &h.Directory, &h.AgentSessionID, &launched, &args, &env, &h.Restart, &h.Desired, &h.Group, &skip, &h.Cols, &h.Rows, &h.RestartGen, &h.StartGen, &h.CreatedAt, &h.UpdatedAt, &h.DirRoot, &h.Adapter, &h.Account); err != nil {
 		return h, err
 	}
 	h.Launched = launched != 0
@@ -347,12 +349,12 @@ func (s *Service) List() ([]wire.HostedSession, error) {
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	limit, err := s.Limit()
+	acc, err := s.accepting()
 	if err != nil {
 		return nil, err
 	}
 	for i := range out {
-		out[i].AcceptingWork = AcceptsWork(out[i].Class, limit.Limited)
+		out[i].AcceptingWork = acc(out[i])
 	}
 	return out, nil
 }
@@ -407,8 +409,12 @@ func (s *Service) Update(id string, c wire.HostedSessionChange) (wire.HostedSess
 	if c.Desired != nil {
 		h.Desired = *c.Desired
 	}
-	if c.Class != nil {
-		h.Class = *c.Class
+	// c.Class, from a CLI before #435, is dropped.
+	if c.Group != nil && *c.Group != h.Group {
+		if err := s.checkGroup(*c.Group); err != nil {
+			return h, err
+		}
+		h.Group = *c.Group
 	}
 	if c.SkipPermissions != nil {
 		h.SkipPermissions = *c.SkipPermissions
@@ -419,12 +425,12 @@ func (s *Service) Update(id string, c wire.HostedSessionChange) (wire.HostedSess
 		}
 		h.Adapter = *c.Adapter
 	}
-	for _, err := range []error{checkLabel(h.Label), checkParent(h.Parent), checkArgsFor(h.Adapter, h.Args), checkEnv(h.Env), checkRestart(h.Restart), checkDesired(h.Desired), checkClass(h.Class)} {
+	for _, err := range []error{checkLabel(h.Label), checkParent(h.Parent), checkArgsFor(h.Adapter, h.Args), checkEnv(h.Env), checkRestart(h.Restart), checkDesired(h.Desired)} {
 		if err != nil {
 			return h, err
 		}
 	}
-	h.AcceptingWork = s.acceptingWork(h.Class)
+	h.AcceptingWork = s.acceptingWork(h)
 	h.UpdatedAt = s.clock().UnixMilli()
 	if c.Desired != nil && *c.Desired == DesiredRunning {
 		// Start, even of a record that should already run: its node clears
@@ -433,8 +439,8 @@ func (s *Service) Update(id string, c wire.HostedSessionChange) (wire.HostedSess
 	}
 	args, _ := json.Marshal(h.Args)
 	env, _ := json.Marshal(h.Env)
-	return h, s.guardedUpdate(id, h.Node, h.Desired == DesiredRunning, `UPDATE hosted_sessions SET label=?,parent=?,args=?,env=?,restart=?,desired=?,class=?,adapter=?,skip_permissions=?,start_gen=start_gen+?,updated_at=?`,
-		h.Label, h.Parent, string(args), string(env), h.Restart, h.Desired, h.Class, h.Adapter, boolInt(h.SkipPermissions), startBump(c), h.UpdatedAt)
+	return h, s.guardedUpdate(id, h.Node, h.Desired == DesiredRunning, `UPDATE hosted_sessions SET label=?,parent=?,args=?,env=?,restart=?,desired=?,work_group=?,adapter=?,skip_permissions=?,start_gen=start_gen+?,updated_at=?`,
+		h.Label, h.Parent, string(args), string(env), h.Restart, h.Desired, h.Group, h.Adapter, boolInt(h.SkipPermissions), startBump(c), h.UpdatedAt)
 }
 
 func startBump(c wire.HostedSessionChange) int {
@@ -566,5 +572,20 @@ func (s *Service) Nodes() ([]wire.NodeView, error) {
 		}
 		out = append(out, n)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	rows.Close()
+	accounts, err := s.Accounts()
+	if err != nil {
+		return nil, err
+	}
+	for i := range out {
+		for _, a := range accounts {
+			if a.Node == out[i].Name {
+				out[i].Accounts = append(out[i].Accounts, a)
+			}
+		}
+	}
+	return out, nil
 }

@@ -58,7 +58,15 @@ func TestRoleHostsSessionsWithinItsGrant(t *testing.T) {
 			t.Errorf("grant %s = %d %s, want 400 %q", body, got.code, got.body, want)
 		}
 	}
-	got := adminCall(t, base, "POST", "/api/admin/host-grants", cookie, true, `{"role":"a","bases":["b"],"nodes":["pc"],"dir_roots":["/work/"]}`)
+	if got := adminCall(t, base, "POST", "/api/admin/host-grants", cookie, true, `{"role":"a","bases":["b"],"nodes":["pc"],"dir_roots":["/work"],"groups":["slow"]}`); got.code != 400 || !strings.Contains(got.body, `no work group "slow"`) {
+		t.Errorf("grant of a missing group = %d %s", got.code, got.body)
+	}
+	for _, g := range []string{`{"name":"slow","threshold":20}`, `{"name":"fast"}`} {
+		if got := adminCall(t, base, "POST", "/api/admin/terminals/work-groups", cookie, true, g); got.code != 201 {
+			t.Fatalf("group %s = %d %s", g, got.code, got.body)
+		}
+	}
+	got := adminCall(t, base, "POST", "/api/admin/host-grants", cookie, true, `{"role":"a","bases":["b"],"nodes":["pc"],"dir_roots":["/work/"],"groups":["slow"]}`)
 	var g wire.HostGrant
 	if got.code != 200 || json.Unmarshal([]byte(got.body), &g) != nil || g.DirRoots[0] != "/work" {
 		t.Fatalf("grant = %d %s", got.code, got.body)
@@ -75,8 +83,7 @@ func TestRoleHostsSessionsWithinItsGrant(t *testing.T) {
 		{rec("/work/app/../../etc", ""), "directory: /etc is not under"},
 		{rec("/workshop", ""), "directory: /workshop is not under"},
 		{rec("/work/app", `,"parent":"b"`), "parent: b is not a"},
-		{rec("/work/app", `,"class":"lead"`), "class: lead is for the admin"},
-		{rec("/work/app", `,"class":"coordinator"`), "class: coordinator is for the admin"},
+		{rec("/work/app", `,"group":"fast"`), "group: fast is not in the grant of a (slow)"},
 		{rec("/work/app", `,"env":{"XDG_CONFIG_HOME":"/tmp"}`), "env: a role's session takes no env"},
 		{rec("/work/app", `,"args":["--add-dir","/"]`), "--add-dir is not allowed for a role"},
 		{rec("/work/app", `,"args":["--settings","x"]`), "--settings is not allowed"},
@@ -95,12 +102,12 @@ func TestRoleHostsSessionsWithinItsGrant(t *testing.T) {
 		t.Errorf("relative directory = %d %s", got.code, got.body)
 	}
 
-	got = asA("POST", "terminals", rec("/work/./app/x/..", `,"class":"review","args":["--model","claude-x","--agent=reviewer","--name","Pc 1","--effort","high"]`))
+	got = asA("POST", "terminals", rec("/work/./app/x/..", `,"class":"review","group":"slow","args":["--model","claude-x","--agent=reviewer","--name","Pc 1","--effort","high"]`))
 	var h wire.HostedSession
 	if got.code != 201 || json.Unmarshal([]byte(got.body), &h) != nil {
 		t.Fatalf("add within the grant = %d %s", got.code, got.body)
 	}
-	if h.Parent != "a" || h.Directory != "/work/app" || h.DirRoot != "/work" || h.Class != "review" || len(h.Args) != 7 {
+	if h.Parent != "a" || h.Directory != "/work/app" || h.DirRoot != "/work" || h.Group != "slow" || len(h.Args) != 7 {
 		t.Errorf("added %+v", h)
 	}
 	admins := createRecord(t, base, cookie, `{"node":"pc","base":"b","profile":"p","directory":"/work/other","parent":"a","args":["--add-dir","/"]}`)

@@ -72,6 +72,11 @@ var bossWriteRoutes = []bossWriteRoute{
 		return c.Base, nil
 	}},
 	{http.MethodPut, pathShape("terminals/limit"), globalOnly},
+	{http.MethodPut, pathShape("terminals/limit/accounts"), globalOnly},
+	// Work groups (#435) are the whole host's: a global boss's writes.
+	{http.MethodPost, pathShape("terminals/work-groups"), globalOnly},
+	{http.MethodPut, pathShape("terminals/work-groups/*"), globalOnly},
+	{http.MethodDelete, pathShape("terminals/work-groups/*"), globalOnly},
 	{http.MethodPut, terminal(""), terminalOwner},
 	{http.MethodDelete, terminal(""), terminalOwner},
 	{http.MethodPost, terminal("/restart"), terminalOwner},
@@ -84,6 +89,7 @@ var bossWriteRoutes = []bossWriteRoute{
 	// Reads of the terminal tab that are not a list view (boss.go): the
 	// limit, a session's events and screen log, one scheduled run.
 	{http.MethodGet, pathShape("terminals/limit"), anyBoss},
+	{http.MethodGet, pathShape("terminals/work-groups"), anyBoss},
 	{http.MethodGet, terminal("/events"), terminalOwner},
 	{http.MethodGet, terminal("/log"), terminalOwner},
 	{http.MethodGet, pathShape("terminals/*/autos/*"), terminalOwner},
@@ -217,7 +223,7 @@ func terminal(suffix string) func(string) bool {
 	return func(p string) bool {
 		rest, ok := strings.CutPrefix(p, "terminals/")
 		id, ok2 := strings.CutSuffix(rest, suffix)
-		return ok && ok2 && id != "" && id != "limit" && !strings.Contains(id, "/")
+		return ok && ok2 && id != "" && id != "limit" && id != "work-groups" && !strings.Contains(id, "/")
 	}
 }
 
