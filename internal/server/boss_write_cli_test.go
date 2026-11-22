@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/sandcorporation/switchboard/internal/wire"
 )
@@ -123,5 +124,28 @@ func TestBossWriteCommands(t *testing.T) {
 	_ = h.s.db.QueryRow(`SELECT COUNT(*) FROM boss_writes WHERE role='a' AND status=200`).Scan(&n)
 	if n < 12 {
 		t.Fatalf("boss writes recorded: %d", n)
+	}
+}
+
+// A role that reported within 24 hours is not revoked by the CLI without the
+// confirm, which names the last use; --yes revokes it.
+func TestRolesRevokeNamesLastUse(t *testing.T) {
+	t.Parallel()
+	h := newCLIHarnessWith(t, func(s *Server) { s.bossRoles = map[string]bool{"a": true} })
+	h.configure([]string{"--profile", "boss"}, "a")
+	boss := []string{"DB_PATH=", "SWITCHBOARD_PROFILE=boss"}
+	if _, err := h.s.db.Exec(`INSERT INTO slots(base,number,machine,directory,registered_at,lease_until,reported_at) VALUES('b',1,'laptop','/w',?,?,?)`,
+		time.Now().UnixMilli(), time.Now().UnixMilli(), time.Now().UnixMilli()); err != nil {
+		t.Fatal(err)
+	}
+	r := h.run(boss, "roles", "revoke", "b")
+	if r.code != 2 || !strings.Contains(r.stdout, "last used ") || !strings.Contains(r.stdout, "on laptop") {
+		t.Fatalf("without --yes: %+v", r)
+	}
+	if _, err := h.s.db.Exec(`SELECT 1 FROM roles WHERE role='b' AND revoked_at IS NULL`); err != nil {
+		t.Fatal(err)
+	}
+	if out := h.mustRun(boss, "roles", "revoke", "b", "--yes"); !strings.Contains(out, "revoked b") {
+		t.Fatalf("with --yes: %s", out)
 	}
 }

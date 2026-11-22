@@ -342,7 +342,11 @@ func (s *Server) serveAPI(w http.ResponseWriter, r *http.Request) {
 	}
 	who, ok := s.authenticate(r)
 	if !ok {
-		http.Error(w, "unauthorized", 401)
+		msg := "unauthorized"
+		if m, revoked := s.ids().RevokedBody(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "), s.header(r, "Role")); revoked {
+			msg = m
+		}
+		http.Error(w, msg, 401)
 		return
 	}
 	role := who.Role
