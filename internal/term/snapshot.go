@@ -39,7 +39,9 @@ func (g Grid) Snapshot() []byte {
 			b.WriteString(c.Text)
 		}
 	}
-	b.WriteString("\x1b[0m")
+	// The screen is drawn; leave the viewer's pen as the program left it, so
+	// output that only changes attributes continues in the right ones.
+	b.WriteString(sgr(g.Pen))
 	b.WriteString("\x1b[" + strconv.Itoa(g.Cursor.Y+1) + ";" + strconv.Itoa(g.Cursor.X+1) + "H")
 	if g.Cursor.Hidden {
 		b.WriteString("\x1b[?25l")

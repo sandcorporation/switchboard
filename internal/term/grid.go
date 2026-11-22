@@ -11,6 +11,9 @@ import (
 type Grid struct {
 	Cols, Rows int
 	Cursor     Cursor
+	// Pen is the style the program's next output continues in. A program
+	// (ConPTY) that sends only changes assumes it survives a snapshot.
+	Pen Attr
 	// History holds scrollback lines, oldest first. Lines carry no trailing
 	// blank cells.
 	History [][]Cell

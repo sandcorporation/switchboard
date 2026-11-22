@@ -100,6 +100,7 @@ func (e *Emulator) Grid(history int) Grid {
 		Cols:   cols,
 		Rows:   rows,
 		Cursor: Cursor{X: pos.X, Y: pos.Y, Hidden: e.vt.CursorHidden()},
+		Pen:    attrOf(e.vt.Pen()),
 		Screen: make([][]Cell, rows),
 	}
 	if sb := e.vt.Scrollback(); sb != nil && history != 0 {

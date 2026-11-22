@@ -221,6 +221,11 @@ func (e *Emulator) CursorHidden() bool {
 	return e.scr.cur.Hidden
 }
 
+// Pen returns the style the next printed character takes (the SGR state).
+func (e *Emulator) Pen() uv.Style {
+	return e.scr.cur.Pen
+}
+
 // CursorStyle returns the current cursor style and whether it is blinking.
 func (e *Emulator) CursorStyle() (style CursorStyle, blink bool) {
 	return e.scr.cur.Style, !e.scr.cur.Steady
