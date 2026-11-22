@@ -394,7 +394,12 @@ CREATE INDEX IF NOT EXISTS hosted_events_session ON hosted_events(session, at);`
 func migrateAdminActions(db *sql.DB) error {
 	_, err := db.Exec(`CREATE TABLE IF NOT EXISTS admin_actions(id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL, admin TEXT NOT NULL, method TEXT NOT NULL DEFAULT '', action TEXT NOT NULL, target TEXT NOT NULL DEFAULT '', addr TEXT NOT NULL DEFAULT '');
 CREATE INDEX IF NOT EXISTS admin_actions_target ON admin_actions(target, at);`)
-	return err
+	if err != nil {
+		return err
+	}
+	// detail (#448): what else names the action, a file save's path and
+	// size; never a value.
+	return addColumns(db, []columnAdd{{"admin_actions", "detail", `TEXT NOT NULL DEFAULT ''`}})
 }
 
 func HasColumn(db *sql.DB, table, column string) (bool, error) {

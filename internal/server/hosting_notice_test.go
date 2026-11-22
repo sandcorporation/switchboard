@@ -44,11 +44,16 @@ type fakeNodeConn struct {
 	seq int
 }
 
-func dialFakeNode(t *testing.T, base, token string) *fakeNodeConn {
+// extra are more request headers, in name, value pairs.
+func dialFakeNode(t *testing.T, base, token string, extra ...string) *fakeNodeConn {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	ws, _, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(base, "http")+"/api/node/socket", &websocket.DialOptions{HTTPHeader: http.Header{"Authorization": {"Bearer " + token}}})
+	hdr := http.Header{"Authorization": {"Bearer " + token}}
+	for i := 0; i+1 < len(extra); i += 2 {
+		hdr.Set(extra[i], extra[i+1])
+	}
+	ws, _, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(base, "http")+"/api/node/socket", &websocket.DialOptions{HTTPHeader: hdr})
 	if err != nil {
 		t.Fatal(err)
 	}

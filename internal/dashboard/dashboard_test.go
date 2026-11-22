@@ -780,8 +780,13 @@ func TestDashboardWorkspaceSide(t *testing.T) {
 		"const spec=details[x.tab],seq=++it.seq,out=document.createElement('div');",
 		"return (p.startsWith('term:')&&p.length>5)||!!S.itemOf(p)||!!F.fileOf(p);",
 		"if(side.sub==='files')out.append(fileTree(v.id));",
-		"const pre=node('pre','','ws-text');pre.textContent=t.text;",
 		"const m=document.createElement(kind==='image'?'img':kind);",
+		// The editor (#448) takes the file as a value, never as HTML, and
+		// saves with the fingerprint the read gave.
+		"f.ed=makeEditor(f.body,t.text,x.path,cm,",
+		"const ta=node('textarea','','ws-text ws-edit');ta.value=text;",
+		"[F.FP_HEADER]:anyway?'*':f.fp},",
+		"again.onclick=()=>drawFile(p);over.onclick=()=>saveFile(p,true);",
 		"if(detailCur){sessShown='';sessBody.replaceChildren();return}",
 		".has-detail>.ws-side{display:none}",
 	} {

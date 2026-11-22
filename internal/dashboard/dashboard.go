@@ -555,6 +555,8 @@ let adminMode='';
 let hostingOn=false;
 // termAssets are the terminal view's files, listed by /api/admin/me only with hosting on.
 let termAssets=[];
+// editorAssets are the file editor's (#448), listed with hosting on.
+let editorAssets=[];
 // termRefused is why this address cannot open a terminal ('' when it can).
 let termRefused='';
 function signedOut(){if(adminMode&&adminMode!=='legacy')location.reload()}
@@ -562,7 +564,7 @@ async function loadMe(){
   try{
     const r=await fetch('/api/admin/me',{credentials:'same-origin',headers:{'Accept':'application/json'}});
     if(!r.ok)return;
-    const m=await r.json();adminMode=m.mode||'';hostingOn=m.hosting===true;termAssets=Array.isArray(m.terminal_assets)?m.terminal_assets:[];termRefused=typeof m.terminal_refused==='string'?m.terminal_refused:'';
+    const m=await r.json();adminMode=m.mode||'';hostingOn=m.hosting===true;termAssets=Array.isArray(m.terminal_assets)?m.terminal_assets:[];editorAssets=Array.isArray(m.editor_assets)?m.editor_assets:[];termRefused=typeof m.terminal_refused==='string'?m.terminal_refused:'';
     if(hostingOn)loadWorkspace(Array.isArray(m.workspace_assets)?m.workspace_assets:[]);
     $('tab-terminals').hidden=!hostingOn;setViewButton('nodes').hidden=!hostingOn;setViewButton('groups').hidden=!hostingOn;
     if(hostingOn&&curTab==='settings')route();
@@ -2083,7 +2085,7 @@ async function termHistory(v,box){
   box.append(termTable('termLog',['시각','관리자','종류','방식','주소','바이트'],rows,e=>[[when(e.at),e.admin_user,termLogKind[e.kind]||e.kind,termLogMode[e.mode]||e.mode||'-',e.ip||'-',e.kind==='input'?String(e.bytes):'-'],['','','','','mono','num']]));
   if(Array.isArray(acts)){
     box.append(node('h3','관리'));
-    box.append(termTable('termActs',['시각','관리자','동작','방식','주소'],acts,e=>[[when(e.at),e.admin,window.wsNodes?wsNodes.actionName(e.action):e.action,e.method||'-',e.addr||'-'],['','','','','mono']]));
+    box.append(termTable('termActs',['시각','관리자','동작','방식','주소'],acts,e=>[[when(e.at),e.admin,(window.wsNodes?wsNodes.actionName(e.action):e.action)+(e.detail?' · '+e.detail:''),e.method||'-',e.addr||'-'],['','','','','mono']]));
   }
 }
 // termSettings draws 설정: what the record runs and the fields a PUT changes.

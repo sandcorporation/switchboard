@@ -211,8 +211,9 @@ func (l *Link) session(ctx context.Context, url string) (attached bool, err erro
 	if l.Profiles != nil {
 		header.Set(config.HeaderPrefix+config.NodeCredentialsHeaderName, l.Profiles.Header())
 	}
-	// This node answers file frames (#447).
+	// This node answers file frames (#447) and writes (#448).
 	header.Set(config.HeaderPrefix+config.NodeFilesHeaderName, "1")
+	header.Set(config.HeaderPrefix+config.NodeFileWriteHeaderName, "1")
 	ws, resp, err := websocket.Dial(dctx, url, &websocket.DialOptions{HTTPHeader: header})
 	cancel()
 	if err != nil {
@@ -249,15 +250,31 @@ func (l *Link) session(ctx context.Context, url string) (attached bool, err erro
 	l.Logf("node: attached to %s", l.Host)
 	readErr := make(chan error, 1)
 	go func() {
+		writes := writeBuffers{}
 		for {
+			typ, b, err := ws.Read(sctx)
+			if err == nil && typ == websocket.MessageBinary {
+				// A write's bytes (#448); other binary kinds are ignored.
+				if kind, ref, payload, ok := wire.DecodeTermFrame(b); ok && kind == wire.FileData {
+					writes.add(ref, payload)
+				}
+				continue
+			}
 			var f wire.NodeFrame
-			if err := wsjson.Read(sctx, ws, &f); err != nil {
+			if err == nil {
+				err = json.Unmarshal(b, &f)
+			}
+			if err != nil {
 				readErr <- err
 				stop()
 				return
 			}
 			if f.Type == wire.NodeFileType {
-				l.file(sctx, f, files, write, writeFile)
+				var data []byte
+				if f.File != nil && f.File.Op == wire.FileWrite {
+					data = writes.take(f.File.Ref)
+				}
+				l.file(sctx, f, data, files, write, writeFile)
 				continue
 			}
 			l.receive(ctx, f, sctx, rl, write)
@@ -314,7 +331,8 @@ const fileWorkers = 4
 // file answers a file frame (#447) off the read loop: a read's bytes in a
 // FileData frame, then the file-result frame, in that order. Neither the
 // path's content nor the bytes are logged.
-func (l *Link) file(sctx context.Context, f wire.NodeFrame, slots chan struct{}, write func(wire.NodeFrame) error, writeFile func(string, []byte) error) {
+// A write's bytes, data, came before the frame.
+func (l *Link) file(sctx context.Context, f wire.NodeFrame, data []byte, slots chan struct{}, write func(wire.NodeFrame) error, writeFile func(string, []byte) error) {
 	if f.File == nil || len(f.File.Ref) > 255 {
 		return
 	}
@@ -326,7 +344,12 @@ func (l *Link) file(sctx context.Context, f wire.NodeFrame, slots chan struct{},
 	}
 	go func() {
 		defer func() { <-slots }()
-		res, data := l.Node.File(f.ID, req)
+		var res wire.NodeFileResult
+		if req.Op == wire.FileWrite {
+			res = l.Node.FileWrite(f.ID, req, data)
+		} else {
+			res, data = l.Node.File(f.ID, req)
+		}
 		if req.Op == wire.FileRead && res.Code == "" {
 			if err := writeFile(req.Ref, data); err != nil {
 				return
@@ -394,4 +417,30 @@ func (l *Link) receive(ctx context.Context, f wire.NodeFrame, sctx context.Conte
 			signal(l.kick)
 		}()
 	}
+}
+
+// writeBuffers holds the bytes of writes whose file frame has not come yet
+// (#448), by ref: at most fileWorkers of them, each at most
+// wire.FileTextMax plus one byte (so an oversized write still fails as too
+// big, not short). Only the read loop touches it.
+type writeBuffers map[string][]byte
+
+func (w writeBuffers) add(ref string, b []byte) {
+	cur, ok := w[ref]
+	if !ok && (len(w) >= fileWorkers || len(ref) > 255) {
+		return
+	}
+	if room := wire.FileTextMax + 1 - len(cur); len(b) > room {
+		b = b[:room]
+	}
+	w[ref] = append(cur, b...)
+}
+
+func (w writeBuffers) take(ref string) []byte {
+	b := w[ref]
+	delete(w, ref)
+	if b == nil {
+		b = []byte{}
+	}
+	return b
 }

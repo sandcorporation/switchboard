@@ -461,7 +461,7 @@ func TestTerminalAssetsServedOnlyWithHosting(t *testing.T) {
 		if strings.Contains(page.body, "/assets/") || strings.Contains(strings.ToLower(page.body), "xterm") {
 			t.Errorf("hosting %v: the page references the terminal assets", on)
 		}
-		for _, p := range []string{"/assets/xterm/xterm.js", "/assets/xterm/xterm.css", "/assets/xterm/addon-fit.js", "/assets/xterm/LICENSE.xterm", "/assets/workspace/workspace.js", "/assets/workspace/layout.js", "/assets/workspace/term.js", "/assets/workspace/workspace.css"} {
+		for _, p := range []string{"/assets/xterm/xterm.js", "/assets/xterm/xterm.css", "/assets/xterm/addon-fit.js", "/assets/xterm/LICENSE.xterm", "/assets/workspace/workspace.js", "/assets/workspace/layout.js", "/assets/workspace/term.js", "/assets/workspace/workspace.css", "/assets/codemirror/codemirror.js", "/assets/codemirror/mode-yaml.js", "/assets/codemirror/LICENSE.codemirror"} {
 			got := send(t, base, "GET", p, cookie, nil)
 			if !on {
 				if want := send(t, base, "GET", "/nowhere/x.js", cookie, nil); got != want {
@@ -473,7 +473,7 @@ func TestTerminalAssetsServedOnlyWithHosting(t *testing.T) {
 				t.Errorf("hosting on: %s = %d (%d bytes)", p, got.code, len(got.body))
 			}
 		}
-		if on != strings.Contains(me.body, `"terminal_assets":["/assets/xterm/xterm.css","/assets/xterm/xterm.js","/assets/xterm/addon-fit.js"],"workspace_assets":["/assets/workspace/workspace.css","/assets/workspace/layout.js","/assets/workspace/side.js","/assets/workspace/files.js","/assets/workspace/nodes.js","/assets/workspace/term.js","/assets/workspace/nodeview.js","/assets/workspace/workspace.js"]`) {
+		if on != strings.Contains(me.body, `"terminal_assets":["/assets/xterm/xterm.css","/assets/xterm/xterm.js","/assets/xterm/addon-fit.js"],"workspace_assets":["/assets/workspace/workspace.css","/assets/workspace/layout.js","/assets/workspace/side.js","/assets/workspace/files.js","/assets/workspace/nodes.js","/assets/workspace/term.js","/assets/workspace/nodeview.js","/assets/workspace/workspace.js"],"editor_assets":["/assets/codemirror/codemirror.css","/assets/codemirror/codemirror.js","/assets/codemirror/mode-go.js","/assets/codemirror/mode-javascript.js","/assets/codemirror/mode-python.js","/assets/codemirror/mode-markdown.js","/assets/codemirror/mode-yaml.js","/assets/codemirror/mode-shell.js"]`) {
 			t.Errorf("hosting %v: me = %s", on, me.body)
 		}
 	}

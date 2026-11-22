@@ -83,3 +83,67 @@ func TestLinkAnswersFileFrames(t *testing.T) {
 		t.Fatal("no file answers")
 	}
 }
+
+// TestLinkWritesFiles: the node says it writes, takes a write's bytes from
+// the FileData frames before the write frame and answers with the file
+// written; a write whose bytes are not its length writes nothing.
+func TestLinkWritesFiles(t *testing.T) {
+	r := newRig(t)
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "a.txt"), []byte("hello"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	rc := rec("a")
+	rc.Directory, rc.Desired = dir, node.DesiredStopped
+	type got struct {
+		header string
+		res    map[string]wire.NodeFileResult
+	}
+	out := make(chan got, 1)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		ws, err := websocket.Accept(w, req, nil)
+		if err != nil {
+			return
+		}
+		defer ws.CloseNow()
+		ctx := req.Context()
+		g := got{header: req.Header.Get(config.HeaderPrefix + config.NodeFileWriteHeaderName), res: map[string]wire.NodeFileResult{}}
+		_ = wsjson.Write(ctx, ws, wire.NodeFrame{Type: wire.NodeAssign, Sessions: []wire.HostedSession{rc}})
+		_ = ws.Write(ctx, websocket.MessageBinary, wire.EncodeTermFrame(wire.FileData, "w1", []byte("new ")))
+		_ = ws.Write(ctx, websocket.MessageBinary, wire.EncodeTermFrame(wire.FileData, "w1", []byte("text")))
+		_ = wsjson.Write(ctx, ws, wire.NodeFrame{Type: wire.NodeFileType, ID: "a", File: &wire.NodeFile{Ref: "w1", Op: wire.FileWrite, Path: "a.txt", Length: 8}})
+		_ = wsjson.Write(ctx, ws, wire.NodeFrame{Type: wire.NodeFileType, ID: "a", File: &wire.NodeFile{Ref: "w2", Op: wire.FileWrite, Path: "a.txt", Length: 3}})
+		for len(g.res) < 2 {
+			typ, b, err := ws.Read(ctx)
+			if err != nil {
+				return
+			}
+			var f wire.NodeFrame
+			if typ == websocket.MessageText && json.Unmarshal(b, &f) == nil && f.Type == wire.NodeFileResultType {
+				g.res[f.FileResult.Ref] = *f.FileResult
+			}
+		}
+		out <- g
+		<-ctx.Done()
+	}))
+	defer srv.Close()
+	runLink(t, &node.Link{Node: r.node(), Host: srv.URL, Token: "sbn_t", Interval: 10 * time.Millisecond, Logf: t.Logf,
+		Sleep: func(ctx context.Context, d time.Duration) error { return ctx.Err() }})
+	select {
+	case g := <-out:
+		if g.header != "1" {
+			t.Errorf("write header %q, want 1", g.header)
+		}
+		if w1 := g.res["w1"]; w1.Code != "" || w1.Stat == nil || w1.Stat.Size != 8 || w1.Stat.SHA256 == "" {
+			t.Errorf("w1 = %+v", w1)
+		}
+		if w2 := g.res["w2"]; w2.Code != wire.FileFailed {
+			t.Errorf("w2 (no bytes) = %+v", w2)
+		}
+		if b, _ := os.ReadFile(filepath.Join(dir, "a.txt")); string(b) != "new text" {
+			t.Errorf("a.txt = %q", b)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("no write answers")
+	}
+}

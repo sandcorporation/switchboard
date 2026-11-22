@@ -163,3 +163,30 @@
 .ws-media{display:block;max-width:100%;max-height:100%;margin:0 auto;object-fit:contain}
 .ws-audio{width:100%}
 .ws-text{margin:0;font-family:var(--font-mono,ui-monospace,monospace);font-size:.85rem;line-height:1.45;white-space:pre;tab-size:4}
+/* 편집기 (#448): CodeMirror, or a plain text box without it */
+.ws-file-save{flex:none}
+.ws-file-bar{display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-2);padding:var(--space-1) var(--space-3);border-bottom:1px solid var(--color-line);font-size:.85rem}
+.ws-file-bar.err{color:var(--st-error)}
+.ws-file-bar.warn{color:var(--st-blocked)}
+.ws-file-bar.muted{color:var(--color-muted)}
+.ws-file-body:has(>.CodeMirror),.ws-file-body:has(>.ws-edit){padding:0;overflow:hidden}
+.ws-file-body>.CodeMirror{height:100%;font-family:var(--font-mono,ui-monospace,monospace);font-size:.85rem;line-height:1.45;background:var(--color-paper);color:inherit}
+.ws-file-body .CodeMirror-gutters{background:var(--color-canvas);border-right:1px solid var(--color-line)}
+.ws-file-body .CodeMirror-linenumber{color:var(--color-muted)}
+.ws-file-body .CodeMirror-cursor{border-left-color:currentColor}
+.ws-file-body .CodeMirror-selected,.ws-file-body .CodeMirror-focused .CodeMirror-selected{background:var(--color-accent-tint)}
+.ws-edit{display:block;width:100%;height:100%;border:0;resize:none;padding:var(--space-3);background:var(--color-paper);color:inherit;box-sizing:border-box}
+/* CodeMirror's own colours load later; these win by one more class. */
+@media (prefers-color-scheme:dark){
+  .ws-file-body .CodeMirror .cm-keyword{color:#c792ea}
+  .ws-file-body .CodeMirror .cm-string,.ws-file-body .CodeMirror .cm-string-2{color:#c3e88d}
+  .ws-file-body .CodeMirror .cm-comment,.ws-file-body .CodeMirror .cm-quote{color:#8b949e}
+  .ws-file-body .CodeMirror .cm-number,.ws-file-body .CodeMirror .cm-atom{color:#f78c6c}
+  .ws-file-body .CodeMirror .cm-def,.ws-file-body .CodeMirror .cm-variable-2,.ws-file-body .CodeMirror .cm-link{color:#82aaff}
+  .ws-file-body .CodeMirror .cm-property,.ws-file-body .CodeMirror .cm-attribute{color:#89ddff}
+  .ws-file-body .CodeMirror .cm-header,.ws-file-body .CodeMirror .cm-builtin,.ws-file-body .CodeMirror .cm-type,.ws-file-body .CodeMirror .cm-variable-3{color:#ffcb6b}
+  .ws-file-body .CodeMirror .cm-meta,.ws-file-body .CodeMirror .cm-qualifier,.ws-file-body .CodeMirror .cm-hr{color:#b0b8c4}
+  .ws-file-body .CodeMirror .cm-tag,.ws-file-body .CodeMirror .cm-error,.ws-file-body .CodeMirror .cm-negative{color:#f07178}
+  .ws-file-body .CodeMirror .cm-positive{color:#c3e88d}
+  .ws-file-body .CodeMirror .CodeMirror-matchingbracket{color:#c3e88d}
+}

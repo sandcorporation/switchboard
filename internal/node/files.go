@@ -188,7 +188,8 @@ func entryOf(name string, fi fs.FileInfo) wire.FileEntry {
 }
 
 // FolderFile answers one file request on the session folder dir: the
-// result and, for a read, the bytes read. It never writes.
+// result and, for a read, the bytes read. It never writes (FolderWrite
+// does).
 func FolderFile(dir string, req wire.NodeFile) (wire.NodeFileResult, []byte) {
 	res := wire.NodeFileResult{Ref: req.Ref}
 	data, err := folderFile(dir, req, &res)
@@ -284,17 +285,21 @@ func folderFile(dir string, req wire.NodeFile, res *wire.NodeFileResult) ([]byte
 // File answers a file frame for record id: the record's directory is the
 // session folder. A record not on this node is not found.
 func (n *Node) File(id string, req wire.NodeFile) (wire.NodeFileResult, []byte) {
-	n.mu.Lock()
-	dir, found := "", false
-	for _, r := range n.records {
-		if r.ID == id {
-			dir, found = r.Directory, true
-			break
-		}
-	}
-	n.mu.Unlock()
+	dir, found := n.recordDir(id)
 	if !found {
 		return wire.NodeFileResult{Ref: req.Ref, Code: wire.FileNotFound, Error: "record " + id + " is not on this node"}, nil
 	}
 	return FolderFile(dir, req)
+}
+
+// recordDir is the directory of record id on this node.
+func (n *Node) recordDir(id string) (string, bool) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	for _, r := range n.records {
+		if r.ID == id {
+			return r.Directory, true
+		}
+	}
+	return "", false
 }
