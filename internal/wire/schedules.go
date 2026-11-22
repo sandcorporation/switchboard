@@ -14,13 +14,71 @@ const (
 )
 
 // Schedule states. active: it fires (or holds missed fires to deliver);
-// ended: a once schedule delivered its fire; expired: it reached expires_at.
-// A removed schedule is deleted.
+// paused: it does not fire, the fire times that pass are dropped and its
+// expiry clock stands still (#404); ended: a once schedule delivered its
+// fire; expired: it reached expires_at. A removed schedule is deleted.
 const (
 	ScheduleActive  = "active"
+	SchedulePaused  = "paused"
 	ScheduleEnded   = "ended"
 	ScheduleExpired = "expired"
 )
+
+// What resuming a once schedule whose time passed while it was paused does
+// with that fire (ScheduleResume.Passed).
+const (
+	PassedFire = "fire" // deliver it now
+	PassedDrop = "drop" // drop it: the schedule ends
+)
+
+// SchedulePause is the body of POST /api/schedules/ID/pause (switchboard
+// schedule pause): an optional reason, shown with who paused.
+type SchedulePause struct {
+	Reason string `json:"reason,omitempty"`
+}
+
+// MaxPauseReason caps a pause reason.
+const MaxPauseReason = 500
+
+// Check validates the body.
+func (q *SchedulePause) Check() error {
+	q.Reason = strings.TrimSpace(q.Reason)
+	if len(q.Reason) > MaxPauseReason {
+		return errors.New("reason is too long")
+	}
+	return nil
+}
+
+// ScheduleResume is the body of POST /api/schedules/ID/resume. Passed
+// (PassedFire or PassedDrop) is required when a once schedule's time passed
+// while it was paused, and ignored otherwise.
+type ScheduleResume struct {
+	Passed string `json:"passed,omitempty"`
+}
+
+// Check validates the body.
+func (q *ScheduleResume) Check() error {
+	switch q.Passed {
+	case "", PassedFire, PassedDrop:
+		return nil
+	}
+	return errors.New("passed: fire or drop")
+}
+
+// ScheduleActor is who paused a schedule: a role, or an admin by name.
+type ScheduleActor struct {
+	Name  string `json:"name"`
+	Admin bool   `json:"admin,omitempty"`
+}
+
+// Label is the actor as the dashboard and the CLI show it: 관리자 <name> or
+// 역할 <role>.
+func (a ScheduleActor) Label() string {
+	if a.Admin {
+		return "관리자 " + a.Name
+	}
+	return "역할 " + a.Name
+}
 
 // MaxSchedulePrompt caps the prompt a fire delivers.
 const MaxSchedulePrompt = 16 << 10
@@ -47,6 +105,13 @@ type Schedule struct {
 	MissedLastAt *time.Time `json:"missed_last_at,omitempty"`
 	// Extends is false for a row created with --no-extend.
 	Extends bool `json:"extends"`
+	// A paused schedule (#404): when, by whom, why (optional), and Passed
+	// when it is a once schedule whose time went by while paused (resume
+	// asks for PassedFire or PassedDrop).
+	PausedAt    *time.Time     `json:"paused_at,omitempty"`
+	PausedBy    *ScheduleActor `json:"paused_by,omitempty"`
+	PauseReason string         `json:"pause_reason,omitempty"`
+	Passed      bool           `json:"passed,omitempty"`
 }
 
 // ScheduleCreate is the body of POST /api/schedules (switchboard schedule

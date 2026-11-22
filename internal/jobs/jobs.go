@@ -29,6 +29,9 @@ type Service struct {
 	now  func() time.Time
 	ids  *identity.Service
 	wake func(mailbox string) // wakes the mailbox's waiters after an end mail
+	// notify tells a schedule's owner of a pause or resume by someone else
+	// (WithNotify); nil sends nothing.
+	notify Notify
 }
 
 // New builds the service. wake is called with the owner's mailbox after an

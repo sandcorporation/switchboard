@@ -37,6 +37,8 @@ var CLIPairs = []CLIPair{
 	{Method: "POST", Path: "jobs/{}/stop", CLI: "jobs stop"},
 	{Method: "DELETE", Path: "jobs/{}", CLI: "jobs rm"},
 	{Method: "DELETE", Path: "schedules/{}", CLI: "jobs rm-schedule"},
+	{Method: "POST", Path: "schedules/{}/pause", CLI: "schedule pause"},
+	{Method: "POST", Path: "schedules/{}/resume", CLI: "schedule resume"},
 	{Method: "GET", Path: "terminals/limit", CLI: "host limit"},
 	{Method: "PUT", Path: "terminals/limit", CLI: "host limit"},
 	{Method: "GET", Path: "terminals", CLI: "host list"},

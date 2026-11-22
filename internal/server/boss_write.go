@@ -58,6 +58,8 @@ var bossWriteRoutes = []bossWriteRoute{
 	{http.MethodPost, pathShape("jobs/*/stop"), jobOwner},
 	{http.MethodDelete, pathShape("jobs/*"), jobOwner},
 	{http.MethodDelete, pathShape("schedules/*"), scheduleOwner},
+	{http.MethodPost, pathShape("schedules/*/pause"), scheduleOwner},
+	{http.MethodPost, pathShape("schedules/*/resume"), scheduleOwner},
 	{http.MethodPost, roleAction("/revoke"), roleOwner("/revoke")},
 	{http.MethodPost, roleAction("/restore"), roleOwner("/restore")},
 	{http.MethodPut, prefixed("question-settings/"), settingOwner},

@@ -37,6 +37,8 @@ const maxCatchUp = 100000
 //	            role's prompt left out: OwnSchedules)
 //	GET    "ID" show: the owner, or a boss role over it (recorded)
 //	DELETE "ID" remove (owner only)
+//	POST   "ID/pause"  pause: the owner, or a boss role over it (#404)
+//	POST   "ID/resume" resume: the same
 func (s *Service) ScheduleAPI(w http.ResponseWriter, r *http.Request, p identity.Principal, rest string) {
 	if rest == "" {
 		switch r.Method {
@@ -63,9 +65,15 @@ func (s *Service) ScheduleAPI(w http.ResponseWriter, r *http.Request, p identity
 		}
 		return
 	}
-	id, err := strconv.ParseInt(rest, 10, 64)
+	idPart, action, _ := strings.Cut(rest, "/")
+	id, err := strconv.ParseInt(idPart, 10, 64)
 	if err != nil || id <= 0 {
 		http.Error(w, "invalid schedule ID", http.StatusBadRequest)
+		return
+	}
+	if action != "" {
+		// The owner, or a boss role over it (#404).
+		s.pauseAPI(w, r, s.ViewOf(p), id, action)
 		return
 	}
 	if r.Method == http.MethodGet {
@@ -100,6 +108,7 @@ func (s *Service) ScheduleAPI(w http.ResponseWriter, r *http.Request, p identity
 //	            (ListSchedules)
 //	GET    "ID" one schedule with its prompt (recorded: ShowSchedule)
 //	DELETE "ID" remove
+//	POST   "ID/pause", "ID/resume" (PauseSchedule, ResumeSchedule)
 func (s *Service) ScheduleAdminAPI(w http.ResponseWriter, r *http.Request, v View, rest string) {
 	if rest == "" {
 		if r.Method != http.MethodGet {
@@ -114,9 +123,14 @@ func (s *Service) ScheduleAdminAPI(w http.ResponseWriter, r *http.Request, v Vie
 		writeJSON(w, http.StatusOK, out)
 		return
 	}
-	id, err := strconv.ParseInt(rest, 10, 64)
+	idPart, action, _ := strings.Cut(rest, "/")
+	id, err := strconv.ParseInt(idPart, 10, 64)
 	if err != nil || id <= 0 {
 		http.Error(w, "invalid schedule ID", http.StatusBadRequest)
+		return
+	}
+	if action != "" {
+		s.pauseAPI(w, r, v, id, action)
 		return
 	}
 	if r.Method == http.MethodGet {
@@ -228,7 +242,7 @@ func (s *Service) removeSchedule(w http.ResponseWriter, id int64) {
 }
 
 // schedules lists schedules newest first, of role and in state when given
-// (StateLive: active), prompts included.
+// (StateLive: active or paused), prompts included.
 func (s *Service) schedules(role, state string) ([]wire.Schedule, error) {
 	where, args := []string{}, []any{}
 	if role != "" {
@@ -237,7 +251,7 @@ func (s *Service) schedules(role, state string) ([]wire.Schedule, error) {
 	switch state {
 	case "":
 	case StateLive:
-		where, args = append(where, "state=?"), append(args, wire.ScheduleActive)
+		where, args = append(where, "state IN (?,?)"), append(args, wire.ScheduleActive, wire.SchedulePaused)
 	default:
 		where, args = append(where, "state=?"), append(args, state)
 	}
@@ -256,12 +270,12 @@ func (s *Service) schedules(role, state string) ([]wire.Schedule, error) {
 		if err != nil {
 			return nil, err
 		}
-		out = append(out, sc.Schedule)
+		out = append(out, s.passed(sc.Schedule))
 	}
 	return out, rows.Err()
 }
 
-const scheduleColumns = `id,role,machine,kind,label,prompt,cron,tz,state,created_at,expires_at,next_fire_at,last_fire_at,missed,missed_last_at,duration_s,last_mail_id,no_extend`
+const scheduleColumns = `id,role,machine,kind,label,prompt,cron,tz,state,created_at,expires_at,next_fire_at,last_fire_at,missed,missed_last_at,duration_s,last_mail_id,no_extend,paused_at,paused_by,paused_by_admin,pause_reason`
 
 // scheduleRow is a schedule with the columns the sweep needs.
 type scheduleRow struct {
@@ -273,13 +287,21 @@ type scheduleRow struct {
 func scanSchedule(r scanner) (scheduleRow, error) {
 	var sc scheduleRow
 	var created, expires string
-	var next, last, missedLast sql.NullString
+	var next, last, missedLast, pausedAt sql.NullString
 	var duration int64
-	var noExtend bool
+	var noExtend, pausedByAdmin bool
+	var pausedBy string
 	err := r.Scan(&sc.ID, &sc.Role, &sc.Machine, &sc.Kind, &sc.Label, &sc.Prompt, &sc.Cron, &sc.TZ, &sc.State,
-		&created, &expires, &next, &last, &sc.Missed, &missedLast, &duration, &sc.lastMail, &noExtend)
+		&created, &expires, &next, &last, &sc.Missed, &missedLast, &duration, &sc.lastMail, &noExtend,
+		&pausedAt, &pausedBy, &pausedByAdmin, &sc.PauseReason)
 	if err != nil {
 		return sc, err
+	}
+	if sc.State == wire.SchedulePaused {
+		sc.PausedAt = parseNull(pausedAt)
+		sc.PausedBy = &wire.ScheduleActor{Name: pausedBy, Admin: pausedByAdmin}
+	} else {
+		sc.PauseReason = ""
 	}
 	sc.CreatedAt, sc.ExpiresAt = parse(created), parse(expires)
 	sc.NextFireAt, sc.LastFireAt, sc.MissedLastAt = parseNull(next), parseNull(last), parseNull(missedLast)
@@ -294,7 +316,13 @@ func (s *Service) GetSchedule(id int64) (wire.Schedule, error) {
 	if errors.Is(err, sql.ErrNoRows) {
 		return sc.Schedule, errNotFound
 	}
-	return sc.Schedule, err
+	return s.passed(sc.Schedule), err
+}
+
+// passed marks a paused once schedule whose time went by (wire.Schedule.Passed).
+func (s *Service) passed(sc wire.Schedule) wire.Schedule {
+	sc.Passed = sc.State == wire.SchedulePaused && sc.Kind == wire.ScheduleOnce && sc.NextFireAt != nil && !sc.NextFireAt.After(s.now())
+	return sc
 }
 
 func (s *Service) scheduleByIdem(role, key string) (wire.Schedule, bool) {

@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/sandcorporation/switchboard/internal/wire"
 )
@@ -61,5 +62,50 @@ func TestLedgerShowCommands(t *testing.T) {
 	}
 	if out := h.mustRun(h.worker, "schedule", "list", "--json"); !strings.Contains(out, "secret prompt") {
 		t.Fatalf("own schedule list: %s", out)
+	}
+}
+
+// `schedule pause ID [--reason]` and `schedule resume ID [--fire|--drop]`:
+// the owner and a boss role over it; a once schedule whose time passed
+// while paused resumes only with --fire or --drop (exit 2 without, one
+// line); a role outside gets an error.
+func TestSchedulePauseCommands(t *testing.T) {
+	t.Parallel()
+	h := newLedgerCLI(t)
+	if out := h.mustRun(h.boss, "schedule", "pause", h.sid, "--reason", "noisy"); !strings.Contains(out, "paused by 역할 a") {
+		t.Fatalf("boss pause: %s", out)
+	}
+	if out := h.mustRun(h.worker, "schedule", "show", h.sid); !strings.Contains(out, "by 역할 a") || !strings.Contains(out, "reason   noisy") {
+		t.Fatalf("show paused: %s", out)
+	}
+	if out := h.mustRun(h.worker, "schedule", "resume", h.sid, "--json"); !strings.Contains(out, `"state":"active"`) {
+		t.Fatalf("owner resume: %s", out)
+	}
+	w := callAs(h.s, "POST", "/api/schedules", "secret-b", "b", map[string]any{"machine": "m1", "kind": "once", "at": time.Now().Add(time.Hour), "prompt": "x", "label": "once"})
+	var once wire.Schedule
+	_ = json.Unmarshal(w.Body.Bytes(), &once)
+	oid := strconv.FormatInt(once.ID, 10)
+	h.mustRun(h.worker, "schedule", "pause", oid)
+	if _, err := h.s.db.Exec(`UPDATE schedules SET next_fire_at=? WHERE id=?`, time.Now().Add(-time.Minute).UTC().Format(time.RFC3339Nano), once.ID); err != nil {
+		t.Fatal(err)
+	}
+	if out := h.mustRun(h.worker, "schedule", "list"); !strings.Contains(out, "(time passed)") {
+		t.Fatalf("list passed: %s", out)
+	}
+	r := h.run(h.worker, "schedule", "resume", oid)
+	if r.code != 2 || !strings.Contains(r.stderr, "--fire") || !strings.Contains(r.stderr, "--drop") {
+		t.Fatalf("resume without a choice: %+v", r)
+	}
+	if r := h.run(h.worker, "schedule", "resume", oid, "--fire", "--drop"); r.code != 2 {
+		t.Fatalf("both: %+v", r)
+	}
+	if out := h.mustRun(h.worker, "schedule", "resume", oid, "--drop"); !strings.Contains(out, "ended") {
+		t.Fatalf("drop: %s", out)
+	}
+	w = callAs(h.s, "POST", "/api/schedules", "secret-a", "a", map[string]any{"machine": "m1", "kind": "cron", "cron": "0 9 * * *", "tz": "UTC", "prompt": "boss own", "label": "own"})
+	var own wire.Schedule
+	_ = json.Unmarshal(w.Body.Bytes(), &own)
+	if r := h.run(h.worker, "schedule", "pause", strconv.FormatInt(own.ID, 10)); r.code == 0 || !strings.Contains(r.stderr, "404") {
+		t.Fatalf("a role outside: %+v", r)
 	}
 }
