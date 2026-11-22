@@ -2,6 +2,8 @@ package dashboard
 
 import (
 	"net/http/httptest"
+	"os"
+	"os/exec"
 	"regexp"
 	"strings"
 	"testing"
@@ -426,24 +428,40 @@ func TestDashboardTerminalsDetail(t *testing.T) {
 		"node('p','바꾼 설정은 다음 시작부터 적용','muted')",
 		"api('terminals/'+id+'/events'),api('terminals/'+id+'/log')",
 		"termTable('termEvents',['시각','종류','종료 코드','재시작','요청'],events,",
-		// One screen, kept across redraws, closed when the detail stops showing it.
+		// The detail's screen opens the terminal as a workspace panel (#444);
+		// the old single screen's markup stays, unused.
 		`<div id="termHold" hidden><div id="termPane" class="termpane">`,
-		"function termGc(){if(!$('detailBody').contains(tp('termPane')))termClose()}",
+		"function termGc(){if(ws)ws.termGc()}",
 		"  termGc();\n}",
 		"$('detailBody').replaceChildren();termGc();",
 		"box.append(dl([['노드',it.h.node],['폴더',it.h.directory],['터미널',a]]),termPaneFor(it.h));",
-		// 넓히기 and the Esc order.
-		".sc-app-main.has-detail.detail-wide{grid-template-columns:minmax(0,1fr)}",
-		"if(termView&&termView.mode==='input'&&tp('termScreen').contains(e.target))return;\n  e.preventDefault();termWiden(false);\n},true);",
-		"tp('termScreen').addEventListener('keydown',e=>{if(e.key==='Escape'&&termView&&termView.mode==='input')e.preventDefault()});",
-		"t.term.attachCustomKeyEventHandler(e=>!(e.key==='Escape'&&t.mode!=='input'));",
-		// The input path and its ticket stay as they were.
-		"tk=await apiSend('POST','terminals/'+encodeURIComponent(t.id)+'/ticket',{mode:t.mode})",
-		"function termSend(t,m){if(t.mode==='input'&&t.ws&&t.ws.readyState===1)t.ws.send(JSON.stringify(m))}",
+		"if(ws)return ws.termPaneFor(v);",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("terminals detail missing %q", want)
 		}
+	}
+	// The terminal code lives in the workspace files now, one pane per panel.
+	src := workspaceSource(t)
+	for _, want := range []string{
+		// 넓히기 and the Esc order: a typing terminal keeps Esc.
+		"if(t&&t.mode==='input'&&t.screen.contains(e.target))return;\n    e.preventDefault();maximize(st.max);\n  },true);",
+		"t.screen.addEventListener('keydown',e=>{if(e.key==='Escape'&&t.mode==='input')e.preventDefault()});",
+		"t.term.attachCustomKeyEventHandler(e=>!(e.key==='Escape'&&t.mode!=='input'));",
+		// The input path and its ticket stay as they were.
+		"tk=await apiSend('POST','terminals/'+encodeURIComponent(t.id)+'/ticket',{mode:t.mode})",
+		"function termSend(t,m){if(t.mode==='input'&&t.ws&&t.ws.readyState===1)t.ws.send(JSON.stringify(m))}",
+		"if(n+b>32768){termSend(t,{type:'input',data:chunk});chunk='';n=0}",
+		"if(always&&t.term.cols===c&&t.term.rows===r)termSend(t,{type:'resize',cols:t.term.cols,rows:t.term.rows});",
+		"t.term.onResize(s=>{termSend(t,{type:'resize',cols:s.cols,rows:s.rows});",
+		"if(m.type==='size'&&t.mode!=='input'&&m.cols>0&&m.rows>0)t.term.resize(m.cols,m.rows);",
+	} {
+		if !strings.Contains(src, want) {
+			t.Errorf("workspace terminal missing %q", want)
+		}
+	}
+	if strings.Contains(src, "innerHTML") {
+		t.Error("workspace renders HTML from strings")
 	}
 	for _, gone := range []string{`id="termView"`, `id="termBack"`, "termFocus"} {
 		if strings.Contains(body, gone) {
@@ -566,18 +584,15 @@ func TestDashboardSettingsDetail(t *testing.T) {
 }
 
 // #253: a view terminal never scales its font below 11px on a phone; the box
-// scrolls sideways instead (#termScreen is overflow:auto), and the host is
+// scrolls sideways instead (.termscreen is overflow:auto), and the host is
 // never resized from view mode.
 func TestDashboardViewTerminalFloorOnPhone(t *testing.T) {
-	w := httptest.NewRecorder()
-	Page(w, httptest.NewRequest("GET", "/", nil))
-	body := w.Body.String()
 	for _, want := range []string{
 		`matchMedia('(max-width:600px)').matches?11:5`,
 		`Math.max(termMinFont(),Math.min(15,`,
-		`#termScreen{overflow:auto;max-width:100%;`,
+		`.termscreen{flex:1 1 0;min-height:0;overflow:auto;max-width:100%;`,
 	} {
-		if !strings.Contains(body, want) {
+		if !strings.Contains(workspaceSource(t), want) {
 			t.Fatalf("page lacks %q", want)
 		}
 	}
@@ -672,5 +687,78 @@ func TestDashboardNarrowOverlaysKeepScrollInside(t *testing.T) {
 func TestRulesTabDefaultsToDecisions(t *testing.T) {
 	if !strings.Contains(dashboardHTML, "rulesKind='decision'") {
 		t.Fatal("the 규칙 tab no longer opens on 결정")
+	}
+}
+
+// workspaceSource is the workspace files the page loads with hosting on.
+func workspaceSource(t *testing.T) string {
+	t.Helper()
+	var b strings.Builder
+	for _, u := range WorkspaceAssets {
+		w := httptest.NewRecorder()
+		Assets(w, httptest.NewRequest("GET", u, nil))
+		if w.Code != 200 || w.Body.Len() < 100 {
+			t.Fatalf("%s = %d", u, w.Code)
+		}
+		b.WriteString(w.Body.String())
+	}
+	return b.String()
+}
+
+// The workspace (#444) comes only through the bootstrap with hosting on: the
+// page names none of its files; the hosting-off page keeps its tabs.
+func TestDashboardWorkspaceLoadsWithHosting(t *testing.T) {
+	w := httptest.NewRecorder()
+	Page(w, httptest.NewRequest("GET", "/", nil))
+	body := w.Body.String()
+	for _, want := range []string{
+		"if(hostingOn)loadWorkspace(Array.isArray(m.workspace_assets)?m.workspace_assets:[]);",
+		"$('panel-'+n).hidden=ws?false:!on;",
+		"if(ws)ws.showMenu(name);",
+		"if(tabShown(k))liveDirty.add(k);",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("page missing %q", want)
+		}
+	}
+	if strings.Contains(body, "workspace/") || strings.Contains(body, "localStorage") {
+		t.Error("the page itself names the workspace or stores in the browser")
+	}
+	src := workspaceSource(t)
+	for _, want := range []string{
+		"main.before(box);main.hidden=true;",
+		"try{const s=L.parse(localStorage.getItem(KEY)||'',valid);if(s)return s}catch(e){}",
+		"return L.initial('menu:'+(curTab||'progress'));",
+		"window.matchMedia('(max-width:600px)')",
+		"if(m)main.append($('panel-'+m));",
+		"else{const id=p.slice(5),t=terms.get(id);if(t){termStop(t);terms.delete(id)}",
+	} {
+		if !strings.Contains(src, want) {
+			t.Errorf("workspace missing %q", want)
+		}
+	}
+	for _, name := range []string{"workspace/layout.test.cjs", "workspace/", "workspace/../dashboard.go"} {
+		w := httptest.NewRecorder()
+		Assets(w, httptest.NewRequest("GET", AssetsPrefix+name, nil))
+		if w.Code != 404 {
+			t.Errorf("%s = %d", name, w.Code)
+		}
+	}
+}
+
+// TestWorkspaceLayout runs the layout's unit tests (workspace/layout.test.cjs)
+// under node, skipped without node unless SWITCHBOARD_TEST_NODE=require.
+func TestWorkspaceLayout(t *testing.T) {
+	node, err := exec.LookPath("node")
+	if err != nil {
+		if os.Getenv("SWITCHBOARD_TEST_NODE") == "require" {
+			t.Fatal("node not found and SWITCHBOARD_TEST_NODE=require")
+		}
+		t.Skip("node not installed")
+	}
+	cmd := exec.Command(node, "--test", "layout.test.cjs")
+	cmd.Dir = "workspace"
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("node --test workspace/layout.test.cjs: %v\n%s", err, out)
 	}
 }

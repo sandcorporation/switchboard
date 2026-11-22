@@ -14,7 +14,7 @@ const pairsFile = "internal/dashboard/cli_pairs.go"
 // Every API the dashboard calls (read and write) has a row in CLIPairs: a
 // CLI command the CLI takes, or an exception with its reason (#399).
 func TestCLIPairs(t *testing.T) {
-	calls, bad := dashboardCalls(dashboardHTML)
+	calls, bad := dashboardCalls(dashboardHTML + workspaceSource(t))
 	for _, b := range bad {
 		t.Errorf("cannot read the dashboard call %q: give it a literal method and path, or teach dashboardCalls its wrapper", b)
 	}
