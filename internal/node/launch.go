@@ -5,25 +5,31 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"slices"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/sandcorporation/switchboard/internal/agent"
+	"github.com/sandcorporation/switchboard/internal/agent/builtin"
 	"github.com/sandcorporation/switchboard/internal/config"
 )
 
-// Defaults for the node-side hosting variables.
-const (
-	DefaultAgent   = "claude"
-	DefaultHistory = 10000
-)
+// DefaultHistory is the scrollback lines kept per session by default.
+const DefaultHistory = 10000
 
 // Config is the node's launch settings.
 type Config struct {
-	// Agent is the resolved path of the agent CLI.
+	// Agent is the resolved path of the default adapter's agent CLI (or of
+	// SWITCHBOARD_HOSTING_AGENT).
 	Agent string
+	// DefaultAdapter is the adapter a record without one launches with
+	// (#434): the one whose executable Agent is, else the registry default.
+	// Empty: the registry default.
+	DefaultAdapter string
+	// Adapters maps every installed adapter (its executable found) to the
+	// CLI's path; the default adapter maps to Agent.
+	Adapters map[string]string
 	// Machine is SWITCHBOARD_MACHINE for every child, the same on every
 	// launch so a session's slot comes back.
 	Machine string
@@ -56,11 +62,13 @@ type Host struct {
 	LookPath func(string) (string, error)
 	Hostname func() (string, error)
 	Environ  func() []string
+	// ReadFile reads the configured adapters file; nil is os.ReadFile.
+	ReadFile func(string) ([]byte, error)
 }
 
 // Machine is the real Host.
 func Machine() Host {
-	return Host{Getenv: os.Getenv, LookPath: exec.LookPath, Hostname: os.Hostname, Environ: os.Environ}
+	return Host{Getenv: os.Getenv, LookPath: exec.LookPath, Hostname: os.Hostname, Environ: os.Environ, ReadFile: os.ReadFile}
 }
 
 // ErrNoAgent is returned when the agent CLI cannot be resolved; the node
@@ -70,13 +78,18 @@ var ErrNoAgent = errors.New("node: agent CLI not found")
 // Resolve reads the node-side hosting variables (new names only) and
 // resolves the agent CLI. It fails when the agent cannot be found.
 func Resolve(h Host) (Config, error) {
-	agent, from := config.EnvFrom(h.Getenv, config.HostingAgentName)
-	if agent = strings.TrimSpace(agent); agent == "" {
-		agent = DefaultAgent
+	if file, from := config.EnvFrom(h.Getenv, config.HostingAdaptersName); strings.TrimSpace(file) != "" {
+		if _, err := builtin.LoadConfigured(strings.TrimSpace(file), h.ReadFile); err != nil {
+			return Config{}, fmt.Errorf("node: %s: %w", from, err)
+		}
 	}
-	path, err := h.LookPath(agent)
+	exe, from := config.EnvFrom(h.Getenv, config.HostingAgentName)
+	if exe = strings.TrimSpace(exe); exe == "" {
+		exe = agent.Default().Executable()
+	}
+	path, err := h.LookPath(exe)
 	if err != nil {
-		return Config{}, fmt.Errorf("%w: %s=%q: %v", ErrNoAgent, from, agent, err)
+		return Config{}, fmt.Errorf("%w: %s=%q: %v", ErrNoAgent, from, exe, err)
 	}
 	machine, _ := config.EnvFrom(h.Getenv, config.HostingMachineName)
 	if machine = strings.TrimSpace(machine); machine == "" {
@@ -96,93 +109,103 @@ func Resolve(h Host) (Config, error) {
 			return Config{}, fmt.Errorf("node: %s=%q is not a session count (1 or more)", from, v)
 		}
 	}
-	return Config{Agent: path, Machine: machine, History: history, Max: max, Environ: h.Environ(), AllowChecks: config.HostingAllowChecks(h.Getenv)}, nil
-}
-
-// Argv is the command for a record: --session-id on its first launch,
-// --resume after it, the agent's permission-skip arguments when the record
-// skips permissions (#220), then the record's args. Never -p, never
-// --continue.
-func (c Config) Argv(r Record, launched bool) []string {
-	flag := "--session-id"
-	if launched {
-		flag = "--resume"
+	def := agent.Default()
+	for _, a := range agent.All() {
+		if a.Executable() == agent.ExecName(path) {
+			def = a
+			break
+		}
 	}
-	argv := []string{c.Agent, flag, r.AgentSessionID}
-	if r.SkipPermissions {
-		argv = append(argv, PermissionSkipArgs(AgentName(c.Agent), r.Args)...)
-	}
-	for _, a := range r.Args {
-		if refusedArg(a) {
+	adapters := map[string]string{def.Name(): path}
+	for _, a := range agent.All() {
+		if a.Name() == def.Name() {
 			continue
 		}
-		argv = append(argv, a)
+		if p, err := h.LookPath(a.Executable()); err == nil {
+			adapters[a.Name()] = p
+		}
+	}
+	return Config{Agent: path, DefaultAdapter: def.Name(), Adapters: adapters, Machine: machine, History: history, Max: max, Environ: h.Environ(), AllowChecks: config.HostingAllowChecks(h.Getenv)}, nil
+}
+
+// Argv is the command for a record: the adapter's new-conversation
+// arguments on its first launch, its resume arguments after it, the
+// adapter's permission-skip arguments when the record skips permissions
+// (#220) and the agent CLI is the adapter's executable, then the record's
+// args without the ones the adapter refuses.
+func (c Config) Argv(r Record, launched bool) []string {
+	a, exe, err := c.agentFor(r)
+	if err != nil { // launch refuses such a record first
+		a, exe = agent.Default(), c.Agent
+	}
+	argv := append([]string{exe}, a.LaunchArgs(r.AgentSessionID, launched)...)
+	if r.SkipPermissions && agent.ExecName(exe) == a.Executable() {
+		argv = append(argv, a.PermissionSkipArgs(r.Args)...)
+	}
+	for _, arg := range r.Args {
+		if agent.RefusedArg(a, arg) {
+			continue
+		}
+		argv = append(argv, arg)
 	}
 	return argv
 }
 
-// agentPermissions is what one agent CLI needs to run without permission
-// prompts: the arguments to add, and the flags that already choose a
-// permission mode (a record carrying one gets nothing added).
-type agentPermissions struct {
-	skip  []string
-	modes []string
-}
-
-// permissionSkip maps an agent name (the CLI's file name without extension)
-// to its permission-skip arguments. Add an agent only after checking its
-// flags against that CLI's --help; an agent missing here gets nothing.
-var permissionSkip = map[string]agentPermissions{
-	// Claude Code 2.1.328 (claude --help, 2026-11-19). The first run with
-	// --dangerously-skip-permissions shows a one-time acceptance screen
-	// ("Bypass Permissions mode", default "No, exit"); the settings key
-	// skipDangerousModePermissionPrompt passed with --settings skips it
-	// without touching the user's settings files. With several --settings
-	// the last wins, so ours goes before the record's args: a --settings
-	// of the record's own replaces it.
-	"claude": {
-		skip:  []string{"--dangerously-skip-permissions", "--settings", `{"skipDangerousModePermissionPrompt":true}`},
-		modes: []string{"--dangerously-skip-permissions", "--permission-mode", "--allow-dangerously-skip-permissions"},
-	},
-}
-
-// AgentName is the agent CLI's name from its path: the file name, lower
-// case, without .exe, .cmd or .bat ("C:\x\claude.cmd" is "claude").
-func AgentName(path string) string {
-	name := strings.ToLower(path[strings.LastIndexAny(path, `/\`)+1:])
-	for _, ext := range []string{".exe", ".cmd", ".bat"} {
-		name = strings.TrimSuffix(name, ext)
+// adapterFor is the adapter a record launches with (the default when the
+// record names one this node does not have).
+func (c Config) adapterFor(r Record) agent.Adapter {
+	a, _, err := c.agentFor(r)
+	if err != nil {
+		return agent.Default()
 	}
-	return name
+	return a
 }
 
-// PermissionSkipArgs are the arguments that make agent run without
-// permission prompts, or nothing when the agent is unknown or args already
-// choose a permission mode.
-func PermissionSkipArgs(agent string, args []string) []string {
-	p, ok := permissionSkip[agent]
-	if !ok {
-		return nil
-	}
-	for _, a := range args {
-		name, _, _ := strings.Cut(a, "=")
-		if slices.Contains(p.modes, name) {
-			return nil
+// agentFor is the adapter a record launches with and the CLI's path: the
+// record's adapter, else the node's default (with Agent). A record naming an
+// adapter that is not registered or not installed here is an error.
+func (c Config) agentFor(r Record) (agent.Adapter, string, error) {
+	name := r.Adapter
+	if name == "" || name == c.DefaultAdapter || c.DefaultAdapter == "" && name == agent.Default().Name() {
+		if c.DefaultAdapter == "" {
+			return agent.Default(), c.Agent, nil
 		}
+		a, err := agent.Lookup(c.DefaultAdapter)
+		return a, c.Agent, err
 	}
-	return slices.Clone(p.skip)
+	a, err := agent.Lookup(name)
+	if err != nil {
+		return nil, "", fmt.Errorf("adapter: %w", err)
+	}
+	path := c.Adapters[name]
+	if path == "" {
+		return nil, "", fmt.Errorf("adapter: %s is not installed on this node (%s not found)", name, a.Executable())
+	}
+	return a, path, nil
 }
 
-// refusedArg drops flags that would break the launch contract; the host
-// refuses them already, the node does not trust that.
-func refusedArg(a string) bool {
-	name, _, _ := strings.Cut(a, "=")
-	switch name {
-	case "-p", "--print", "-c", "--continue", "--resume", "-r", "--session-id":
-		return true
+// InstalledAdapters lists the adapters this node can launch, sorted.
+func (c Config) InstalledAdapters() []string {
+	if len(c.Adapters) == 0 {
+		return []string{c.defaultAdapterName()}
 	}
-	return false
+	out := make([]string, 0, len(c.Adapters))
+	for n := range c.Adapters {
+		out = append(out, n)
+	}
+	sort.Strings(out)
+	return out
 }
+
+func (c Config) defaultAdapterName() string {
+	if c.DefaultAdapter != "" {
+		return c.DefaultAdapter
+	}
+	return agent.Default().Name()
+}
+
+// DefaultAdapterName is the adapter a record without one launches with.
+func (c Config) DefaultAdapterName() string { return c.defaultAdapterName() }
 
 // SecretName reports whether an environment name looks like a credential.
 func SecretName(name string) bool {
@@ -195,31 +218,13 @@ func SecretName(name string) bool {
 	return false
 }
 
-// AgentSessionMarkers are the variables a running agent CLI sets for its own
-// session and children. A node started from inside an agent session would hand
-// them to hosted sessions, which then think they are sub-sessions (no
-// transcript saved, so --resume has nothing to resume). Settings the user
-// chooses on purpose (plugin dirs, effort, auth) are not here.
-var AgentSessionMarkers = []string{
-	"CLAUDECODE",
-	"CLAUDE_PID",
-	"CLAUDE_CODE_CHILD_SESSION",
-	"CLAUDE_CODE_CHILD_NOTES_DIR",
-	"CLAUDE_CODE_SESSION_ID",
-	"CLAUDE_CODE_SESSION_ATTENDED",
-	"CLAUDE_CODE_AGENT",
-	"CLAUDE_CODE_ENTRYPOINT",
-	"CLAUDE_CODE_EXECPATH",
-	"CLAUDE_CODE_MESSAGING_SOCKET",
-	"CLAUDE_CODE_MESSAGING_TOKEN",
-	"AI_AGENT",
-}
-
-// DroppedMarkers lists, sorted, the session-marker names present in the node's
+// DroppedMarkers lists, sorted, the agent session-marker names (every
+// adapter's: a node started inside an agent session would hand them to hosted
+// sessions, which then think they are sub-sessions) present in the node's
 // environment (names only, never values).
 func (c Config) DroppedMarkers() []string {
 	var out []string
-	for _, m := range AgentSessionMarkers {
+	for _, m := range agent.SessionMarkers() {
 		for _, kv := range c.Environ {
 			if k, _, _ := strings.Cut(kv, "="); k == m {
 				out = append(out, m)
@@ -250,7 +255,7 @@ func (c Config) ChildEnv(r Record) []string {
 	if c.Term != "" {
 		drop["TERM"] = true
 	}
-	for _, m := range AgentSessionMarkers {
+	for _, m := range agent.SessionMarkers() {
 		drop[m] = true
 	}
 	for _, v := range identity {

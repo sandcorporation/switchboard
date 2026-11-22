@@ -182,6 +182,9 @@ func Init(db *sql.DB) error {
 	if e = migrateRuleHits(db); e != nil {
 		return e
 	}
+	if e = migrateHostingAdapters(db); e != nil {
+		return e
+	}
 	return migrateRuleProposals(db)
 }
 
@@ -864,6 +867,38 @@ CREATE INDEX IF NOT EXISTS terminal_log_at ON terminal_log(at);`)
 // nodes.limit_since and limit_reset (the usage limit its sessions' screens
 // show, null when none) and hosting_limit, one row: the operator's limit
 // switch and when the limit last cleared. Times are Unix ms.
+// migrateHostingAdapters adds the agent adapter columns (#434), all
+// additive: hosted_sessions.adapter (empty: the node's default),
+// nodes.adapters (a JSON list the node reported, empty before it did) and
+// nodes.default_adapter, and host_grants.adapters (a JSON list, empty: any).
+func migrateHostingAdapters(db *sql.DB) error {
+	return addColumns(db, []columnAdd{
+		{"hosted_sessions", "adapter", `TEXT NOT NULL DEFAULT ''`},
+		{"nodes", "adapters", `TEXT NOT NULL DEFAULT ''`},
+		{"nodes", "default_adapter", `TEXT NOT NULL DEFAULT ''`},
+		{"host_grants", "adapters", `TEXT NOT NULL DEFAULT ''`},
+	})
+}
+
+// columnAdd is one additive column.
+type columnAdd struct{ table, column, def string }
+
+// addColumns adds each column its table lacks.
+func addColumns(db *sql.DB, adds []columnAdd) error {
+	for _, c := range adds {
+		has, err := HasColumn(db, c.table, c.column)
+		if err != nil {
+			return err
+		}
+		if !has {
+			if _, err = db.Exec(`ALTER TABLE ` + c.table + ` ADD COLUMN ` + c.column + ` ` + c.def); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 func migrateHostingLimit(db *sql.DB) error {
 	adds := []struct{ table, column, def string }{
 		{"hosted_sessions", "class", `TEXT NOT NULL DEFAULT 'execute'`},

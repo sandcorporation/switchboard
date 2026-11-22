@@ -515,6 +515,7 @@ table.cards td.cardhide{display:none}
 <label>라벨 <input id="termLabel" autocomplete="off"></label>
 <label>부모 <input id="termParent" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="team/boss"></label>
 <label>분류 <select id="termClass"><option value="execute">실행</option><option value="review">검토</option><option value="coordinator">조율</option><option value="lead">총괄</option></select></label>
+<label>어댑터 <select id="termAdapter"><option value="">기본</option></select></label>
 <label>재시작 <select id="termRestart"><option value="always">always</option><option value="on-failure">on-failure</option><option value="never">never</option></select></label>
 <label>권한 <select id="termPerms"><option value="skip">건너뜀</option><option value="ask">물음</option></select></label>
 <label>인자 <input id="termArgs" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="--model opus"></label>
@@ -2085,6 +2086,7 @@ function termSettings(v,box){
   const select=(val,opts)=>{const s=document.createElement('select');for(const [k,t] of opts){const o=node('option',t);o.value=k;s.append(o)}s.value=val;return s};
   const label=field('라벨',input(v.label)),parent=field('부모',input(v.parent));
   const cls=field('분류',select(v.class||'execute',Object.entries(termClass)));
+  const adp=field('어댑터',select(v.adapter||'',[['','기본'],...(v.adapter?[[v.adapter,v.adapter]]:[])]));adapterOptions(adp,v.node,v.adapter||'');
   const restart=field('재시작',select(v.restart||'always',[['always','always'],['on-failure','on-failure'],['never','never']]));
   const args=field('인자',input((v.args||[]).join(' ')));
   const row=node('div','','row'),save=node('button','저장');save.type='submit';row.append(save,perm);f.append(row);
@@ -2094,6 +2096,7 @@ function termSettings(v,box){
     if(label.value.trim()!==(v.label||''))c.label=label.value.trim();
     if(parent.value.trim()!==(v.parent||''))c.parent=parent.value.trim();
     if(cls.value!==(v.class||'execute'))c.class=cls.value;
+    if(adp.value!==(v.adapter||''))c.adapter=adp.value;
     if(restart.value!==(v.restart||'always'))c.restart=restart.value;
     if(a.join(' ')!==(v.args||[]).join(' '))c.args=a;
     if(!Object.keys(c).length)return;
@@ -2192,6 +2195,18 @@ registerDetail('terminals',{
   }
 });
 $('termAddOpen').onclick=()=>$('termAdd').showModal();
+$('termAddOpen').addEventListener('click',()=>adapterOptions($('termAdapter'),$('termNode').value.trim(),$('termAdapter').value));
+$('termNode').onchange=()=>adapterOptions($('termAdapter'),$('termNode').value.trim(),'');
+// adapterOptions fills sel with the agent adapters the node reported (#434);
+// the first option, the empty value, is the node's default.
+async function adapterOptions(sel,nodeName,cur){
+  let list=[],def='';
+  try{const n=(await api('nodes')).find(x=>x.name===nodeName);if(n){list=n.adapters||[];def=n.default_adapter||''}}catch(e){}
+  if(cur&&!list.includes(cur))list=list.concat(cur);
+  const first=node('option',def?'기본 · '+def:'기본');first.value='';
+  sel.replaceChildren(first,...list.map(a=>{const o=node('option',a);o.value=a;return o}));
+  sel.value=cur||'';
+}
 $('termAddClose').onclick=()=>$('termAdd').close();
 // The drawer takes its own Esc, so an open detail panel stays open.
 $('termAdd').addEventListener('keydown',e=>{if(e.key==='Escape'){e.preventDefault();$('termAdd').close()}});
@@ -2368,7 +2383,7 @@ function termClose(){
 $('termForm').onsubmit=async e=>{
   e.preventDefault();
   const args=$('termArgs').value.split(/\s+/).filter(Boolean);
-  const rec={node:$('termNode').value.trim(),base:$('termBase').value.trim(),profile:$('termProfile').value.trim(),directory:$('termDir').value.trim(),label:$('termLabel').value.trim(),parent:$('termParent').value.trim(),restart:$('termRestart').value,class:$('termClass').value,skip_permissions:$('termPerms').value==='skip',args:args};
+  const rec={node:$('termNode').value.trim(),base:$('termBase').value.trim(),profile:$('termProfile').value.trim(),directory:$('termDir').value.trim(),label:$('termLabel').value.trim(),parent:$('termParent').value.trim(),restart:$('termRestart').value,class:$('termClass').value,adapter:$('termAdapter').value,skip_permissions:$('termPerms').value==='skip',args:args};
   try{await apiSend('POST','terminals',rec);setMsg($('terminalsMsg'),rec.base+' 추가','ok');$('termForm').reset();$('termAdd').close();loadTerminals()}
   catch(err){setMsg($('termAddMsg'),err.message,'err')}
 };

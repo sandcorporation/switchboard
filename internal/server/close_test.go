@@ -20,7 +20,9 @@ func closedJSON(id int64) string { return fmt.Sprintf(`{"id":%d,"closed":true}`,
 
 // withdrawnJSON is the close answer for a directive its recipient had not
 // read (#354).
-func withdrawnJSON(id int64) string { return fmt.Sprintf(`{"id":%d,"closed":true,"withdrawn":true}`, id) }
+func withdrawnJSON(id int64) string {
+	return fmt.Sprintf(`{"id":%d,"closed":true,"withdrawn":true}`, id)
+}
 
 // The sender closes its own directive (#232): it leaves progress at once,
 // a second close answers the same, and nobody else may close it.

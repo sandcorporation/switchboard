@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/sandcorporation/switchboard/internal/agent"
 	"io"
+	"regexp"
 	"slices"
 	"strings"
 	"text/tabwriter"
@@ -82,13 +84,24 @@ func (s *Service) SetGrant(g wire.HostGrant) (wire.HostGrant, error) {
 		return g, invalidf("a grant needs at least one base, node and directory root")
 	}
 	g.DirRoots = roots
+	g.Adapters = cleanList(g.Adapters)
+	for _, a := range g.Adapters {
+		if !adapterPattern.MatchString(a) {
+			return g, invalidf("adapter: invalid name %q", a)
+		}
+	}
 	now := s.clock().UnixMilli()
 	bases, _ := json.Marshal(g.Bases)
 	nodes, _ := json.Marshal(g.Nodes)
 	dirs, _ := json.Marshal(g.DirRoots)
-	if _, err := s.db.Exec(`INSERT INTO host_grants(role,bases,nodes,dir_roots,created_at,updated_at) VALUES(?,?,?,?,?,?)
-ON CONFLICT(role) DO UPDATE SET bases=excluded.bases, nodes=excluded.nodes, dir_roots=excluded.dir_roots, updated_at=excluded.updated_at`,
-		g.Role, string(bases), string(nodes), string(dirs), now, now); err != nil {
+	adapters := ""
+	if len(g.Adapters) > 0 {
+		b, _ := json.Marshal(g.Adapters)
+		adapters = string(b)
+	}
+	if _, err := s.db.Exec(`INSERT INTO host_grants(role,bases,nodes,dir_roots,adapters,created_at,updated_at) VALUES(?,?,?,?,?,?,?)
+ON CONFLICT(role) DO UPDATE SET bases=excluded.bases, nodes=excluded.nodes, dir_roots=excluded.dir_roots, adapters=excluded.adapters, updated_at=excluded.updated_at`,
+		g.Role, string(bases), string(nodes), string(dirs), adapters, now, now); err != nil {
 		return g, err
 	}
 	return s.Grant(g.Role)
@@ -96,10 +109,11 @@ ON CONFLICT(role) DO UPDATE SET bases=excluded.bases, nodes=excluded.nodes, dir_
 
 func scanGrant(r rowScanner) (wire.HostGrant, error) {
 	var g wire.HostGrant
-	var bases, nodes, dirs string
-	if err := r.Scan(&g.Role, &bases, &nodes, &dirs, &g.CreatedAt, &g.UpdatedAt); err != nil {
+	var bases, nodes, dirs, adapters string
+	if err := r.Scan(&g.Role, &bases, &nodes, &dirs, &g.CreatedAt, &g.UpdatedAt, &adapters); err != nil {
 		return g, err
 	}
+	g.Adapters = decodeList(adapters)
 	for _, f := range []struct {
 		raw string
 		to  *[]string
@@ -113,7 +127,7 @@ func scanGrant(r rowScanner) (wire.HostGrant, error) {
 
 // Grant is role's grant, or ErrNoGrant.
 func (s *Service) Grant(role string) (wire.HostGrant, error) {
-	g, err := scanGrant(s.db.QueryRow(`SELECT role,bases,nodes,dir_roots,created_at,updated_at FROM host_grants WHERE role=?`, role))
+	g, err := scanGrant(s.db.QueryRow(`SELECT role,bases,nodes,dir_roots,created_at,updated_at,adapters FROM host_grants WHERE role=?`, role))
 	if errors.Is(err, sql.ErrNoRows) {
 		return g, ErrNoGrant
 	}
@@ -122,7 +136,7 @@ func (s *Service) Grant(role string) (wire.HostGrant, error) {
 
 // Grants lists every grant, by role.
 func (s *Service) Grants() ([]wire.HostGrant, error) {
-	rows, err := s.db.Query(`SELECT role,bases,nodes,dir_roots,created_at,updated_at FROM host_grants ORDER BY role`)
+	rows, err := s.db.Query(`SELECT role,bases,nodes,dir_roots,created_at,updated_at,adapters FROM host_grants ORDER BY role`)
 	if err != nil {
 		return nil, err
 	}
@@ -179,7 +193,16 @@ func (s *Service) admit(role string, c *wire.HostedSessionCreate) (string, error
 	if c.Class == "" {
 		c.Class = wire.ClassExecute
 	}
-	if err := wire.CheckRoleArgs(c.Args); err != nil {
+	if len(g.Adapters) > 0 {
+		eff := c.Adapter
+		if eff == "" {
+			eff = s.nodeDefaultAdapter(c.Node)
+		}
+		if !slices.Contains(g.Adapters, eff) {
+			return "", forbiddenf("adapter: %s is not in the grant of %s (%s)", eff, role, strings.Join(g.Adapters, ", "))
+		}
+	}
+	if err := agent.CheckRoleArgs(roleAdapter(c.Adapter), c.Args); err != nil {
 		return "", forbiddenf("%v", err)
 	}
 	if len(c.Env) > 0 {
@@ -310,9 +333,38 @@ func printGrants(w io.Writer, list []wire.HostGrant) {
 		return
 	}
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "ROLE\tBASES\tNODES\tDIR ROOTS")
+	// The ADAPTERS column shows only when a grant limits them (#434), so
+	// the table is as before otherwise.
+	adapters := slices.ContainsFunc(list, func(g wire.HostGrant) bool { return len(g.Adapters) > 0 })
+	head := "ROLE\tBASES\tNODES\tDIR ROOTS"
+	if adapters {
+		head += "\tADAPTERS"
+	}
+	fmt.Fprintln(tw, head)
 	for _, g := range list {
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", g.Role, strings.Join(g.Bases, ","), strings.Join(g.Nodes, ","), strings.Join(g.DirRoots, ","))
+		row := fmt.Sprintf("%s\t%s\t%s\t%s", g.Role, strings.Join(g.Bases, ","), strings.Join(g.Nodes, ","), strings.Join(g.DirRoots, ","))
+		if adapters {
+			row += "\t" + strings.Join(g.Adapters, ",")
+		}
+		fmt.Fprintln(tw, row)
 	}
 	tw.Flush()
 }
+
+// roleAdapter is the adapter whose role flags a role's record is held to:
+// the named one when the host knows it, else the default. A role's record
+// naming an adapter the host does not know carries no flags.
+func roleAdapter(name string) agent.Adapter {
+	if name == "" {
+		return agent.Default()
+	}
+	if a, err := agent.Lookup(name); err == nil {
+		return a
+	}
+	return noFlags{agent.Default()}
+}
+
+// noFlags is an adapter that allows a role's session no flags.
+type noFlags struct{ agent.Adapter }
+
+func (noFlags) RoleArgs() map[string]*regexp.Regexp { return nil }

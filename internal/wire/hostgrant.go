@@ -1,10 +1,8 @@
 package wire
 
 import (
-	"fmt"
 	"path"
 	"regexp"
-	"sort"
 	"strings"
 )
 
@@ -13,10 +11,13 @@ import (
 // under one of DirRoots. The admin sets it (host grant) and removes it (host
 // revoke-grant); a role has at most one.
 type HostGrant struct {
-	Role      string   `json:"role"`
-	Bases     []string `json:"bases"`
-	Nodes     []string `json:"nodes"`
-	DirRoots  []string `json:"dir_roots"`
+	Role     string   `json:"role"`
+	Bases    []string `json:"bases"`
+	Nodes    []string `json:"nodes"`
+	DirRoots []string `json:"dir_roots"`
+	// Adapters are the agent adapters the role may choose (#434); empty
+	// allows every one.
+	Adapters  []string `json:"adapters,omitempty"`
 	CreatedAt int64    `json:"created_at"`
 	UpdatedAt int64    `json:"updated_at"`
 }
@@ -83,44 +84,4 @@ func DirWithin(dir, root string) bool {
 		r += sep
 	}
 	return strings.HasPrefix(d, r)
-}
-
-// RoleArgAllowed are the agent flags a role's hosted session may carry
-// (#377), each with the shape its value must have. Every other flag is
-// refused: the others widen folders, permissions or settings beyond the
-// grant. The host checks a role's new record against it and the node checks
-// the stored record again before it launches.
-var RoleArgAllowed = map[string]*regexp.Regexp{
-	"--model":  regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:\[\]-]{0,63}$`),
-	"--agent":  regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`),
-	"--name":   regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9 ._:-]{0,63}$`),
-	"--effort": regexp.MustCompile(`^[a-z]{1,16}$`),
-}
-
-// CheckRoleArgs returns an error naming the first arg a role's session may
-// not carry. A flag takes its value as the next arg or after "=".
-func CheckRoleArgs(args []string) error {
-	names := make([]string, 0, len(RoleArgAllowed))
-	for n := range RoleArgAllowed {
-		names = append(names, n)
-	}
-	sort.Strings(names)
-	for i := 0; i < len(args); i++ {
-		name, val, inline := strings.Cut(args[i], "=")
-		re, ok := RoleArgAllowed[name]
-		if !ok {
-			return fmt.Errorf("args: %s is not allowed for a role's session (allowed: %s)", args[i], strings.Join(names, ", "))
-		}
-		if !inline {
-			if i+1 >= len(args) {
-				return fmt.Errorf("args: %s needs a value", name)
-			}
-			i++
-			val = args[i]
-		}
-		if !re.MatchString(val) {
-			return fmt.Errorf("args: %s value %q is not allowed for a role's session (letters, digits and . _ - only)", name, val)
-		}
-	}
-	return nil
 }

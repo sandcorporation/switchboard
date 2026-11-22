@@ -11,6 +11,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/sandcorporation/switchboard/internal/agent"
+	_ "github.com/sandcorporation/switchboard/internal/agent/builtin"
 	"regexp"
 	"strings"
 	"time"
@@ -74,26 +76,24 @@ var (
 	idPattern       = regexp.MustCompile(`^hs_[0-9a-f]{32}$`)
 )
 
-// refusedArgs are agent flags the node sets itself (session id, resume) or
-// that make the agent non-interactive.
-var refusedArgs = map[string]string{
-	"--session-id": "the node sets the session id",
-	"--resume":     "the node resumes the conversation itself",
-	"-r":           "the node resumes the conversation itself",
-	"--continue":   "the node resumes the conversation itself",
-	"-c":           "the node resumes the conversation itself",
-	"--print":      "a hosted session is interactive",
-	"-p":           "a hosted session is interactive",
-}
-
 // refusedEnvWords mark environment names that look like secrets. Secrets
 // belong in the profile file on the node, which neither host nor node reads.
 var refusedEnvWords = []string{"TOKEN", "SECRET", "KEY", "PASSWORD"}
 
-func checkArgs(args []string) error {
+func checkArgs(args []string) error { return checkArgsFor("", args) }
+
+// checkArgsFor refuses the flags the record's adapter refuses: the default
+// adapter's, and also the named adapter's when the host knows it.
+func checkArgsFor(adapter string, args []string) error {
+	refused := agent.Default().RefusedArgs()
+	if a, err := agent.Lookup(adapter); adapter != "" && err == nil {
+		for k, v := range a.RefusedArgs() {
+			refused[k] = v
+		}
+	}
 	for _, a := range args {
 		name, _, _ := strings.Cut(a, "=")
-		if why, ok := refusedArgs[name]; ok {
+		if why, ok := refused[name]; ok {
 			return invalidf("args: %s is not allowed (%s)", name, why)
 		}
 	}
@@ -201,13 +201,16 @@ func (s *Service) validate(c *wire.HostedSessionCreate) error {
 	if c.Class == "" {
 		c.Class = wire.ClassExecute
 	}
+	if err := s.checkAdapter(c.Node, c.Adapter); err != nil {
+		return err
+	}
 	if c.Args == nil {
 		c.Args = []string{}
 	}
 	if c.Env == nil {
 		c.Env = map[string]string{}
 	}
-	for _, err := range []error{checkLabel(c.Label), checkParent(c.Parent), checkArgs(c.Args), checkEnv(c.Env), checkRestart(c.Restart), checkDesired(c.Desired), checkClass(c.Class)} {
+	for _, err := range []error{checkLabel(c.Label), checkParent(c.Parent), checkArgsFor(c.Adapter, c.Args), checkEnv(c.Env), checkRestart(c.Restart), checkDesired(c.Desired), checkClass(c.Class)} {
 		if err != nil {
 			return err
 		}
@@ -262,7 +265,7 @@ func (s *Service) create(c wire.HostedSessionCreate, dirRoot string) (wire.Hoste
 	h := wire.HostedSession{
 		ID: "hs_" + suffix, Node: c.Node, Base: c.Base, Label: c.Label, Parent: c.Parent, Profile: c.Profile,
 		Directory: c.Directory, AgentSessionID: sid, Args: c.Args, Env: c.Env, Restart: c.Restart, Desired: c.Desired,
-		Class: c.Class, AcceptingWork: true, SkipPermissions: c.SkipPermissions == nil || *c.SkipPermissions, Cols: defaultCols, Rows: defaultRows, CreatedAt: now, UpdatedAt: now, Runtime: unknownRuntime(),
+		Class: c.Class, Adapter: c.Adapter, AcceptingWork: true, SkipPermissions: c.SkipPermissions == nil || *c.SkipPermissions, Cols: defaultCols, Rows: defaultRows, CreatedAt: now, UpdatedAt: now, Runtime: unknownRuntime(),
 		DirRoot: dirRoot,
 	}
 	args, _ := json.Marshal(h.Args)
@@ -278,8 +281,8 @@ func (s *Service) create(c wire.HostedSessionCreate, dirRoot string) (wire.Hoste
 	if err != nil {
 		return wire.HostedSession{}, err
 	}
-	res, err := s.db.Exec(`INSERT INTO hosted_sessions(id,node,base,label,parent,profile,directory,agent_session_id,launched,args,env,restart,desired,class,skip_permissions,cols,rows,created_at,updated_at,dir_root) SELECT ?,?,?,?,?,?,?,?,0,?,?,?,?,?,?,?,?,?,?,? WHERE ?<>? OR `+cond,
-		append([]any{h.ID, h.Node, h.Base, h.Label, h.Parent, h.Profile, h.Directory, h.AgentSessionID, string(args), string(env), h.Restart, h.Desired, h.Class, boolInt(h.SkipPermissions), h.Cols, h.Rows, now, now, h.DirRoot, h.Desired, DesiredRunning}, gargs...)...)
+	res, err := s.db.Exec(`INSERT INTO hosted_sessions(id,node,base,label,parent,profile,directory,agent_session_id,launched,args,env,restart,desired,class,skip_permissions,cols,rows,created_at,updated_at,dir_root,adapter) SELECT ?,?,?,?,?,?,?,?,0,?,?,?,?,?,?,?,?,?,?,?,? WHERE ?<>? OR `+cond,
+		append([]any{h.ID, h.Node, h.Base, h.Label, h.Parent, h.Profile, h.Directory, h.AgentSessionID, string(args), string(env), h.Restart, h.Desired, h.Class, boolInt(h.SkipPermissions), h.Cols, h.Rows, now, now, h.DirRoot, h.Adapter, h.Desired, DesiredRunning}, gargs...)...)
 	if err != nil && strings.Contains(err.Error(), "UNIQUE") {
 		return wire.HostedSession{}, ErrDuplicate
 	}
@@ -302,7 +305,7 @@ func boolInt(b bool) int {
 
 func unknownRuntime() wire.HostedRuntime { return wire.HostedRuntime{State: StateUnknown} }
 
-const sessionColumns = `id,node,base,label,parent,profile,directory,agent_session_id,launched,args,env,restart,desired,class,skip_permissions,cols,rows,restart_gen,start_gen,created_at,updated_at,dir_root`
+const sessionColumns = `id,node,base,label,parent,profile,directory,agent_session_id,launched,args,env,restart,desired,class,skip_permissions,cols,rows,restart_gen,start_gen,created_at,updated_at,dir_root,adapter`
 
 type rowScanner interface{ Scan(dest ...any) error }
 
@@ -310,7 +313,7 @@ func scanSession(r rowScanner) (wire.HostedSession, error) {
 	var h wire.HostedSession
 	var launched, skip int
 	var args, env string
-	if err := r.Scan(&h.ID, &h.Node, &h.Base, &h.Label, &h.Parent, &h.Profile, &h.Directory, &h.AgentSessionID, &launched, &args, &env, &h.Restart, &h.Desired, &h.Class, &skip, &h.Cols, &h.Rows, &h.RestartGen, &h.StartGen, &h.CreatedAt, &h.UpdatedAt, &h.DirRoot); err != nil {
+	if err := r.Scan(&h.ID, &h.Node, &h.Base, &h.Label, &h.Parent, &h.Profile, &h.Directory, &h.AgentSessionID, &launched, &args, &env, &h.Restart, &h.Desired, &h.Class, &skip, &h.Cols, &h.Rows, &h.RestartGen, &h.StartGen, &h.CreatedAt, &h.UpdatedAt, &h.DirRoot, &h.Adapter); err != nil {
 		return h, err
 	}
 	h.Launched = launched != 0
@@ -410,7 +413,13 @@ func (s *Service) Update(id string, c wire.HostedSessionChange) (wire.HostedSess
 	if c.SkipPermissions != nil {
 		h.SkipPermissions = *c.SkipPermissions
 	}
-	for _, err := range []error{checkLabel(h.Label), checkParent(h.Parent), checkArgs(h.Args), checkEnv(h.Env), checkRestart(h.Restart), checkDesired(h.Desired), checkClass(h.Class)} {
+	if c.Adapter != nil && *c.Adapter != h.Adapter {
+		if err := s.checkAdapter(h.Node, *c.Adapter); err != nil {
+			return h, err
+		}
+		h.Adapter = *c.Adapter
+	}
+	for _, err := range []error{checkLabel(h.Label), checkParent(h.Parent), checkArgsFor(h.Adapter, h.Args), checkEnv(h.Env), checkRestart(h.Restart), checkDesired(h.Desired), checkClass(h.Class)} {
 		if err != nil {
 			return h, err
 		}
@@ -424,8 +433,8 @@ func (s *Service) Update(id string, c wire.HostedSessionChange) (wire.HostedSess
 	}
 	args, _ := json.Marshal(h.Args)
 	env, _ := json.Marshal(h.Env)
-	return h, s.guardedUpdate(id, h.Node, h.Desired == DesiredRunning, `UPDATE hosted_sessions SET label=?,parent=?,args=?,env=?,restart=?,desired=?,class=?,skip_permissions=?,start_gen=start_gen+?,updated_at=?`,
-		h.Label, h.Parent, string(args), string(env), h.Restart, h.Desired, h.Class, boolInt(h.SkipPermissions), startBump(c), h.UpdatedAt)
+	return h, s.guardedUpdate(id, h.Node, h.Desired == DesiredRunning, `UPDATE hosted_sessions SET label=?,parent=?,args=?,env=?,restart=?,desired=?,class=?,adapter=?,skip_permissions=?,start_gen=start_gen+?,updated_at=?`,
+		h.Label, h.Parent, string(args), string(env), h.Restart, h.Desired, h.Class, h.Adapter, boolInt(h.SkipPermissions), startBump(c), h.UpdatedAt)
 }
 
 func startBump(c wire.HostedSessionChange) int {
@@ -532,7 +541,7 @@ func (s *Service) Delete(id string) (wire.HostedSession, error) {
 
 // Nodes lists the node registry, by name.
 func (s *Service) Nodes() ([]wire.NodeView, error) {
-	rows, err := s.db.Query(`SELECT name,machine,os,version,created_at,last_seen_at,revoked_at FROM nodes ORDER BY name`)
+	rows, err := s.db.Query(`SELECT name,machine,os,version,created_at,last_seen_at,revoked_at,adapters,default_adapter FROM nodes ORDER BY name`)
 	if err != nil {
 		return nil, err
 	}
@@ -541,9 +550,11 @@ func (s *Service) Nodes() ([]wire.NodeView, error) {
 	for rows.Next() {
 		var n wire.NodeView
 		var seen, revoked sql.NullInt64
-		if err := rows.Scan(&n.Name, &n.Machine, &n.OS, &n.Version, &n.CreatedAt, &seen, &revoked); err != nil {
+		var adapters string
+		if err := rows.Scan(&n.Name, &n.Machine, &n.OS, &n.Version, &n.CreatedAt, &seen, &revoked, &adapters, &n.DefaultAdapter); err != nil {
 			return nil, err
 		}
+		n.Adapters = decodeList(adapters)
 		if seen.Valid {
 			n.LastSeenAt = &seen.Int64
 		}

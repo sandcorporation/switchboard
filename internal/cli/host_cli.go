@@ -33,7 +33,7 @@ func cliHost(p parsedArgs, stdout io.Writer) (int, error) {
 			return 0, usagef("host %s: %s is for host auto", action, o)
 		}
 	}
-	addOnly := []string{"--node", "--base", "--profile", "--dir", "--label", "--parent", "--restart", "--class", "--ask-permissions"}
+	addOnly := []string{"--node", "--base", "--profile", "--dir", "--label", "--parent", "--restart", "--class", "--adapter", "--ask-permissions"}
 	var skip *bool
 	if p.bool("--ask-permissions") {
 		skip = new(bool)
@@ -65,7 +65,7 @@ func cliHost(p parsedArgs, stdout io.Writer) (int, error) {
 		// the agent arguments after --.
 		bossSet := map[string]bool{}
 		if !adminHost() {
-			bossSet = map[string]bool{"--label": true, "--parent": true, "--class": true, "--restart": true}
+			bossSet = map[string]bool{"--label": true, "--parent": true, "--class": true, "--adapter": true, "--restart": true}
 		}
 		changes := skip != nil || len(p.extra) > 0 && !adminHost()
 		for _, o := range addOnly {
@@ -79,7 +79,7 @@ func cliHost(p parsedArgs, stdout io.Writer) (int, error) {
 			return 0, usagef("host set requires --skip-permissions on|off")
 		}
 		if !changes {
-			return 0, usagef("host set requires --skip-permissions on|off, or with a boss role's token --label, --parent, --class, --restart or -- ARGS")
+			return 0, usagef("host set requires --skip-permissions on|off, or with a boss role's token --label, --parent, --class, --adapter, --restart or -- ARGS")
 		}
 		if adminHost() && len(p.extra) > 0 {
 			return 0, usagef("host set: arguments after -- are for host add")
@@ -120,7 +120,7 @@ func cliHost(p parsedArgs, stdout io.Writer) (int, error) {
 	}
 	add := wire.HostedSessionCreate{
 		Node: p.values["--node"], Base: p.values["--base"], Profile: p.values["--profile"], Directory: p.values["--dir"],
-		Label: p.values["--label"], Parent: p.values["--parent"], Restart: p.values["--restart"], Class: p.values["--class"], Args: p.extra,
+		Label: p.values["--label"], Parent: p.values["--parent"], Restart: p.values["--restart"], Class: p.values["--class"], Adapter: p.values["--adapter"], Args: p.extra,
 		SkipPermissions: skip,
 	}
 	if action == "nodes" {
@@ -130,7 +130,7 @@ func cliHost(p parsedArgs, stdout io.Writer) (int, error) {
 	}
 	if !adminHost() {
 		change := wire.HostedSessionChange{SkipPermissions: skip}
-		for o, f := range map[string]**string{"--label": &change.Label, "--parent": &change.Parent, "--class": &change.Class, "--restart": &change.Restart} {
+		for o, f := range map[string]**string{"--label": &change.Label, "--parent": &change.Parent, "--class": &change.Class, "--adapter": &change.Adapter, "--restart": &change.Restart} {
 			if v, ok := p.values[o]; ok {
 				*f = &v
 			}
@@ -160,7 +160,7 @@ func cliHostAuto(p parsedArgs, stdout io.Writer) (int, error) {
 	if len(p.extra) > 0 {
 		return 0, usagef("host auto: arguments after -- are for host add")
 	}
-	for _, o := range []string{"--node", "--base", "--profile", "--dir", "--parent", "--restart", "--class", "--ask-permissions", "--skip-permissions"} {
+	for _, o := range []string{"--node", "--base", "--profile", "--dir", "--parent", "--restart", "--class", "--adapter", "--ask-permissions", "--skip-permissions"} {
 		if _, ok := p.values[o]; ok {
 			return 0, usagef("host auto: %s is for host add", o)
 		}
