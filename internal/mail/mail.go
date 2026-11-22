@@ -36,6 +36,18 @@ type Service struct {
 	done       <-chan struct{}
 	ids        *identity.Service
 	authorized func(*http.Request) bool
+	footer     Footer
+}
+
+// Footer is what goes at the end of a directive's body (#408 T3): sender
+// p's new mail (no reply, not no_reply) to the role base. "" adds nothing.
+// The rules ledger supplies it; mail does not import it.
+type Footer func(p identity.Principal, base string) string
+
+// WithFooter sets the directive footer.
+func (s *Service) WithFooter(f Footer) *Service {
+	s.footer = f
+	return s
 }
 
 // New returns the mailbox over db. clock is the current time, cfg the mail
@@ -351,6 +363,15 @@ func (s *Service) send(w http.ResponseWriter, r *http.Request, p identity.Princi
 	if ambiguous != nil {
 		refuseAmbiguous(w, m.Recipient, ambiguous)
 		return
+	}
+	if s.footer != nil && m.ReplyTo == 0 && !m.NoReply {
+		base := label.Base
+		if base == "" {
+			base = identity.BaseOf(s.db, m.Recipient)
+		}
+		if f := s.footer(p, base); f != "" {
+			m.Body = strings.TrimRight(m.Body, "\n") + "\n\n" + f
+		}
 	}
 	now := s.now().UTC()
 	if m.ThreadID == 0 && m.ReplyTo > 0 {

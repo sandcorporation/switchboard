@@ -78,6 +78,7 @@ func configureStall(s *Server, getenv func(string) string) error {
 		}
 		*d.dst = t
 	}
+	s.rulesFooterOff = !config.RulesFooterFrom(getenv)
 	s.bossRoles = map[string]bool{}
 	s.bossOrder = nil
 	roles, from := config.EnvAliasFrom(getenv, "BOSS_ROLES")

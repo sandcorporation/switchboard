@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"slices"
 	"strings"
@@ -173,4 +174,39 @@ func withHits(r wire.Rule, hc map[int64]hitCount) wire.Rule {
 		r.Hits, r.LastHitAt = h.hits, h.last
 	}
 	return r
+}
+
+// Footer is what goes at the end of a boss's directive to role (#408 T3):
+// its rows in force without a device or a condition, each decision on a
+// line of its own ("결정 #N topic") and the tips on one ("요령 M줄 (주제:
+// a, b) — switchboard rules list --kind tip"); "" when there are none.
+func (s *Service) Footer(role string) (string, error) {
+	rows, err := s.inForceFor(role)
+	if err != nil {
+		return "", err
+	}
+	slices.SortFunc(rows, func(a, b row) int { return int(a.ID - b.ID) })
+	var lines, topics []string
+	tips := 0
+	for _, rw := range rows {
+		if rw.Match != nil {
+			continue
+		}
+		if rw.Kind == wire.RuleDecision {
+			lines = append(lines, fmt.Sprintf("결정 #%d %s", rw.ID, rw.Topic))
+			continue
+		}
+		tips++
+		if !slices.Contains(topics, rw.Topic) {
+			topics = append(topics, rw.Topic)
+		}
+	}
+	if tips > 0 {
+		slices.Sort(topics)
+		lines = append(lines, fmt.Sprintf("요령 %d줄 (주제: %s) — switchboard rules list --kind tip", tips, strings.Join(topics, ", ")))
+	}
+	if len(lines) == 0 {
+		return "", nil
+	}
+	return "---\n" + strings.Join(lines, "\n"), nil
 }

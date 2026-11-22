@@ -37,34 +37,35 @@ import (
 )
 
 type Server struct {
-	db          *sql.DB
-	tokens      map[string]string
-	hub         mail.Hub            // wakes event streams and long polls (internal/mail)
-	mailCfg     mail.Config         // SSE keep-alive and long-poll cap (internal/mail)
-	done        chan struct{}       // closed on shutdown; ends event streams
-	presenceCfg presence.Config     // slot lease and presence settings (internal/presence)
-	clock       func() time.Time    // nil means time.Now; tests move time forward
-	sweepEvery  time.Duration       // SWITCHBOARD_SWEEP_INTERVAL; 0 means defaultSweepInterval
-	labelStall  time.Duration       // SWITCHBOARD_LABEL_STALL; 0 means defaultLabelStall
-	handoffTTL  time.Duration       // SWITCHBOARD_HANDOFF_EXPIRE; 0 means defaultHandoffTTL (#354)
-	asksCfg     asks.Config         // permission TTL (internal/asks)
-	bossRoles   map[string]bool     // SWITCHBOARD_BOSS_ROLES; may answer any permission request
-	bossOrder   []string            // SWITCHBOARD_BOSS_ROLES in listed order (identity.Service.AskVia)
-	discord     *insight.Discord    // SWITCHBOARD_DISCORD_WEBHOOK; nil sends no question notices
-	alerts      *insight.Thresholds // SWITCHBOARD_ALERT_*; nil means insight.DefaultThresholds
-	oldHeaders  config.AliasCounter // requests that used an old-prefix header
-	groups      identity.Groups     // collaborator groups (internal/identity)
-	admin       adminauth.Config    // admin login settings (internal/adminauth)
-	loginLimits adminauth.Limiter   // failed admin logins
-	joinLimits  adminauth.Limiter   // failed POST /api/join per client IP (identity.Service.Join)
-	live        live.Bus            // dashboard change stream (internal/live, served by live.go)
-	publicURL   string              // SWITCHBOARD_PUBLIC_URL; a WebSocket Origin it also accepts
-	setup       *adminauth.Setup    // first-run admin setup; only up opens it (setup.go), nil answers 404
-	hosting     bool                // SWITCHBOARD_HOSTING=on (hosting.go); off answers every hosting route 404
-	terminal    terminalAccess      // SWITCHBOARD_HOSTING_TERMINAL and …_ALLOW (hosting_terminal.go)
-	hubOnce     sync.Once
-	nodeHub     *hosting.Hub  // the node channel (hosting.go), built on first use
-	termLimits  hosting.Admin // browser terminal recheck and queue; tests shorten them (zero: the defaults)
+	db             *sql.DB
+	tokens         map[string]string
+	hub            mail.Hub            // wakes event streams and long polls (internal/mail)
+	mailCfg        mail.Config         // SSE keep-alive and long-poll cap (internal/mail)
+	done           chan struct{}       // closed on shutdown; ends event streams
+	presenceCfg    presence.Config     // slot lease and presence settings (internal/presence)
+	clock          func() time.Time    // nil means time.Now; tests move time forward
+	sweepEvery     time.Duration       // SWITCHBOARD_SWEEP_INTERVAL; 0 means defaultSweepInterval
+	labelStall     time.Duration       // SWITCHBOARD_LABEL_STALL; 0 means defaultLabelStall
+	handoffTTL     time.Duration       // SWITCHBOARD_HANDOFF_EXPIRE; 0 means defaultHandoffTTL (#354)
+	asksCfg        asks.Config         // permission TTL (internal/asks)
+	bossRoles      map[string]bool     // SWITCHBOARD_BOSS_ROLES; may answer any permission request
+	bossOrder      []string            // SWITCHBOARD_BOSS_ROLES in listed order (identity.Service.AskVia)
+	rulesFooterOff bool                // SWITCHBOARD_RULES_FOOTER=off: no rules footer on directives (#408)
+	discord        *insight.Discord    // SWITCHBOARD_DISCORD_WEBHOOK; nil sends no question notices
+	alerts         *insight.Thresholds // SWITCHBOARD_ALERT_*; nil means insight.DefaultThresholds
+	oldHeaders     config.AliasCounter // requests that used an old-prefix header
+	groups         identity.Groups     // collaborator groups (internal/identity)
+	admin          adminauth.Config    // admin login settings (internal/adminauth)
+	loginLimits    adminauth.Limiter   // failed admin logins
+	joinLimits     adminauth.Limiter   // failed POST /api/join per client IP (identity.Service.Join)
+	live           live.Bus            // dashboard change stream (internal/live, served by live.go)
+	publicURL      string              // SWITCHBOARD_PUBLIC_URL; a WebSocket Origin it also accepts
+	setup          *adminauth.Setup    // first-run admin setup; only up opens it (setup.go), nil answers 404
+	hosting        bool                // SWITCHBOARD_HOSTING=on (hosting.go); off answers every hosting route 404
+	terminal       terminalAccess      // SWITCHBOARD_HOSTING_TERMINAL and …_ALLOW (hosting_terminal.go)
+	hubOnce        sync.Once
+	nodeHub        *hosting.Hub  // the node channel (hosting.go), built on first use
+	termLimits     hosting.Admin // browser terminal recheck and queue; tests shorten them (zero: the defaults)
 }
 
 // version is the build version /health reports (set by Run).

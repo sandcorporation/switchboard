@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"database/sql"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -69,7 +70,22 @@ func (s *Server) mail() *mail.Service {
 	return mail.New(s.db, s.now, &s.mailCfg, &s.hub, s.done, s.ids(), func(r *http.Request) bool {
 		_, ok := s.authenticate(r)
 		return ok
-	})
+	}).WithFooter(s.ruleFooter)
+}
+
+// ruleFooter is the rules ledger's footer for a boss role's directive to
+// base (#408 T3); none from other roles or with SWITCHBOARD_RULES_FOOTER=off.
+// A ledger that cannot be read adds nothing rather than refusing the mail.
+func (s *Server) ruleFooter(p identity.Principal, base string) string {
+	if s.rulesFooterOff || !s.ids().IsBoss(p) {
+		return ""
+	}
+	f, err := s.rules().Footer(base)
+	if err != nil {
+		log.Printf("rules footer: %v", err)
+		return ""
+	}
+	return f
 }
 
 // presence is the slot and presence rules over this server's database,
