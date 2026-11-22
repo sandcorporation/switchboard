@@ -164,7 +164,7 @@ func (s *Server) sweep(ctx context.Context) (sweepResult, error) {
 	if out.Alerts, err = s.insight().SweepAlerts(ctx); err != nil {
 		return out, err
 	}
-	if out.CLIBehind, err = s.insight().SweepCLIBehind(ctx, s.presence().CLIBehind, version); err != nil {
+	if out.CLIBehind, err = s.insight().SweepCLIBehind(ctx, s.presence().CLIBehind, version, s.presenceCfg.CLIMin.String()); err != nil {
 		return out, err
 	}
 	if out.Remind, err = s.presence().SweepReminders(ctx, insight.NewBaseResolver(s.db).Of); err != nil {

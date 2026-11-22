@@ -22,8 +22,9 @@ import (
 const cliAlertKind = "cli"
 
 // SweepCLIBehind mails the machines list reports, at most once a day each,
-// and returns the number of machines mailed. serverVersion goes in the text.
-func (s *Service) SweepCLIBehind(ctx context.Context, list func() ([]wire.CLIBehind, error), serverVersion string) (int, error) {
+// and returns the number of machines mailed. serverVersion and minVersion go
+// in the text.
+func (s *Service) SweepCLIBehind(ctx context.Context, list func() ([]wire.CLIBehind, error), serverVersion, minVersion string) (int, error) {
 	behind, err := list()
 	if err != nil || len(behind) == 0 {
 		return 0, err
@@ -37,7 +38,8 @@ func (s *Service) SweepCLIBehind(ctx context.Context, list func() ([]wire.CLIBeh
 		for i, role := range b.Roles {
 			lines = append(lines, "- "+role+" "+b.RoleVersions[i])
 		}
-		body := b.Machine + "\n" + strings.Join(lines, "\n")
+		body := b.Machine + "\n" + strings.Join(lines, "\n") +
+			fmt.Sprintf("\n서버 %s, 최소 %s. 이 판은 세션이 시작할 때 읽은 CLI 판입니다. 디스크의 CLI 를 올렸으면 세션을 다시 띄울 때 사라집니다.", serverVersion, minVersion)
 		var told []string
 		err := s.inTx(ctx, func(tx *sql.Tx) error {
 			boxes, _ := s.bossMailboxes(tx)

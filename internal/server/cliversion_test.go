@@ -153,7 +153,7 @@ func TestCLIBehindMailOncePerDayPerMachine(t *testing.T) {
 	mails := cliMail(t, s)
 	sort.Strings(mails)
 	want := []string{
-		"[옛 판] machine-a switchboard v0.16.0 (서버 dev)\nmachine-a\n- team/worker-1 v0.16.0",
+		"[옛 판] machine-a switchboard v0.16.0 (서버 dev)\nmachine-a\n- team/worker-1 v0.16.0\n서버 dev, 최소 v0.26. 이 판은 세션이 시작할 때 읽은 CLI 판입니다. 디스크의 CLI 를 올렸으면 세션을 다시 띄울 때 사라집니다.",
 	}
 	if strings.Join(mails, "\n--\n") != strings.Join(want, "\n--\n") {
 		t.Fatalf("mail:\n%s", strings.Join(mails, "\n--\n"))
