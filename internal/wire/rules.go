@@ -239,11 +239,13 @@ type ServiceTags struct {
 	Tags    []string `json:"tags"`
 }
 
-// RoleTags is a role's changes to its service's tags: Add more, Remove some.
+// RoleTags is a role's changes to its service's tags (Add more, Remove
+// some) and Tags, the tags it ends with.
 type RoleTags struct {
 	Role   string   `json:"role"`
 	Add    []string `json:"add,omitempty"`
 	Remove []string `json:"remove,omitempty"`
+	Tags   []string `json:"tags"`
 }
 
 // RuleTags is GET /api/rules/tags (admins and global bosses).
