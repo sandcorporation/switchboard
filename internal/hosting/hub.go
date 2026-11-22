@@ -68,7 +68,8 @@ type Hub struct {
 	limited    bool
 	limitKnown bool
 	slotOf     SlotOf
-	runSeen    map[string]int64 // host time the current run was first reported, by record id
+	runSeen    map[string]int64       // host time the current run was first reported, by record id
+	bound      map[string]slotBinding // the slot each record's run follows (slots.go), by record id
 
 	tickets tickets
 
@@ -98,7 +99,7 @@ func NewHub(svc *Service, publish func(kinds ...string)) *Hub {
 	}
 	return &Hub{svc: svc, publish: publish, conns: map[string]*nodeConn{}, runtime: map[string]wire.HostedRuntime{},
 		away: map[string]int64{}, owner: map[string]string{}, viewers: map[string]map[*viewer]struct{}{}, sizeBy: map[string]*viewer{}, nodeLimit: map[string]wire.NodeLimit{},
-		runSeen: map[string]int64{}}
+		runSeen: map[string]int64{}, bound: map[string]slotBinding{}}
 }
 
 // Run re-reads the records every interval until ctx is done.
@@ -157,6 +158,7 @@ func (h *Hub) Sync() error {
 		if _, ok := owner[id]; !ok {
 			delete(h.runtime, id)
 			delete(h.runSeen, id)
+			delete(h.bound, id)
 		}
 	}
 	for name, c := range h.conns {
