@@ -17,7 +17,10 @@ type HostGrant struct {
 	DirRoots []string `json:"dir_roots"`
 	// Adapters are the agent adapters the role may choose (#434); empty
 	// allows every one.
-	Adapters  []string `json:"adapters,omitempty"`
+	Adapters []string `json:"adapters,omitempty"`
+	// Groups are the work groups the role may choose (#435); empty allows
+	// only sessions without a group.
+	Groups    []string `json:"groups,omitempty"`
 	CreatedAt int64    `json:"created_at"`
 	UpdatedAt int64    `json:"updated_at"`
 }

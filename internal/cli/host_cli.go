@@ -22,6 +22,12 @@ func cliHost(p parsedArgs, stdout io.Writer) (int, error) {
 	if action == "grant" || action == "revoke-grant" {
 		return cliHostGrant(p, stdout)
 	}
+	if action == "group" {
+		return cliHostGroup(p, stdout)
+	}
+	if _, ok := p.values["--threshold"]; ok {
+		return 0, usagef("host %s: --threshold is for host group", action)
+	}
 	if _, ok := p.values["--dir-root"]; ok {
 		return 0, usagef("host %s: --dir-root is for host grant", action)
 	}
@@ -33,7 +39,7 @@ func cliHost(p parsedArgs, stdout io.Writer) (int, error) {
 			return 0, usagef("host %s: %s is for host auto", action, o)
 		}
 	}
-	addOnly := []string{"--node", "--base", "--profile", "--dir", "--label", "--parent", "--restart", "--class", "--adapter", "--ask-permissions"}
+	addOnly := []string{"--node", "--base", "--profile", "--dir", "--label", "--parent", "--restart", "--group", "--adapter", "--ask-permissions"}
 	var skip *bool
 	if p.bool("--ask-permissions") {
 		skip = new(bool)
@@ -61,11 +67,11 @@ func cliHost(p parsedArgs, stdout io.Writer) (int, error) {
 			return 0, usagef("host set requires ID")
 		}
 		// With a boss role's token (no DB_PATH) set also changes what the
-		// dashboard's session form does: label, parent, class, restart and
+		// dashboard's session form does: label, parent, group, restart and
 		// the agent arguments after --.
 		bossSet := map[string]bool{}
 		if !adminHost() {
-			bossSet = map[string]bool{"--label": true, "--parent": true, "--class": true, "--adapter": true, "--restart": true}
+			bossSet = map[string]bool{"--label": true, "--parent": true, "--group": true, "--adapter": true, "--restart": true}
 		}
 		changes := skip != nil || len(p.extra) > 0 && !adminHost()
 		for _, o := range addOnly {
@@ -79,7 +85,7 @@ func cliHost(p parsedArgs, stdout io.Writer) (int, error) {
 			return 0, usagef("host set requires --skip-permissions on|off")
 		}
 		if !changes {
-			return 0, usagef("host set requires --skip-permissions on|off, or with a boss role's token --label, --parent, --class, --adapter, --restart or -- ARGS")
+			return 0, usagef("host set requires --skip-permissions on|off, or with a boss role's token --label, --parent, --group, --adapter, --restart or -- ARGS")
 		}
 		if adminHost() && len(p.extra) > 0 {
 			return 0, usagef("host set: arguments after -- are for host add")
@@ -116,11 +122,11 @@ func cliHost(p parsedArgs, stdout io.Writer) (int, error) {
 			return 0, usagef("host %s: arguments after -- are for host add", action)
 		}
 	default:
-		return 0, usagef("host: unknown action %q (add, list, nodes, set, start, stop, restart, new-conversation, remove, events, log, revoke-node, limit, grant, revoke-grant)", action)
+		return 0, usagef("host: unknown action %q (add, list, nodes, set, start, stop, restart, new-conversation, remove, events, log, revoke-node, limit, grant, revoke-grant, group)", action)
 	}
 	add := wire.HostedSessionCreate{
 		Node: p.values["--node"], Base: p.values["--base"], Profile: p.values["--profile"], Directory: p.values["--dir"],
-		Label: p.values["--label"], Parent: p.values["--parent"], Restart: p.values["--restart"], Class: p.values["--class"], Adapter: p.values["--adapter"], Args: p.extra,
+		Label: p.values["--label"], Parent: p.values["--parent"], Restart: p.values["--restart"], Group: p.values["--group"], Adapter: p.values["--adapter"], Args: p.extra,
 		SkipPermissions: skip,
 	}
 	if action == "nodes" {
@@ -130,7 +136,7 @@ func cliHost(p parsedArgs, stdout io.Writer) (int, error) {
 	}
 	if !adminHost() {
 		change := wire.HostedSessionChange{SkipPermissions: skip}
-		for o, f := range map[string]**string{"--label": &change.Label, "--parent": &change.Parent, "--class": &change.Class, "--adapter": &change.Adapter, "--restart": &change.Restart} {
+		for o, f := range map[string]**string{"--label": &change.Label, "--parent": &change.Parent, "--group": &change.Group, "--adapter": &change.Adapter, "--restart": &change.Restart} {
 			if v, ok := p.values[o]; ok {
 				*f = &v
 			}
@@ -160,7 +166,7 @@ func cliHostAuto(p parsedArgs, stdout io.Writer) (int, error) {
 	if len(p.extra) > 0 {
 		return 0, usagef("host auto: arguments after -- are for host add")
 	}
-	for _, o := range []string{"--node", "--base", "--profile", "--dir", "--parent", "--restart", "--class", "--adapter", "--ask-permissions", "--skip-permissions"} {
+	for _, o := range []string{"--node", "--base", "--profile", "--dir", "--parent", "--restart", "--group", "--threshold", "--adapter", "--ask-permissions", "--skip-permissions"} {
 		if _, ok := p.values[o]; ok {
 			return 0, usagef("host auto: %s is for host add", o)
 		}

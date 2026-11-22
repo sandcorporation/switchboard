@@ -92,9 +92,15 @@ func TestBossWriteCommands(t *testing.T) {
 		t.Fatal(err)
 	}
 	aid := strconv.FormatInt(auto.ID, 10)
-	h.mustRun(boss, "host", "set", rec.ID, "--label", "renamed", "--class", "review")
+	if out := h.mustRun(boss, "host", "group", "add", "slow", "--threshold", "20"); out != "added work group slow (20%)" {
+		t.Fatalf("host group add: %q", out)
+	}
+	if out := h.mustRun(boss, "host", "group", "list"); !strings.Contains(out, "slow") || !strings.Contains(out, "20%") {
+		t.Fatalf("host group list: %q", out)
+	}
+	h.mustRun(boss, "host", "set", rec.ID, "--label", "renamed", "--group", "slow")
 	h.mustRun(boss, "host", "stop", rec.ID)
-	if got, _ := h.s.hostingService().Get(rec.ID); got.Label != "renamed" || got.Class != "review" || got.Desired != "stopped" {
+	if got, _ := h.s.hostingService().Get(rec.ID); got.Label != "renamed" || got.Group != "slow" || got.Desired != "stopped" {
 		t.Fatalf("host set/stop: %+v", got)
 	}
 	if out := h.mustRun(boss, "host", "limit", "on"); !strings.Contains(out, "limit on") {

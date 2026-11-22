@@ -268,7 +268,7 @@ Start-Process -WindowStyle Minimized "$data\up.cmd"
 ```powershell
 $work = Join-Path $env:USERPROFILE 'work\app'
 New-Item -ItemType Directory -Force $work | Out-Null
-$id = sbpc host add --node local --base team/worker --profile pc-worker --dir $work --label app --parent team/boss --class execute --restart always '--' --model opus
+$id = sbpc host add --node local --base team/worker --profile pc-worker --dir $work --label app --parent team/boss --restart always '--' --model opus
 $id
 sbpc host list
 sblogin
@@ -276,7 +276,7 @@ sbwait 120 { (sbget $id).runtime.state -eq 'running' }
 sbterm
 ```
 
-Check: `host add` prints the new session ID; `host list` shows it with node `local`, base `team/worker`, `DESIRED` `running`, restart `always`. `sbterm` (`GET /api/admin/terminals`) shows it with state `running` and a pid. `--class` is `lead`, `coordinator`, `execute` or `review`; `--restart` is `always`, `on-failure` or `never`; words after `'--'` go to the agent (the quotes keep PowerShell from eating `--`). `host list` shows `PERMS` `skip`: see [Permission mode](#permission-mode).
+Check: `host add` prints the new session ID; `host list` shows it with node `local`, base `team/worker`, `DESIRED` `running`, restart `always`. `sbterm` (`GET /api/admin/terminals`) shows it with state `running` and a pid. `--group NAME` puts it in a work group (`host group add NAME --threshold N`); `--restart` is `always`, `on-failure` or `never`; words after `'--'` go to the agent (the quotes keep PowerShell from eating `--`). `host list` shows `PERMS` `skip`: see [Permission mode](#permission-mode).
 
 If it fails: `base role ... must exist` → W5 did not register `team/worker`. `sblogin` gets `401` → the code was used already in this 30-second step; wait 30 s and run `sblogin` again. State stays `waiting` → `SWITCHBOARD_HOSTING_MAX` (default 4) sessions are running already. State `crashloop` or `exited` → open the session in the dashboard (`http://127.0.0.1:8090`, tab Terminals) to read the agent's screen; a first start in a new folder can stop at the agent's folder-trust question, which someone at the PC answers there once.
 
@@ -580,7 +580,7 @@ If it fails: `systemctl --user` reports `Failed to connect to bus` → the shell
 
 ```sh
 mkdir -p "$HOME/work/app"
-SBID="$(sbpc host add --node local --base team/worker --profile pc-worker --dir "$HOME/work/app" --label app --parent team/boss --class execute --restart always -- --model opus)"
+SBID="$(sbpc host add --node local --base team/worker --profile pc-worker --dir "$HOME/work/app" --label app --parent team/boss --restart always -- --model opus)"
 echo "$SBID"
 sbpc host list
 sblogin
@@ -588,7 +588,7 @@ sbwait 120 sbis "$SBID" state running
 sbterm
 ```
 
-Check: `host add` prints the new session ID; `host list` shows it with node `local`, base `team/worker`, `DESIRED` `running`, restart `always`. `sbterm` (`GET /api/admin/terminals`) shows it as `running` with a pid. `--class` is `lead`, `coordinator`, `execute` or `review`; `--restart` is `always`, `on-failure` or `never`; words after `--` go to the agent. `host list` shows `PERMS` `skip`: see [Permission mode](#permission-mode).
+Check: `host add` prints the new session ID; `host list` shows it with node `local`, base `team/worker`, `DESIRED` `running`, restart `always`. `sbterm` (`GET /api/admin/terminals`) shows it as `running` with a pid. `--group NAME` puts it in a work group (`host group add NAME --threshold N`); `--restart` is `always`, `on-failure` or `never`; words after `--` go to the agent. `host list` shows `PERMS` `skip`: see [Permission mode](#permission-mode).
 
 If it fails: `base role ... must exist` → L5 did not register `team/worker`. `sblogin` fails with `401` → the code was used already in this 30-second step; wait 30 s and run `sblogin` again. State stays `waiting` → `SWITCHBOARD_HOSTING_MAX` (default 4) sessions are running already. State `crashloop` or `exited` → open the session in the dashboard (`http://127.0.0.1:8090`, tab Terminals) to read the agent's screen; a first start in a new folder can stop at the agent's folder-trust question, which someone at the PC answers there once.
 
@@ -985,7 +985,7 @@ Linux:
 
 ```sh
 mkdir -p "$HOME/work/relay"
-SBRELAY="$(sbpc host add --node local --base team/relay --profile pc-relay --dir "$HOME/work/relay" --label relay --parent team/boss --class execute -- --model opus)"
+SBRELAY="$(sbpc host add --node local --base team/relay --profile pc-relay --dir "$HOME/work/relay" --label relay --parent team/boss -- --model opus)"
 sbpc host stop "$SBRELAY"
 SBAUTO="$(sbpc host auto add "$SBRELAY" --cron '*/30 * * * *' --label relay-queue --prompt 'Process the relay queue.' --check './has-work.sh' --check-timeout 30s --notify team/boss --max-run 1h)"
 sbpc host auto list
@@ -996,7 +996,7 @@ Windows:
 ```powershell
 $relay = Join-Path $env:USERPROFILE 'work\relay'
 New-Item -ItemType Directory -Force $relay | Out-Null
-$rid = sbpc host add --node local --base team/relay --profile pc-relay --dir $relay --label relay --parent team/boss --class execute '--' --model opus
+$rid = sbpc host add --node local --base team/relay --profile pc-relay --dir $relay --label relay --parent team/boss '--' --model opus
 sbpc host stop $rid
 $auto = sbpc host auto add $rid --cron '*/30 * * * *' --label relay-queue --prompt 'Process the relay queue.' --check 'has-work.cmd' --check-timeout 30s --notify team/boss --max-run 1h
 sbpc host auto list

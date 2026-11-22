@@ -90,18 +90,19 @@ func (s *Service) SetGrant(g wire.HostGrant) (wire.HostGrant, error) {
 			return g, invalidf("adapter: invalid name %q", a)
 		}
 	}
+	g.Groups = cleanList(g.Groups)
+	for _, n := range g.Groups {
+		if err := s.checkGroup(n); err != nil {
+			return g, err
+		}
+	}
 	now := s.clock().UnixMilli()
 	bases, _ := json.Marshal(g.Bases)
 	nodes, _ := json.Marshal(g.Nodes)
 	dirs, _ := json.Marshal(g.DirRoots)
-	adapters := ""
-	if len(g.Adapters) > 0 {
-		b, _ := json.Marshal(g.Adapters)
-		adapters = string(b)
-	}
-	if _, err := s.db.Exec(`INSERT INTO host_grants(role,bases,nodes,dir_roots,adapters,created_at,updated_at) VALUES(?,?,?,?,?,?,?)
-ON CONFLICT(role) DO UPDATE SET bases=excluded.bases, nodes=excluded.nodes, dir_roots=excluded.dir_roots, adapters=excluded.adapters, updated_at=excluded.updated_at`,
-		g.Role, string(bases), string(nodes), string(dirs), adapters, now, now); err != nil {
+	if _, err := s.db.Exec(`INSERT INTO host_grants(role,bases,nodes,dir_roots,adapters,groups,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)
+ON CONFLICT(role) DO UPDATE SET bases=excluded.bases, nodes=excluded.nodes, dir_roots=excluded.dir_roots, adapters=excluded.adapters, groups=excluded.groups, updated_at=excluded.updated_at`,
+		g.Role, string(bases), string(nodes), string(dirs), encodeList(g.Adapters), encodeList(g.Groups), now, now); err != nil {
 		return g, err
 	}
 	return s.Grant(g.Role)
@@ -109,11 +110,11 @@ ON CONFLICT(role) DO UPDATE SET bases=excluded.bases, nodes=excluded.nodes, dir_
 
 func scanGrant(r rowScanner) (wire.HostGrant, error) {
 	var g wire.HostGrant
-	var bases, nodes, dirs, adapters string
-	if err := r.Scan(&g.Role, &bases, &nodes, &dirs, &g.CreatedAt, &g.UpdatedAt, &adapters); err != nil {
+	var bases, nodes, dirs, adapters, groups string
+	if err := r.Scan(&g.Role, &bases, &nodes, &dirs, &g.CreatedAt, &g.UpdatedAt, &adapters, &groups); err != nil {
 		return g, err
 	}
-	g.Adapters = decodeList(adapters)
+	g.Adapters, g.Groups = decodeList(adapters), decodeList(groups)
 	for _, f := range []struct {
 		raw string
 		to  *[]string
@@ -127,7 +128,7 @@ func scanGrant(r rowScanner) (wire.HostGrant, error) {
 
 // Grant is role's grant, or ErrNoGrant.
 func (s *Service) Grant(role string) (wire.HostGrant, error) {
-	g, err := scanGrant(s.db.QueryRow(`SELECT role,bases,nodes,dir_roots,created_at,updated_at,adapters FROM host_grants WHERE role=?`, role))
+	g, err := scanGrant(s.db.QueryRow(`SELECT role,bases,nodes,dir_roots,created_at,updated_at,adapters,groups FROM host_grants WHERE role=?`, role))
 	if errors.Is(err, sql.ErrNoRows) {
 		return g, ErrNoGrant
 	}
@@ -136,7 +137,7 @@ func (s *Service) Grant(role string) (wire.HostGrant, error) {
 
 // Grants lists every grant, by role.
 func (s *Service) Grants() ([]wire.HostGrant, error) {
-	rows, err := s.db.Query(`SELECT role,bases,nodes,dir_roots,created_at,updated_at,adapters FROM host_grants ORDER BY role`)
+	rows, err := s.db.Query(`SELECT role,bases,nodes,dir_roots,created_at,updated_at,adapters,groups FROM host_grants ORDER BY role`)
 	if err != nil {
 		return nil, err
 	}
@@ -163,10 +164,6 @@ func (s *Service) RevokeGrant(role string) (wire.HostGrant, error) {
 	return g, err
 }
 
-// roleClasses are the classes a role may host: the lead and coordinator
-// classes stay the admin's.
-var roleClasses = []string{wire.ClassExecute, wire.ClassReview}
-
 // admit checks c, a record role asks to add, against role's grant, and
 // returns the grant root its directory is under. An empty parent becomes
 // role.
@@ -190,8 +187,11 @@ func (s *Service) admit(role string, c *wire.HostedSessionCreate) (string, error
 	if !slices.Contains(g.Nodes, c.Node) {
 		return "", forbiddenf("node: %s is not in the grant of %s (%s)", c.Node, role, strings.Join(g.Nodes, ", "))
 	}
-	if c.Class == "" {
-		c.Class = wire.ClassExecute
+	if c.Group != "" && !slices.Contains(g.Groups, c.Group) {
+		if len(g.Groups) == 0 {
+			return "", forbiddenf("group: the grant of %s allows no group", role)
+		}
+		return "", forbiddenf("group: %s is not in the grant of %s (%s)", c.Group, role, strings.Join(g.Groups, ", "))
 	}
 	if len(g.Adapters) > 0 {
 		eff := c.Adapter
@@ -208,9 +208,6 @@ func (s *Service) admit(role string, c *wire.HostedSessionCreate) (string, error
 	if len(c.Env) > 0 {
 		return "", forbiddenf("env: a role's session takes no env (it could point the session at another profile); the admin sets env")
 	}
-	if !slices.Contains(roleClasses, c.Class) {
-		return "", forbiddenf("class: %s is for the admin (a role hosts execute or review)", c.Class)
-	}
 	clean, _, ok := wire.CleanDir(c.Directory)
 	if !ok {
 		return "", invalidf("directory: %q is not an absolute path", c.Directory)
@@ -224,8 +221,8 @@ func (s *Service) admit(role string, c *wire.HostedSessionCreate) (string, error
 	return "", forbiddenf("directory: %s is not under the grant roots of %s (%s)", clean, role, strings.Join(g.DirRoots, ", "))
 }
 
-// RoleCreate adds c as role's record within its grant (parent role, class
-// execute or review) and records who added it in the session's history.
+// RoleCreate adds c as role's record within its grant (parent role, a
+// group of the grant or none) and records who added it in the session's history.
 func (s *Service) RoleCreate(role string, c wire.HostedSessionCreate) (wire.HostedSession, error) {
 	root, err := s.admit(role, &c)
 	if err != nil {
@@ -336,15 +333,22 @@ func printGrants(w io.Writer, list []wire.HostGrant) {
 	// The ADAPTERS column shows only when a grant limits them (#434), so
 	// the table is as before otherwise.
 	adapters := slices.ContainsFunc(list, func(g wire.HostGrant) bool { return len(g.Adapters) > 0 })
+	groups := slices.ContainsFunc(list, func(g wire.HostGrant) bool { return len(g.Groups) > 0 })
 	head := "ROLE\tBASES\tNODES\tDIR ROOTS"
 	if adapters {
 		head += "\tADAPTERS"
+	}
+	if groups {
+		head += "\tGROUPS"
 	}
 	fmt.Fprintln(tw, head)
 	for _, g := range list {
 		row := fmt.Sprintf("%s\t%s\t%s\t%s", g.Role, strings.Join(g.Bases, ","), strings.Join(g.Nodes, ","), strings.Join(g.DirRoots, ","))
 		if adapters {
-			row += "\t" + strings.Join(g.Adapters, ",")
+			row += "\t" + dash(strings.Join(g.Adapters, ","))
+		}
+		if groups {
+			row += "\t" + dash(strings.Join(g.Groups, ","))
 		}
 		fmt.Fprintln(tw, row)
 	}

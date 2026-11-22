@@ -96,7 +96,7 @@ func printList(w io.Writer, list []wire.HostedSession) {
 		return
 	}
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "ID\tNODE\tBASE\tCLASS\tPERMS\tLABEL\tDESIRED\tSTATE\tWORK\tRESTART\tDIRECTORY\tARGS")
+	fmt.Fprintln(tw, "ID\tNODE\tBASE\tGROUP\tPERMS\tLABEL\tDESIRED\tSTATE\tWORK\tRESTART\tDIRECTORY\tARGS")
 	for _, h := range list {
 		label := h.Label
 		if label == "" {
@@ -106,7 +106,7 @@ func printList(w io.Writer, list []wire.HostedSession) {
 		if !h.AcceptingWork {
 			work = "no"
 		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", h.ID, h.Node, h.Base, h.Class, Perms(h), label, h.Desired, h.Runtime.State, work, h.Restart, h.Directory, strings.Join(h.Args, " "))
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", h.ID, h.Node, h.Base, dash(h.Group), Perms(h), label, h.Desired, h.Runtime.State, work, h.Restart, h.Directory, strings.Join(h.Args, " "))
 	}
 	tw.Flush()
 }

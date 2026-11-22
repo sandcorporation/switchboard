@@ -185,6 +185,9 @@ func Init(db *sql.DB) error {
 	if e = migrateHostingAdapters(db); e != nil {
 		return e
 	}
+	if e = migrateWorkGroups(db); e != nil {
+		return e
+	}
 	return migrateRuleProposals(db)
 }
 
@@ -880,6 +883,22 @@ func migrateHostingAdapters(db *sql.DB) error {
 		// nodes.agent_usage: the usage of the node's agent accounts, JSON
 		// of the last state frame's (#434).
 		{"nodes", "agent_usage", `TEXT NOT NULL DEFAULT ''`},
+	})
+}
+
+// migrateWorkGroups adds work groups (#435), all additive: work_groups (a
+// name the operator chooses and its remaining-limit threshold, a
+// percentage; null is none), hosted_sessions.work_group (empty: none) and
+// host_grants.groups (a JSON list of the groups the role may choose).
+// hosted_sessions.class (#190) stays, unread: work groups replaced the
+// session classes, and migrations only add.
+func migrateWorkGroups(db *sql.DB) error {
+	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS work_groups(name TEXT PRIMARY KEY, threshold INTEGER, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)`); err != nil {
+		return err
+	}
+	return addColumns(db, []columnAdd{
+		{"hosted_sessions", "work_group", `TEXT NOT NULL DEFAULT ''`},
+		{"host_grants", "groups", `TEXT NOT NULL DEFAULT ''`},
 	})
 }
 

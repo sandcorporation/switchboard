@@ -473,7 +473,7 @@ table.cards td.cardhide{display:none}
 </section>
 <section id="panel-settings" role="tabpanel" aria-labelledby="tab-settings" tabindex="0" class="card" hidden>
 <div class="toolbar"><h2>설정</h2>
-<div class="viewswitch" id="setViews" role="group" aria-label="설정 고르기"><button type="button" data-view="qsettings" aria-pressed="true">질문 설정</button><button type="button" data-view="roles" aria-pressed="false">역할</button><button type="button" data-view="nodes" aria-pressed="false" hidden>노드</button><button type="button" data-view="reminders" aria-pressed="false">다시 알림</button></div>
+<div class="viewswitch" id="setViews" role="group" aria-label="설정 고르기"><button type="button" data-view="qsettings" aria-pressed="true">질문 설정</button><button type="button" data-view="roles" aria-pressed="false">역할</button><button type="button" data-view="nodes" aria-pressed="false" hidden>노드</button><button type="button" data-view="groups" aria-pressed="false" hidden>묶음</button><button type="button" data-view="reminders" aria-pressed="false">다시 알림</button></div>
 <button id="reloadSettings">새로 고침</button><span id="settingsNote" class="muted"></span></div>
 <div id="settingsMsg" class="msg" role="status" aria-live="polite"></div>
 <div id="setView-qsettings">
@@ -487,6 +487,10 @@ table.cards td.cardhide{display:none}
 </div>
 <div id="setView-nodes" hidden>
 <table id="nodesTbl" class="stack list cards"><thead><tr><th>노드</th><th>기계</th><th>OS</th><th>버전</th><th>마지막 접속</th><th>끊은 때</th></tr></thead><tbody id="nodesTable"></tbody></table>
+</div>
+<div id="setView-groups" hidden>
+<form id="groupForm" class="settings-form termform"><label>이름 <input id="groupName" required maxlength="64" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="fast"></label><label title="남은 한도가 이 값(%)보다 작으면 새 일을 받지 않음. 비우면 문턱 없음">문턱 % <input id="groupThreshold" type="number" min="0" max="100" step="1" inputmode="numeric"></label><div class="row"><button type="submit">추가</button></div></form>
+<table id="groupsTbl" class="stack list cards"><thead><tr><th>묶음</th><th>문턱 %</th><th class="num">세션</th><th>바뀐 때</th><th></th></tr></thead><tbody id="groupsTable"></tbody></table>
 </div>
 <div id="setView-reminders" hidden><div id="remindBox"></div></div>
 <dialog id="setAdd" class="sc-drawer" aria-labelledby="setAddTitle"><div class="sc-drawer-head"><h3 id="setAddTitle" class="sc-drawer-title">질문 설정 추가</h3><button type="button" id="setAddClose" class="detail-close" aria-label="닫기">×</button></div><div class="sc-drawer-body">
@@ -516,7 +520,7 @@ table.cards td.cardhide{display:none}
 <label>폴더 <input id="termDir" required autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="/home/me/work/app"></label>
 <label>라벨 <input id="termLabel" autocomplete="off"></label>
 <label>부모 <input id="termParent" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="team/boss"></label>
-<label>분류 <select id="termClass"><option value="execute">실행</option><option value="review">검토</option><option value="coordinator">조율</option><option value="lead">총괄</option></select></label>
+<label>묶음 <select id="termGroup"><option value="">없음</option></select></label>
 <label>어댑터 <select id="termAdapter"><option value="">기본</option></select></label>
 <label>재시작 <select id="termRestart"><option value="always">always</option><option value="on-failure">on-failure</option><option value="never">never</option></select></label>
 <label>권한 <select id="termPerms"><option value="skip">건너뜀</option><option value="ask">물음</option></select></label>
@@ -560,7 +564,7 @@ async function loadMe(){
     if(!r.ok)return;
     const m=await r.json();adminMode=m.mode||'';hostingOn=m.hosting===true;termAssets=Array.isArray(m.terminal_assets)?m.terminal_assets:[];termRefused=typeof m.terminal_refused==='string'?m.terminal_refused:'';
     if(hostingOn)loadWorkspace(Array.isArray(m.workspace_assets)?m.workspace_assets:[]);
-    $('tab-terminals').hidden=!hostingOn;setViewButton('nodes').hidden=!hostingOn;
+    $('tab-terminals').hidden=!hostingOn;setViewButton('nodes').hidden=!hostingOn;setViewButton('groups').hidden=!hostingOn;
     if(hostingOn&&curTab==='settings')route();
     if(hostingOn&&location.hash.startsWith('#terminal'))route();
     if(hostingOn&&curTab==='sessions')loadSessions();
@@ -1940,7 +1944,6 @@ $('viewDecisions').onclick=()=>selectTab('decisions');
 // The list opens a record in the detail panel (#terminals/<id>/<sub>): 화면
 // (the live terminal), 기록 (runtime and the access log) and 설정. The add
 // form sits in a drawer.
-const termClass={lead:'총괄',coordinator:'조율',execute:'실행',review:'검토'};
 let termLimited=false;
 async function loadTermLimit(){
   try{
@@ -2079,7 +2082,7 @@ async function termHistory(v,box){
 // termSettings draws 설정: what the record runs and the fields a PUT changes.
 function termSettings(v,box){
   const pr=v.presence||'';
-  box.append(dl([['노드',v.node],['역할',v.base],['슬롯',v.slot&&v.slot.role?v.slot.role:'-'],['접속',termPresence[pr]||pr||'-'],['프로필',v.profile||'-'],['인자',(v.args||[]).join(' ')||'-'],['폴더',termDir(v.directory)],['일감',v.accepting_work===false?'받지 않음':'받음']]));
+  box.append(dl([['노드',v.node],['역할',v.base],['슬롯',v.slot&&v.slot.role?v.slot.role:'-'],['접속',termPresence[pr]||pr||'-'],['프로필',v.profile||'-'],['인자',(v.args||[]).join(' ')||'-'],['폴더',termDir(v.directory)],['묶음',v.group||'없음'],['일감',v.accepting_work===false?'받지 않음':'받음']]));
   const perm=node('button',v.skip_permissions?'권한 건너뜀':'권한 물음');perm.type='button';perm.id='termPermToggle';
   perm.setAttribute('aria-pressed',String(!!v.skip_permissions));
   perm.onclick=()=>termAct(v,'PUT','',{skip_permissions:!v.skip_permissions},v.base+(v.skip_permissions?' 권한 물음':' 권한 건너뜀'));
@@ -2088,7 +2091,7 @@ function termSettings(v,box){
   const input=(val)=>{const i=document.createElement('input');i.value=val||'';i.autocomplete='off';i.spellcheck=false;return i};
   const select=(val,opts)=>{const s=document.createElement('select');for(const [k,t] of opts){const o=node('option',t);o.value=k;s.append(o)}s.value=val;return s};
   const label=field('라벨',input(v.label)),parent=field('부모',input(v.parent));
-  const cls=field('분류',select(v.class||'execute',Object.entries(termClass)));
+  const grp=field('묶음',select(v.group||'',[['','없음'],...(v.group?[[v.group,v.group]]:[])]));groupOptions(grp,v.group||'');
   const adp=field('어댑터',select(v.adapter||'',[['','기본'],...(v.adapter?[[v.adapter,v.adapter]]:[])]));adapterOptions(adp,v.node,v.adapter||'');
   const restart=field('재시작',select(v.restart||'always',[['always','always'],['on-failure','on-failure'],['never','never']]));
   const args=field('인자',input((v.args||[]).join(' ')));
@@ -2098,7 +2101,7 @@ function termSettings(v,box){
     const c={},a=args.value.split(/\s+/).filter(Boolean);
     if(label.value.trim()!==(v.label||''))c.label=label.value.trim();
     if(parent.value.trim()!==(v.parent||''))c.parent=parent.value.trim();
-    if(cls.value!==(v.class||'execute'))c.class=cls.value;
+    if(grp.value!==(v.group||''))c.group=grp.value;
     if(adp.value!==(v.adapter||''))c.adapter=adp.value;
     if(restart.value!==(v.restart||'always'))c.restart=restart.value;
     if(a.join(' ')!==(v.args||[]).join(' '))c.args=a;
@@ -2198,10 +2201,19 @@ registerDetail('terminals',{
   }
 });
 $('termAddOpen').onclick=()=>$('termAdd').showModal();
-$('termAddOpen').addEventListener('click',()=>adapterOptions($('termAdapter'),$('termNode').value.trim(),$('termAdapter').value));
+$('termAddOpen').addEventListener('click',()=>{adapterOptions($('termAdapter'),$('termNode').value.trim(),$('termAdapter').value);groupOptions($('termGroup'),$('termGroup').value)});
 $('termNode').onchange=()=>adapterOptions($('termAdapter'),$('termNode').value.trim(),'');
 // adapterOptions fills sel with the agent adapters the node reported (#434);
 // the first option, the empty value, is the node's default.
+// groupOptions fills sel with the work groups (#435); the empty value is none.
+async function groupOptions(sel,cur){
+  let list=[];
+  try{list=(await api('terminals/work-groups')).map(g=>g.name)}catch(e){}
+  if(cur&&!list.includes(cur))list=list.concat(cur);
+  const first=node('option','없음');first.value='';
+  sel.replaceChildren(first,...list.map(g=>{const o=node('option',g);o.value=g;return o}));
+  sel.value=cur||'';
+}
 async function adapterOptions(sel,nodeName,cur){
   let list=[],def='';
   try{const n=(await api('nodes')).find(x=>x.name===nodeName);if(n){list=n.adapters||[];def=n.default_adapter||''}}catch(e){}
@@ -2250,7 +2262,7 @@ function loadWorkspace(list){
 $('termForm').onsubmit=async e=>{
   e.preventDefault();
   const args=$('termArgs').value.split(/\s+/).filter(Boolean);
-  const rec={node:$('termNode').value.trim(),base:$('termBase').value.trim(),profile:$('termProfile').value.trim(),directory:$('termDir').value.trim(),label:$('termLabel').value.trim(),parent:$('termParent').value.trim(),restart:$('termRestart').value,class:$('termClass').value,adapter:$('termAdapter').value,skip_permissions:$('termPerms').value==='skip',args:args};
+  const rec={node:$('termNode').value.trim(),base:$('termBase').value.trim(),profile:$('termProfile').value.trim(),directory:$('termDir').value.trim(),label:$('termLabel').value.trim(),parent:$('termParent').value.trim(),restart:$('termRestart').value,group:$('termGroup').value,adapter:$('termAdapter').value,skip_permissions:$('termPerms').value==='skip',args:args};
   try{await apiSend('POST','terminals',rec);setMsg($('terminalsMsg'),rec.base+' 추가','ok');$('termForm').reset();$('termAdd').close();loadTerminals()}
   catch(err){setMsg($('termAddMsg'),err.message,'err')}
 };
@@ -2264,20 +2276,20 @@ function targetPath(t){return t.split('/').map(encodeURIComponent).join('/')}
 // (#settings-reminders, GET /api/admin/settings, read-only). A row opens
 // #settings/<kind>:<id>/<sub> with kind qs (question setting target), role
 // or node; closing goes back to that kind's view.
-const setViewHash={qsettings:'settings',roles:'settings-roles',nodes:'settings-nodes',reminders:'settings-reminders'};
+const setViewHash={qsettings:'settings',roles:'settings-roles',nodes:'settings-nodes',groups:'settings-groups',reminders:'settings-reminders'};
 const setKindView={qs:'qsettings',role:'roles',node:'nodes'};
 let setView='qsettings';
 const setNotes=new Map(),setForms=new Map();
 function setViewButton(v){return $('setViews').querySelector('[data-view="'+v+'"]')}
 function showSettingsView(v){
-  if(!setViewHash[v]||(v==='nodes'&&!hostingOn))v='qsettings';
+  if(!setViewHash[v]||((v==='nodes'||v==='groups')&&!hostingOn))v='qsettings';
   const changed=v!==setView;setView=v;
   for(const k of Object.keys(setViewHash)){$('setView-'+k).hidden=k!==v;setViewButton(k).setAttribute('aria-pressed',k===v?'true':'false')}
   if(changed){$('settingsNote').textContent='';setMsg($('settingsMsg'),'');if(tabLoaded.has('settings'))loadSettingsView()}
 }
 function settingsViewOfHash(h){for(const [v,x] of Object.entries(setViewHash))if(x===h)return v;return ''}
 $('setViews').addEventListener('click',e=>{const b=e.target.closest('button[data-view]');if(b)selectTab(setViewHash[b.dataset.view])});
-function loadSettingsView(){return ({qsettings:loadQSettings,roles:loadRoles,nodes:loadNodes,reminders:loadReminders})[setView]()}
+function loadSettingsView(){return ({qsettings:loadQSettings,roles:loadRoles,nodes:loadNodes,groups:loadGroups,reminders:loadReminders})[setView]()}
 tabLoaders.settings=loadSettingsView;
 // setNote keeps a result line for an item's detail across the redraws of
 // the next few seconds (a save also triggers a live redraw).
@@ -2447,6 +2459,51 @@ async function loadNodes(){
     $('settingsNote').textContent=rows.length+'개'+(off?' · 끊김 '+off:'');
   }catch(e){if(setView==='nodes')$('settingsNote').textContent=e.message}
 }
+// 묶음 (#435): work groups and their thresholds
+const groupCols=['묶음','문턱 %','세션','바뀐 때',''];
+function thresholdOf(input){const t=input.value.trim();return t===''?null:Number(t)}
+async function loadGroups(){
+  if(!hostingOn)return;
+  $('settingsNote').textContent='불러오는 중…';
+  try{
+    const rows=await api('terminals/work-groups');
+    if(setView!=='groups')return;
+    const body=$('groupsTable');
+    keepRowFocus(body,()=>{
+      body.replaceChildren();
+      for(const g of rows){
+        const tr=node('tr');
+        const th=document.createElement('input');th.type='number';th.min='0';th.max='100';th.step='1';th.inputMode='numeric';
+        th.value=g.threshold===null||g.threshold===undefined?'':String(g.threshold);th.setAttribute('aria-label',g.name+' 문턱 %');
+        const save=setButton('저장','',async()=>{
+          try{await apiSend('PUT','terminals/work-groups/'+encodeURIComponent(g.name),{threshold:thresholdOf(th)});setMsg($('settingsMsg'),g.name+' 문턱 저장','ok')}
+          catch(e){setMsg($('settingsMsg'),e.message,'err')}
+          loadGroups();
+        });
+        const rm=setButton('지우기','',async()=>{
+          if(!confirm(g.name+' 묶음을 지울까요?'))return;
+          try{await apiSend('DELETE','terminals/work-groups/'+encodeURIComponent(g.name));setMsg($('settingsMsg'),g.name+' 묶음을 지웠습니다.','ok')}
+          catch(e){setMsg($('settingsMsg'),e.message,'err')}
+          loadGroups();
+        });
+        rm.disabled=g.sessions>0;if(g.sessions>0)rm.title='세션이 있는 묶음은 지울 수 없음';
+        const tc=cell('',groupCols[1]);tc.append(th,' ',save);
+        const acts=cell('',groupCols[4]);acts.append(rm);
+        tr.append(cell(g.name,'','strong mono'),cardBreak(),tc,cell(String(g.sessions),groupCols[2],'num'),cell(when(g.updated_at),groupCols[3],'nowrap'),acts);
+        body.append(tr);
+      }
+      if(!rows.length)emptyRow(body,groupCols.length,'묶음 없음');
+    });
+    $('settingsNote').textContent=rows.length+'개';
+  }catch(e){if(setView==='groups')$('settingsNote').textContent=e.message}
+}
+$('groupForm').onsubmit=async e=>{
+  e.preventDefault();
+  const name=$('groupName').value.trim();
+  try{await apiSend('POST','terminals/work-groups',{name:name,threshold:thresholdOf($('groupThreshold'))});$('groupName').value='';$('groupThreshold').value='';setMsg($('settingsMsg'),name+' 묶음 추가','ok')}
+  catch(err){setMsg($('settingsMsg'),err.message,'err')}
+  loadGroups();
+};
 function drawNode(v,box){
   const id='node:'+v.name;
   if(!v.revoked_at){

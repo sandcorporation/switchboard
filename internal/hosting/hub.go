@@ -596,6 +596,10 @@ func sameRuntime(a, b wire.HostedRuntime) bool {
 // after which the nodes get their new lists at once. It reports false for a
 // path it does not serve.
 func (h *Hub) AdminTerminalsAPI(w http.ResponseWriter, r *http.Request, rest string) bool {
+	if name, ok := strings.CutPrefix(rest, "work-groups"); ok && (name == "" || strings.HasPrefix(name, "/") && !strings.Contains(name[1:], "/")) {
+		h.groupsAPI(w, r, strings.TrimPrefix(name, "/"))
+		return true
+	}
 	if id, sub, ok := strings.Cut(rest, "/autos"); ok && (sub == "" || strings.HasPrefix(sub, "/")) {
 		h.autosAPI(w, r, id, sub)
 		return true

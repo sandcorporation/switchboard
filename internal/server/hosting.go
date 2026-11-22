@@ -330,6 +330,14 @@ func HostGrantCLI(action string, g wire.HostGrant, jsonOut bool, stdout io.Write
 	return withInstanceDB("host "+action, func(svc *hosting.Service) error { return svc.RunGrantCLI(action, g, jsonOut, stdout) })
 }
 
+// HostGroupCLI is the binary's `host group` command: the work groups in
+// DB_PATH (the same rule as `host`).
+func HostGroupCLI(action, name string, threshold *int, jsonOut bool, stdout io.Writer) (int, error) {
+	return withInstanceDB("host group "+action, func(svc *hosting.Service) error {
+		return svc.RunGroupCLI(action, name, threshold, jsonOut, stdout)
+	})
+}
+
 // HostAutoCLI is the binary's `host auto` command: the scheduled runs of
 // the hosted sessions in DB_PATH (the same rule as `host`).
 func HostAutoCLI(action, ref string, c wire.HostAutoCreate, runs int, jsonOut bool, stdout io.Writer) (int, error) {

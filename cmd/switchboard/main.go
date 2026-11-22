@@ -31,6 +31,7 @@ func main() {
 		Host:      server.HostCLI,
 		HostAuto:  server.HostAutoCLI,
 		HostGrant: server.HostGrantCLI,
+		HostGroup: server.HostGroupCLI,
 		Serve: func(check bool) int {
 			if check {
 				return server.Check(version, os.Getenv, os.Stdout, nil)

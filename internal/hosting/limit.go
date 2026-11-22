@@ -34,24 +34,38 @@ func (e CapacityError) Error() string {
 		e.Node, e.Max, config.EnvPrefix, config.HostingMaxName)
 }
 
-func checkClass(v string) error {
-	switch v {
-	case wire.ClassLead, wire.ClassCoordinator, wire.ClassExecute, wire.ClassReview:
-		return nil
+// AcceptsWork is the rule for wire.HostedSession.AcceptingWork (#435): a
+// session takes new work items unless its group has a threshold and its
+// agent account's remaining limit (percent) is known and below it.
+// remaining nil is not known.
+func AcceptsWork(threshold, remaining *int) bool {
+	return threshold == nil || remaining == nil || *remaining >= *threshold
+}
+
+func (s *Service) acceptingWork(h wire.HostedSession) bool {
+	acc, err := s.accepting()
+	return err != nil || acc(h)
+}
+
+// accepting returns the AcceptingWork of a record, with the groups and the
+// limit read once.
+func (s *Service) accepting() (func(wire.HostedSession) bool, error) {
+	groups, err := s.thresholds()
+	if err != nil {
+		return nil, err
 	}
-	return invalidf("class: want lead, coordinator, execute or review, not %q", v)
-}
-
-// AcceptsWork is the rule for wire.HostedSession.AcceptingWork: while the
-// subscription limit holds, only lead and coordinator sessions take new work
-// items.
-func AcceptsWork(class string, limited bool) bool {
-	return !limited || class == wire.ClassLead || class == wire.ClassCoordinator
-}
-
-func (s *Service) acceptingWork(class string) bool {
 	l, err := s.Limit()
-	return err != nil || AcceptsWork(class, l.Limited)
+	if err != nil {
+		return nil, err
+	}
+	return func(h wire.HostedSession) bool {
+		var remaining *int
+		if l.Limited {
+			zero := 0
+			remaining = &zero
+		}
+		return AcceptsWork(groups[h.Group], remaining)
+	}, nil
 }
 
 // NodeMax is the cap node reported in its hello, or
