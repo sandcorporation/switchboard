@@ -33,6 +33,10 @@ type Service struct {
 	done   <-chan struct{}
 	notify func(id, asker, header string)
 	slots  SlotRules
+	// personAnswered is told, inside the answering transaction, of each
+	// answer a person gives (in the dashboard or the asker's panel); nil
+	// for none. The rules ledger counts them unclassified (#409).
+	personAnswered func(tx *sql.Tx, a wire.AnswerRef) error
 }
 
 // SlotRules are the slot lookups an answer's delivery needs (internal/presence
@@ -54,6 +58,14 @@ type SlotRules struct {
 // and slots finds the session an answer goes to.
 func New(db *sql.DB, clock func() time.Time, cfg *Config, ids *identity.Service, ml *mail.Service, hub *mail.Hub, done <-chan struct{}, notify func(id, asker, header string), slots SlotRules) *Service {
 	return &Service{db: db, clock: clock, cfg: cfg, ids: ids, mail: ml, hub: hub, done: done, notify: notify, slots: slots}
+}
+
+// WithPersonAnswer sets what is told of each answer a person gives to a
+// panel question, inside the answering transaction (an error rolls the
+// answer back).
+func (s *Service) WithPersonAnswer(f func(tx *sql.Tx, a wire.AnswerRef) error) *Service {
+	s.personAnswered = f
+	return s
 }
 
 func (s *Service) now() time.Time { return s.clock() }

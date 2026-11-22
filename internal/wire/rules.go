@@ -25,6 +25,11 @@ const (
 	RuleActive   = "active"
 	RuleReplaced = "replaced"
 	RuleVoid     = "void"
+	// RuleProposed is a proposer's tip waiting for an admin or a global
+	// boss (#409): it reaches no session, footer or limited list until
+	// approved; RuleRejected is one they turned down.
+	RuleProposed = "proposed"
+	RuleRejected = "rejected"
 )
 
 // Rule scopes: every role of the rule's group, the roles of one or more
@@ -287,6 +292,9 @@ type Rule struct {
 	CreatedAt  *time.Time `json:"created_at,omitempty"`
 	VoidedBy   string     `json:"voided_by,omitempty"`
 	VoidedAt   *time.Time `json:"voided_at,omitempty"`
+	ReviewedBy string     `json:"reviewed_by,omitempty"` // who approved or rejected a proposed row
+	ReviewedAt *time.Time `json:"reviewed_at,omitempty"`
+	ReviewNote string     `json:"review_note,omitempty"` // a rejection's reason
 }
 
 // RuleList is GET /api/rules. Full is true when the reader sees every
@@ -294,6 +302,8 @@ type Rule struct {
 type RuleList struct {
 	Rules []Rule `json:"rules"`
 	Full  bool   `json:"full"`
+	// Proposed is how many proposed rows wait for approval (full readers).
+	Proposed int `json:"proposed,omitempty"`
 }
 
 // RuleDetail is GET /api/rules/{id}: the row, and for a full reader the
@@ -412,4 +422,70 @@ type RoleTagChange struct {
 	Add     []string `json:"add,omitempty"`
 	Remove  []string `json:"remove,omitempty"`
 	Inherit []string `json:"inherit,omitempty"`
+}
+
+// RuleReview is POST /api/rules/{id}/approve (Replace or Alongside, as for
+// an add, when rows in force share the scope and topic) and
+// /api/rules/{id}/reject (Reason).
+type RuleReview struct {
+	Replace   []int64 `json:"replace,omitempty"`
+	Alongside bool    `json:"alongside,omitempty"`
+	Reason    string  `json:"reason,omitempty"`
+}
+
+// RuleProposer is a role an admin or a global boss lets propose tips
+// (GET /api/rules/proposers lists them; POST sets one on or off).
+type RuleProposer struct {
+	Role  string     `json:"role"`
+	On    bool       `json:"on"`
+	SetBy string     `json:"set_by,omitempty"`
+	SetAt *time.Time `json:"set_at,omitempty"`
+}
+
+// RuleProposers is GET /api/rules/proposers.
+type RuleProposers struct {
+	Proposers []RuleProposer `json:"proposers"`
+}
+
+// Answer classes (#409): a person's answer to a panel question starts
+// unclassified; its asker marks it as the source of a rule or as once.
+const (
+	AnswerUnclassified = ""
+	AnswerRule         = "rule"
+	AnswerOnce         = "once"
+)
+
+// AnswerRef is a person's answer to a panel question as the ledger counts
+// it: the question, its asker (base role), its first header and when it
+// was answered; Class and Rule once it is classified.
+type AnswerRef struct {
+	ID         string    `json:"id"`
+	Asker      string    `json:"asker"`
+	Header     string    `json:"header"`
+	AnsweredAt time.Time `json:"answered_at"`
+	Class      string    `json:"class,omitempty"`
+	Rule       int64     `json:"rule,omitempty"`
+}
+
+// RoleCount is a role's number of unclassified answers.
+type RoleCount struct {
+	Role  string `json:"role"`
+	Count int    `json:"count"`
+}
+
+// Unclassified is GET /api/rules/unclassified: the caller's own
+// unclassified answers (every role's for a full reader, or one role's with
+// ?role=), oldest first, and for a full reader the count per role.
+type Unclassified struct {
+	Count   int         `json:"count"`
+	Answers []AnswerRef `json:"answers"`
+	Roles   []RoleCount `json:"roles,omitempty"`
+}
+
+// ClassifyRequest is POST /api/rules/classify: the answered question and
+// either the rule it became (Rule) or Once (for this job only).
+type ClassifyRequest struct {
+	Question string `json:"question"`
+	Rule     int64  `json:"rule,omitempty"`
+	Once     bool   `json:"once,omitempty"`
 }

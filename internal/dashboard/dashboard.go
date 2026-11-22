@@ -426,7 +426,9 @@ table.cards td.cardhide{display:none}
 <div class="listbar"><div class="chips" id="ruleChips" role="group" aria-label="종류 고르기"></div>
 <input id="ruleService" type="search" aria-label="서비스" placeholder="서비스" autocomplete="off" autocapitalize="off" spellcheck="false">
 <select id="ruleTopic" aria-label="주제"><option value="">모든 주제</option></select>
-<label><input type="checkbox" id="ruleAll"> 대체·무효 포함</label></div>
+<label><input type="checkbox" id="ruleAll"> 대체·무효 포함</label>
+<button type="button" id="ruleProposed" class="sc-chip" aria-pressed="false">제안 <span id="ruleProposedN" class="sc-chip-count">0</span></button>
+<span id="ruleUnclassified" class="muted"></span></div>
 <table id="rulesTbl" class="stack list"><thead><tr><th class="num">#</th><th>종류</th><th>주제</th><th>범위</th><th>글</th><th class="num">걸림</th></tr></thead><tbody id="rules"></tbody></table>
 <details id="ruleAdd"><summary>새 줄</summary>
 <form id="ruleForm" class="ruleform">
@@ -1646,9 +1648,9 @@ registerDetail('reports',{
 // force on the same scope and topic: replace them or stand alongside.
 const ruleCols=['#','종류','주제','범위','글','걸림'];
 const ruleKinds={decision:'결정',tip:'요령'};
-const ruleStates={active:['유효','success'],replaced:['대체됨','neutral'],void:['무효','danger']};
+const ruleStates={active:['유효','success'],replaced:['대체됨','neutral'],void:['무효','danger'],proposed:['제안','warning'],rejected:['거절됨','danger']};
 const ruleChips=[['decision','결정'],['tip','요령'],['','전체']];
-let rulesData=null,rulesKind='decision',rulesSeq=0;
+let rulesData=null,rulesKind='decision',rulesSeq=0,rulesProposed=false;
 function ruleScopeText(s){return !s?'':s.kind==='all'||!s.values||!s.values.length?s.kind:s.kind+':'+s.values.join(',')}
 function ruleFirstLine(t){return String(t||'').split('\n')[0]}
 function ruleMatchText(m){
@@ -1687,14 +1689,26 @@ async function loadRules(){
   if(svc)q.set('service',svc);
   if(topic)q.set('topic',topic);
   if($('ruleAll').checked)q.set('all','1');
+  if(rulesProposed)q.set('proposed','1');
   $('rulesNote').textContent='불러오는 중…';
   try{
-    const [list,topics]=await Promise.all([api('rules?'+q.toString()),api('rules/topics')]);
+    const [list,topics,uncl]=await Promise.all([api('rules?'+q.toString()),api('rules/topics'),api('rules/unclassified')]);
     if(seq!==rulesSeq)return;
     rulesData=list.rules;
     fillRuleTopics(topics.topics);
+    drawRuleCounts(list.proposed||0,uncl);
     drawRules();
   }catch(e){if(seq===rulesSeq)$('rulesNote').textContent=e.message}
+}
+// drawRuleCounts shows the proposals waiting for approval (a toggle that
+// lists them) and the answers to panel questions still unclassified, per
+// role in the title.
+function drawRuleCounts(proposed,uncl){
+  $('ruleProposedN').textContent=String(proposed);
+  $('ruleProposed').setAttribute('aria-pressed',rulesProposed?'true':'false');
+  const u=$('ruleUnclassified');
+  u.textContent='미분류 '+(uncl.count||0);
+  u.title=(uncl.roles||[]).map(r=>r.role+' '+r.count).join('\n');
 }
 function fillRuleTopics(topics){
   const sel=$('ruleTopic'),cur=sel.value,dl=$('ruleTopics');
@@ -1793,6 +1807,8 @@ registerDetail('rules',{
     if(r.hits)pairs.push(['걸린 수',r.hits+(r.last_hit_at?' · 마지막 '+when(r.last_hit_at):'')]);
     pairs.push(['적은 이',r.author||'-'],['시각',when(r.created_at)]);
     if(r.voided_by)pairs.push(['무효로 돌린 이',r.voided_by+' · '+when(r.voided_at)]);
+    if(r.reviewed_by)pairs.push([r.status==='rejected'?'거절한 이':'승인한 이',r.reviewed_by+' · '+when(r.reviewed_at)]);
+    if(r.review_note)pairs.push(['거절 까닭',r.review_note]);
     box.append(dl(pairs));
     if(r.history&&r.history.length){
       box.append(node('h3','이력','sechead'));
@@ -1811,8 +1827,45 @@ registerDetail('rules',{
       }
     }
     if(r.status==='active')box.append(ruleEditForm(r));
+    if(r.status==='proposed')box.append(ruleReviewForm(r));
   }
 });
+// ruleReviewForm approves a proposed row (a 409 offers to replace the rows
+// in force on its scope and topic or to stand alongside them) or rejects it
+// with a reason.
+function ruleReviewForm(r){
+  const f=node('form','','ruleform');
+  const reason=node('input','');reason.placeholder='거절 까닭';reason.setAttribute('aria-label','거절 까닭');reason.autocomplete='off';
+  const ok=node('button','승인');ok.type='button';
+  const no=node('button','거절');no.type='button';
+  const msg=node('div','','msg');msg.setAttribute('role','status');
+  const row=node('div','','row');row.append(ok,reason,no);
+  f.append(node('h3','제안','sechead'),row,msg);
+  const done=()=>{loadRules();drawDetail()};
+  const approve=async body=>{
+    msg.className='msg';msg.replaceChildren();
+    try{await apiSend('POST','rules/'+encodeURIComponent(r.id)+'/approve',body);done();return}
+    catch(e){
+      let c=null;
+      if(e.status===409){try{c=JSON.parse(e.body)}catch(x){}}
+      if(!c||!c.rules){msg.className='msg err';msg.textContent=e.message;return}
+      msg.append(node('p','같은 범위·주제에 유효한 줄이 있다'));
+      const ul=node('ul','','plain');
+      for(const o of c.rules)ul.append(node('li','#'+o.id+' '+(ruleKinds[o.kind]||o.kind)+' '+ruleFirstLine(o.text)));
+      const rep=node('button','대체');rep.type='button';rep.onclick=()=>approve({replace:c.rules.map(o=>o.id)});
+      const side=node('button','나란히');side.type='button';side.onclick=()=>approve({alongside:true});
+      const btns=node('div','','row');btns.append(rep,side);
+      msg.append(ul,btns);
+    }
+  };
+  ok.onclick=()=>approve({});
+  no.onclick=async()=>{
+    msg.className='msg';msg.replaceChildren();
+    try{await apiSend('POST','rules/'+encodeURIComponent(r.id)+'/reject',{reason:reason.value});done()}
+    catch(e){msg.className='msg err';msg.textContent=e.message}
+  };
+  return f;
+}
 // ---- 결정 (#50) ----
 // The 결정 view of the 질문 tab lists answered questions as decisions. Its
 // filters build one query used both for the list and for the 「JSON 내보내기」
@@ -2783,6 +2836,7 @@ $('reloadRules').onclick=()=>loadRules();
 $('ruleService').onchange=()=>loadRules();
 $('ruleTopic').onchange=()=>loadRules();
 $('ruleAll').onchange=()=>loadRules();
+$('ruleProposed').onclick=()=>{rulesProposed=!rulesProposed;rulesKind='';loadRules()};
 $('ruleForm').onsubmit=e=>{
   e.preventDefault();
   const body=Object.assign(ruleSourceBody($('ruleSource').value),{kind:$('ruleKind').value,text:$('ruleText').value,topic:$('ruleTopicIn').value.trim(),new_topic:$('ruleNewTopic').checked,scope:parseRuleScope($('ruleScope').value),group:$('ruleGroup').value.trim(),match:ruleMatchBody($('ruleWhenTool').value,$('ruleWhenCommand').value,$('ruleWhenPath').value)});

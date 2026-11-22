@@ -22,6 +22,12 @@ import (
 //	POST   ""            add a row (full callers; 409 on a conflict)
 //	GET    {id}          one row; for a full caller with its history and answers
 //	POST   {id}/void     void a row in force (full callers)
+//	POST   {id}/approve  put a proposed row in force (full callers; 409 on a conflict)
+//	POST   {id}/reject   turn a proposed row down (full callers)
+//	GET    proposers     the roles that may propose tips (full callers)
+//	POST   proposers     set a role's proposing on or off (full callers)
+//	POST   classify      classify a person's answer to c's question
+//	GET    unclassified  the answers still unclassified (ETag)
 //	GET    topics        the topics, with the rows in force c sees
 //	GET    mine          the rows in force reaching c's role, for its session hook (ETag)
 //	POST   hits          count hits of c's rows ({"ids":[…]})
@@ -41,6 +47,12 @@ func (s *Service) API(w http.ResponseWriter, r *http.Request, c Caller, rest str
 		s.mineAPI(w, r, c)
 	case rest == "hits" && r.Method == http.MethodPost:
 		s.hitsAPI(w, r, c)
+	case rest == "proposers":
+		s.proposersAPI(w, r, c)
+	case rest == "classify" && r.Method == http.MethodPost:
+		s.classifyAPI(w, r, c)
+	case rest == "unclassified" && r.Method == http.MethodGet:
+		s.unclassifiedAPI(w, r, c)
 	case rest == "tags" || strings.HasPrefix(rest, "tags/"):
 		s.tagsAPI(w, r, c, strings.TrimPrefix(strings.TrimPrefix(rest, "tags"), "/"))
 	default:
@@ -55,6 +67,10 @@ func (s *Service) API(w http.ResponseWriter, r *http.Request, c Caller, rest str
 			s.showAPI(w, r, c, id)
 		case action == "void" && r.Method == http.MethodPost:
 			s.voidAPI(w, r, c, id)
+		case action == "approve" && r.Method == http.MethodPost:
+			s.approveAPI(w, r, c, id)
+		case action == "reject" && r.Method == http.MethodPost:
+			s.rejectAPI(w, r, c, id)
 		default:
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		}
@@ -69,7 +85,7 @@ type row struct {
 	scope wire.RuleScope
 }
 
-const ruleColumns = `id,kind,body,grp,scope,scope_values,topic,sources,source_text,status,replaces,replaced_by,device,match_tool,match_command,match_path,author,created_at,voided_by,voided_at`
+const ruleColumns = `id,kind,body,grp,scope,scope_values,topic,sources,source_text,status,replaces,replaced_by,device,match_tool,match_command,match_path,author,created_at,voided_by,voided_at,reviewed_by,reviewed_at,review_note`
 
 func splitList(v string) []string {
 	if v == "" {
@@ -82,12 +98,13 @@ func scanRule(sc interface{ Scan(...any) error }) (row, error) {
 	var (
 		rw                               row
 		scopeVals, sources, replaces     string
-		created, voidedAt                string
+		created, voidedAt, reviewedAt    string
 		replacedBy                       sql.NullInt64
 		matchTool, matchCommand, matchPa string
 	)
 	err := sc.Scan(&rw.ID, &rw.Kind, &rw.Text, &rw.Group, &rw.scope.Kind, &scopeVals, &rw.Topic, &sources, &rw.SourceText,
-		&rw.Status, &replaces, &replacedBy, &rw.Device, &matchTool, &matchCommand, &matchPa, &rw.Author, &created, &rw.VoidedBy, &voidedAt)
+		&rw.Status, &replaces, &replacedBy, &rw.Device, &matchTool, &matchCommand, &matchPa, &rw.Author, &created, &rw.VoidedBy, &voidedAt,
+		&rw.ReviewedBy, &reviewedAt, &rw.ReviewNote)
 	if err != nil {
 		return rw, err
 	}
@@ -109,6 +126,9 @@ func scanRule(sc interface{ Scan(...any) error }) (row, error) {
 	}
 	if t, err := time.Parse(time.RFC3339Nano, voidedAt); err == nil {
 		rw.VoidedAt = &t
+	}
+	if t, err := time.Parse(time.RFC3339Nano, reviewedAt); err == nil {
+		rw.ReviewedAt = &t
 	}
 	return rw, nil
 }
@@ -186,6 +206,7 @@ func (s *Service) listAPI(w http.ResponseWriter, r *http.Request, c Caller) {
 	q := r.URL.Query()
 	kind, topic, svc := q.Get("kind"), q.Get("topic"), q.Get("service")
 	all := q.Get("all") == "1" || q.Get("all") == "true"
+	proposed := q.Get("proposed") == "1" || q.Get("proposed") == "true"
 	if kind != "" && kind != wire.RuleDecision && kind != wire.RuleTip {
 		http.Error(w, "kind: decision or tip", http.StatusBadRequest)
 		return
@@ -195,12 +216,16 @@ func (s *Service) listAPI(w http.ResponseWriter, r *http.Request, c Caller) {
 		http.Error(w, "query failed", http.StatusInternalServerError)
 		return
 	}
-	if all && limited {
-		http.Error(w, "all (replaced and void rows) is for an admin or a global boss", http.StatusForbidden)
+	if (all || proposed) && limited {
+		http.Error(w, "all (replaced, void and proposed rows) and proposed are for an admin or a global boss", http.StatusForbidden)
 		return
 	}
 	where, args := `1=1`, []any{}
-	if !all {
+	switch {
+	case proposed:
+		where += ` AND status=?`
+		args = append(args, wire.RuleProposed)
+	case !all:
 		where += ` AND status=?`
 		args = append(args, wire.RuleActive)
 	}
@@ -225,13 +250,17 @@ func (s *Service) listAPI(w http.ResponseWriter, r *http.Request, c Caller) {
 		}
 	}
 	var hc map[int64]hitCount
+	out := wire.RuleList{Rules: []wire.Rule{}, Full: !limited}
 	if !limited {
 		if hc, err = s.hitCounts(); err != nil {
 			http.Error(w, "query failed", http.StatusInternalServerError)
 			return
 		}
+		if err = s.db.QueryRow(`SELECT COUNT(*) FROM rules WHERE status=?`, wire.RuleProposed).Scan(&out.Proposed); err != nil {
+			http.Error(w, "query failed", http.StatusInternalServerError)
+			return
+		}
 	}
-	out := wire.RuleList{Rules: []wire.Rule{}, Full: !limited}
 	for _, rw := range rows {
 		if limited && !rd.sees(rw) {
 			continue
@@ -436,9 +465,18 @@ func nullable(v string) any {
 // history and point at the new row. A retry with the same idempotency key
 // returns the first row with 200.
 func (s *Service) addAPI(w http.ResponseWriter, r *http.Request, c Caller) {
+	proposer := false
 	if !c.Full {
-		http.Error(w, forbidden, http.StatusForbidden)
-		return
+		ok, err := s.isProposer(c.Role)
+		if err != nil {
+			http.Error(w, "query failed", http.StatusInternalServerError)
+			return
+		}
+		if !ok {
+			http.Error(w, forbidden+"; a role an admin lets propose (rules proposer ROLE on) adds tips", http.StatusForbidden)
+			return
+		}
+		proposer = true
 	}
 	var q wire.RuleRequest
 	if json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&q) != nil {
@@ -448,6 +486,18 @@ func (s *Service) addAPI(w http.ResponseWriter, r *http.Request, c Caller) {
 	if err := q.Check(); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
+	}
+	status := wire.RuleActive
+	if proposer {
+		var msg string
+		if status, msg = proposal(c, &q); msg != "" {
+			code := http.StatusBadRequest
+			if q.Kind != wire.RuleTip {
+				code = http.StatusForbidden
+			}
+			http.Error(w, msg, code)
+			return
+		}
 	}
 	key := r.Header.Get("Idempotency-Key")
 	if key == "" {
@@ -473,16 +523,12 @@ func (s *Service) addAPI(w http.ResponseWriter, r *http.Request, c Caller) {
 		}
 		return
 	}
-	id, err := s.add(r.Context(), c, q, group, key)
+	id, err := s.add(r.Context(), c, q, group, key, status)
 	var conflict conflictError
 	var bad badRequest
 	switch {
 	case errors.As(err, &conflict):
-		w.WriteHeader(http.StatusConflict)
-		writeJSON(w, wire.RuleConflict{
-			Error: "rules in force on this scope and topic; post again with replace (the rows to replace) or alongside",
-			Rules: conflict.rows,
-		})
+		writeConflict(w, conflict, c.Full)
 		return
 	case errors.As(err, &bad):
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -501,8 +547,28 @@ func (s *Service) addAPI(w http.ResponseWriter, r *http.Request, c Caller) {
 		http.Error(w, "query failed", http.StatusInternalServerError)
 		return
 	}
+	if status == wire.RuleProposed {
+		s.noticeProposal(rw)
+	}
 	w.WriteHeader(http.StatusCreated)
 	writeJSON(w, rw.Rule)
+}
+
+// writeConflict is the 409 of an add or an approval. A proposer gets the
+// rows as a limited reader does.
+func writeConflict(w http.ResponseWriter, conflict conflictError, full bool) {
+	rows := conflict.rows
+	if !full {
+		rows = make([]wire.Rule, len(conflict.rows))
+		for i, o := range conflict.rows {
+			rows[i] = wire.Rule{ID: o.ID, Kind: o.Kind, Text: o.Text, Topic: o.Topic}
+		}
+	}
+	w.WriteHeader(http.StatusConflict)
+	writeJSON(w, wire.RuleConflict{
+		Error: "rules in force on this scope and topic; post again with replace (the rows to replace) or alongside",
+		Rules: rows,
+	})
 }
 
 func (s *Service) byIdem(author, key string) (row, bool) {
@@ -513,7 +579,7 @@ func (s *Service) byIdem(author, key string) (row, bool) {
 	return rows[0], true
 }
 
-func (s *Service) add(ctx context.Context, c Caller, q wire.RuleRequest, group, key string) (int64, error) {
+func (s *Service) add(ctx context.Context, c Caller, q wire.RuleRequest, group, key, status string) (int64, error) {
 	var id int64
 	now := s.now().UTC().Format(time.RFC3339Nano)
 	err := store.InTx(ctx, s.db, func(tx *sql.Tx) error {
@@ -533,29 +599,11 @@ func (s *Service) add(ctx context.Context, c Caller, q wire.RuleRequest, group, 
 		if err != nil {
 			return err
 		}
-		for _, id := range q.Replace {
-			o, err := s.get(tx, id)
-			if errors.Is(err, sql.ErrNoRows) {
-				return badRequest(fmt.Sprintf("replace: no rule #%d", id))
-			}
-			if err != nil {
-				return err
-			}
-			if o.Status != wire.RuleActive {
-				return badRequest(fmt.Sprintf("replace: rule #%d is %s, not in force", id, o.Status))
-			}
-			if o.Group != group {
-				return badRequest(fmt.Sprintf("replace: rule #%d is in another group", id))
-			}
+		if err := s.checkReplace(tx, q.Replace, group, c); err != nil {
+			return err
 		}
-		if !q.Alongside {
-			var left []wire.Rule
-			for _, o := range inForce {
-				if overlaps(o.scope, q.Scope) && !slices.Contains(q.Replace, o.ID) {
-					left = append(left, o.Rule)
-				}
-			}
-			if len(left) > 0 {
+		if status == wire.RuleActive && !q.Alongside {
+			if left := leftInForce(inForce, q.Scope, q.Replace, 0); len(left) > 0 {
 				return conflictError{left}
 			}
 		}
@@ -566,21 +614,42 @@ func (s *Service) add(ctx context.Context, c Caller, q wire.RuleRequest, group, 
 		res, err := tx.Exec(`INSERT INTO rules(kind,body,grp,scope,scope_values,topic,sources,source_text,status,replaces,device,match_tool,match_command,match_path,author,created_at,idem)
 			VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 			q.Kind, q.Text, group, q.Scope.Kind, strings.Join(q.Scope.Values, ","), q.Topic, strings.Join(q.Sources, ","), q.SourceText,
-			wire.RuleActive, joinInts(q.Replace), strings.TrimSpace(q.Device), m.Tool, m.Command, m.Path, c.Role, now, nullable(key))
+			status, joinInts(q.Replace), strings.TrimSpace(q.Device), m.Tool, m.Command, m.Path, c.Role, now, nullable(key))
 		if err != nil {
 			return err
 		}
 		if id, err = res.LastInsertId(); err != nil {
 			return err
 		}
-		for _, old := range q.Replace {
-			if _, err := tx.Exec(`UPDATE rules SET status=?, replaced_by=? WHERE id=?`, wire.RuleReplaced, id, old); err != nil {
-				return err
-			}
+		if err := replaceRows(tx, id, q.Replace); err != nil {
+			return err
 		}
-		return nil
+		return classifyBySources(tx, id, q.Sources, c.Role, now)
 	})
 	return id, err
+}
+
+// leftInForce is the rows of inForce (other than self) whose scope
+// overlaps scope and that replace does not name: the rows a new row in
+// force would stand beside without the writer choosing so.
+func leftInForce(inForce []row, scope wire.RuleScope, replace []int64, self int64) []wire.Rule {
+	var left []wire.Rule
+	for _, o := range inForce {
+		if o.ID != self && overlaps(o.scope, scope) && !slices.Contains(replace, o.ID) {
+			left = append(left, o.Rule)
+		}
+	}
+	return left
+}
+
+// replaceRows marks olds replaced by id.
+func replaceRows(tx *sql.Tx, id int64, olds []int64) error {
+	for _, old := range olds {
+		if _, err := tx.Exec(`UPDATE rules SET status=?, replaced_by=? WHERE id=?`, wire.RuleReplaced, id, old); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // voidAPI is POST /api/rules/{id}/void: a full caller takes a row in force

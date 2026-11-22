@@ -569,6 +569,11 @@ func (s *Service) AnswerQuestion(ctx context.Context, id, by string, answers []w
 		}
 		body := wire.AnswerText(v)
 		first := v.Questions[0].Header
+		if s.personAnswered != nil && (stored == QuestionByDashboard || stored == QuestionByPanel) {
+			if e = s.personAnswered(tx, wire.AnswerRef{ID: id, Asker: v.AskerBase, Header: first, AnsweredAt: now}); e != nil {
+				return e
+			}
+		}
 		box, w, e := s.answerBox(tx, v, now)
 		if e != nil {
 			return e
