@@ -305,8 +305,9 @@ type RuleDetail struct {
 	Answers []Decision `json:"answers,omitempty"`
 }
 
-// RuleRequest is POST /api/rules. Exactly one of Replace and Alongside is
-// needed when rows in force share the scope and topic (409 otherwise).
+// RuleRequest is POST /api/rules. Replace or Alongside is needed
+// when rows in force share the scope and topic (409 otherwise); with both, the
+// Replace rows are replaced and the other rows in force stay.
 type RuleRequest struct {
 	Kind           string     `json:"kind"`
 	Text           string     `json:"text"`
@@ -346,9 +347,6 @@ func (q *RuleRequest) Check() error {
 	}
 	if len(q.SourceText) > MaxRuleText {
 		return fmt.Errorf("source text: up to %d bytes", MaxRuleText)
-	}
-	if len(q.Replace) > 0 && q.Alongside {
-		return errors.New("replace and alongside: choose one")
 	}
 	if len(q.Device) > 200 {
 		return errors.New("device: up to 200 bytes")

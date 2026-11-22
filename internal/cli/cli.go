@@ -227,7 +227,7 @@ var commands = []command{
 			{"--source", "ID[,ID]|TEXT", "add, edit: answered question IDs (q_…) or a text the row comes from (repeatable)"},
 			{"--new-topic", "", "add: create --topic when it is not a topic yet"},
 			{"--replace", "N[,N]", "add: replace these rows in force"},
-			{"--alongside", "", "add: stand alongside the rows in force on the same scope and topic"},
+			{"--alongside", "", "add: stand alongside the rows in force on the same scope and topic (with --replace, only those are replaced)"},
 			{"--device", "NAME", "add, edit: the mechanism that enforces the row (it is then never put into sessions)"},
 			{"--when-tool", "TOOL", "add, edit: hit on this tool name (exact, or * patterns such as mcp__*); empty clears it"},
 			{"--when-command", "RE", "add, edit: hit when the command text matches this regular expression; empty clears it"},
