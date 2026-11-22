@@ -2074,11 +2074,17 @@ async function termHistory(v,box){
   if(rt.next_attempt_at)pairs.push(['다음 시도',when(rt.next_attempt_at)]);
   if(rt.resume_failed)pairs.push(['재개','실패 · 새 대화']);
   const id=encodeURIComponent(v.id);
-  const [events,rows]=await Promise.all([api('terminals/'+id+'/events'),api('terminals/'+id+'/log')]);
+  // acts: the admin actions on this session (#446); a view that cannot read
+  // them (a boss role's) leaves the section out.
+  const [events,rows,acts]=await Promise.all([api('terminals/'+id+'/events'),api('terminals/'+id+'/log'),api('admin-actions?target='+id+'&limit=20').catch(()=>null)]);
   box.append(dl(pairs),node('h3','실행'));
   box.append(termTable('termEvents',['시각','종류','종료 코드','재시작','요청'],events,e=>[[when(e.at),termEventKind[e.kind]||e.kind,e.exit_code===null||e.exit_code===undefined?'-':String(e.exit_code),String(e.restarts||0),termEventActor[e.actor]||e.actor||'-'],['','','num','num','']]));
   box.append(node('h3','접속'));
   box.append(termTable('termLog',['시각','관리자','종류','방식','주소','바이트'],rows,e=>[[when(e.at),e.admin_user,termLogKind[e.kind]||e.kind,termLogMode[e.mode]||e.mode||'-',e.ip||'-',e.kind==='input'?String(e.bytes):'-'],['','','','','mono','num']]));
+  if(Array.isArray(acts)){
+    box.append(node('h3','관리'));
+    box.append(termTable('termActs',['시각','관리자','동작','방식','주소'],acts,e=>[[when(e.at),e.admin,window.wsNodes?wsNodes.actionName(e.action):e.action,e.method||'-',e.addr||'-'],['','','','','mono']]));
+  }
 }
 // termSettings draws 설정: what the record runs and the fields a PUT changes.
 function termSettings(v,box){

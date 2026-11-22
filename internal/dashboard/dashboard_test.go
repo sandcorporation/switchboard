@@ -719,6 +719,7 @@ func TestDashboardWorkspaceLoadsWithHosting(t *testing.T) {
 		"if(ws)ws.showMenu(name);",
 		"if(tabShown(k))liveDirty.add(k);",
 		"if(ws)ws.live(kinds);",
+		"api('admin-actions?target='+id+'&limit=20').catch(()=>null)",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("page missing %q", want)
