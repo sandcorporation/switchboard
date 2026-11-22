@@ -21,6 +21,9 @@ type ConnectOptions struct {
 	// Wait bounds waiting for a started keeper to answer and for a replaced
 	// one to go (<= 0: 15 s).
 	Wait time.Duration
+	// Logf logs a keeper started again after the first one went away
+	// (nil: not logged).
+	Logf func(format string, args ...any)
 }
 
 // Connect returns a client of the running keeper, starting one when none
@@ -28,6 +31,12 @@ type ConnectOptions struct {
 // of another version (or protocol) is shut down, its children stopped, and a
 // new keeper started. The node then finds no sessions and launches every
 // record with --resume, which is the relaunch path.
+//
+// The client keeps the keeper running: a request that finds no keeper
+// (it exited on its own after its idle limit, or something killed it)
+// starts a new one the same way and is sent to it; a start that fails is
+// that request's error. The node then finds no sessions and relaunches
+// every record with --resume, as after a replacement.
 func Connect(ctx context.Context, o ConnectOptions) (*Client, Adoption, error) {
 	if o.Wait <= 0 {
 		o.Wait = 15 * time.Second
@@ -36,10 +45,23 @@ func Connect(ctx context.Context, o ConnectOptions) (*Client, Adoption, error) {
 		o.Grace = DefaultGrace
 	}
 	c := NewClient(o.Dial)
+	revive := func(ctx context.Context) error {
+		// A client of its own: c holds its lock while reviving.
+		probe := NewClient(o.Dial)
+		defer probe.Close()
+		if err := startAndWait(ctx, probe, o); err != nil {
+			return err
+		}
+		if o.Logf != nil {
+			o.Logf("keeper: none answered; started a new one")
+		}
+		return nil
+	}
 	ki, err := c.Version(ctx)
 	v, proto := ki.Version, ki.Protocol
 	switch {
 	case err == nil && v == o.Version && proto == Protocol:
+		c.revive = revive
 		return c, Adopted, nil
 	case err == nil:
 		if err := c.Shutdown(ctx, o.Grace); err != nil {
@@ -51,6 +73,7 @@ func Connect(ctx context.Context, o ConnectOptions) (*Client, Adoption, error) {
 		if err := startAndWait(ctx, c, o); err != nil {
 			return nil, 0, err
 		}
+		c.revive = revive
 		return c, Replaced, nil
 	case ctx.Err() != nil:
 		return nil, 0, ctx.Err()
@@ -58,6 +81,7 @@ func Connect(ctx context.Context, o ConnectOptions) (*Client, Adoption, error) {
 		if err := startAndWait(ctx, c, o); err != nil {
 			return nil, 0, err
 		}
+		c.revive = revive
 		return c, Started, nil
 	}
 }

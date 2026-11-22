@@ -54,6 +54,10 @@ const (
 	// ObservedRelaunching is a session whose terminal holder was replaced,
 	// until it is launched again with resume.
 	ObservedRelaunching = "relaunching"
+	// ObservedBackendDown is every record while the terminal holder
+	// (keeper, tmux server) does not answer and cannot be started again:
+	// the node cannot see or launch any session until it does (#464).
+	ObservedBackendDown = "backend down"
 )
 
 // Restart rules (#188).
@@ -431,6 +435,14 @@ func (n *Node) Reconcile(ctx context.Context) error {
 	defer n.mu.Unlock()
 	infos, err := n.backend.List(ctx)
 	if err != nil {
+		if ctx.Err() == nil {
+			// Say so instead of leaving the last states (running) in
+			// place: a record started now cannot launch (#464).
+			for _, r := range n.records {
+				st := n.stateOf(r)
+				st.Observed, st.PID, st.NextAttemptAt = ObservedBackendDown, 0, time.Time{}
+			}
+		}
 		return fmt.Errorf("node: list sessions: %w", err)
 	}
 	byName := map[string]term.Info{}

@@ -548,3 +548,68 @@ func TestLaunchContinuesTheHostsRunWhenTheSessionIsGone(t *testing.T) {
 		t.Fatalf("launch run %d, want 5", st.Run)
 	}
 }
+
+// downBackend is a terminal holder that can stop answering (a keeper or
+// tmux server that went away) and come back empty.
+type downBackend struct {
+	*termtest.Fake
+	down bool
+}
+
+func (b *downBackend) List(ctx context.Context) ([]term.Info, error) {
+	if b.down {
+		return nil, errors.New("keeper: dial: no keeper")
+	}
+	return b.Fake.List(ctx)
+}
+
+// TestBackendDownIsReported: while the terminal holder does not answer,
+// every record reports backend down instead of its last state, a record
+// started meanwhile too; once it answers again the records launch (#464).
+func TestBackendDownIsReported(t *testing.T) {
+	r := newRig(t)
+	b := &downBackend{Fake: r.fake}
+	n, err := node.New(r.cfg, b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	n.Assign([]node.Record{rec("a")})
+	r.reconcile(n)
+	r.reconcile(n)
+	if st := r.state(n, "a"); st.Observed != node.ObservedRunning {
+		t.Fatalf("before: %+v", st)
+	}
+
+	b.down = true
+	n.Assign([]node.Record{rec("a"), rec("b")})
+	if err := n.Reconcile(context.Background()); err == nil {
+		t.Fatal("reconcile without a backend reported no error")
+	}
+	for _, id := range []string{"a", "b"} {
+		if st := r.state(n, id); st.Observed != node.ObservedBackendDown || st.PID != 0 {
+			t.Fatalf("%s while down: %+v", id, st)
+		}
+	}
+
+	// A new holder with no sessions: both launch, a resuming its
+	// conversation.
+	b.Fake, b.down = termtest.New(), false
+	b.Fake.SetClock(func() time.Time { return r.now })
+	r.reconcile(n)
+	r.reconcile(n)
+	got := map[string][]string{}
+	for _, s := range b.Fake.Launches() {
+		got[s.Name] = s.Argv
+	}
+	if a := got[node.TerminalName("a")]; len(a) < 3 || a[1] != "--resume" || a[2] != "conv-a" {
+		t.Fatalf("a relaunch %v", a)
+	}
+	if bb := got[node.TerminalName("b")]; len(bb) < 2 || bb[1] != "--session-id" {
+		t.Fatalf("b launch %v", bb)
+	}
+	for _, id := range []string{"a", "b"} {
+		if st := r.state(n, id); st.Observed != node.ObservedRunning {
+			t.Fatalf("%s after: %+v", id, st)
+		}
+	}
+}

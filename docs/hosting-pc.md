@@ -331,7 +331,7 @@ if (-not (Get-Command sbstop -ErrorAction SilentlyContinue)) { throw 'sbstop is 
 sbstop
 ```
 
-The keeper ends by itself after five minutes with no sessions and no node attached (`keeper: no sessions and no node attached for 5m0s; exiting` in `$data\keeper-<instance>.log`). A session of any state, even one that has ended, or an attached node keeps it. The next `up` starts a new keeper when none runs.
+The keeper ends by itself after five minutes with no sessions and no node attached (`keeper: no sessions and no node attached for 5m0s; exiting` in `$data\keeper-<instance>.log`). A session of any state, even one that has ended, or an attached node keeps it. A running `up` whose keeper went away (it ended this way, or something ended it) starts a new one on its next pass (`node: keeper: none answered; started a new one` in `up.log`) and relaunches every session with `--resume`; the next `up` does the same. When the new keeper cannot start, every session shows `backend down` (터미널 끊김) until one answers. A connect to the keeper's pipe that fails is logged (`keeper: accept: …; retrying`) and does not end the keeper; a keeper that ends on a pipe error logs `keeper: serve: …; shutting down` first. The keeper is started outside the job of the shell that ran `up` when that job allows it; when it does not, the keeper ends with that job.
 
 Stop or start one session: `sbpc host stop $id`, `sbpc host start $id` (while `up` runs).
 

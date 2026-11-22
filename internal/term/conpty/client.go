@@ -23,6 +23,13 @@ type Dialer func(ctx context.Context) (net.Conn, error)
 // stream.
 type Client struct {
 	dial Dialer
+	// revive starts a keeper when none answers a dial (set by Connect): a
+	// keeper that went away is replaced instead of failing every request.
+	revive func(ctx context.Context) error
+	// revived is when revive last ran; it runs at most once per
+	// ReviveEvery, so a keeper that cannot start is not started on every
+	// request.
+	revived time.Time
 
 	mu   sync.Mutex
 	conn net.Conn
@@ -31,6 +38,9 @@ type Client struct {
 }
 
 var _ term.Backend = (*Client)(nil)
+
+// ReviveEvery is the least time between two keeper starts by one client.
+var ReviveEvery = 10 * time.Second
 
 // NewClient returns a client that dials the keeper on first use.
 func NewClient(dial Dialer) *Client { return &Client{dial: dial} }
@@ -77,6 +87,20 @@ func (c *Client) call(ctx context.Context, req request) (response, error) {
 		fresh := c.conn == nil
 		if fresh {
 			conn, err := c.dial(ctx)
+			if err != nil && c.revive != nil && ctx.Err() == nil {
+				// No keeper answers (it exited or was killed): start one
+				// and dial once more. Its sessions are gone; the node
+				// launches its records again with --resume. A keeper that
+				// answers is never touched here.
+				if since := time.Now().Sub(c.revived); since < ReviveEvery {
+					return response{}, fmt.Errorf("keeper: dial: %w; restart: last tried %s ago", err, since.Round(time.Second))
+				}
+				c.revived = time.Now()
+				if rerr := c.revive(ctx); rerr != nil {
+					return response{}, fmt.Errorf("keeper: dial: %w; restart: %w", err, rerr)
+				}
+				conn, err = c.dial(ctx)
+			}
 			if err != nil {
 				return response{}, fmt.Errorf("keeper: dial: %w", err)
 			}
