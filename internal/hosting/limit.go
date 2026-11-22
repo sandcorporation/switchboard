@@ -48,23 +48,23 @@ func (s *Service) acceptingWork(h wire.HostedSession) bool {
 }
 
 // accepting returns the AcceptingWork of a record, with the groups and the
-// limit read once.
+// accounts read once: the record's group threshold against the remaining
+// limit of its agent account.
 func (s *Service) accepting() (func(wire.HostedSession) bool, error) {
 	groups, err := s.thresholds()
 	if err != nil {
 		return nil, err
 	}
-	l, err := s.Limit()
+	accounts, defaults, err := s.accountState()
 	if err != nil {
 		return nil, err
 	}
+	remaining := map[accountKey]*int{}
+	for _, a := range accounts {
+		remaining[accountKey{a.Node, a.Adapter, a.Account}] = a.Remaining
+	}
 	return func(h wire.HostedSession) bool {
-		var remaining *int
-		if l.Limited {
-			zero := 0
-			remaining = &zero
-		}
-		return AcceptsWork(groups[h.Group], remaining)
+		return AcceptsWork(groups[h.Group], remaining[accountOf(h, defaults)])
 	}, nil
 }
 
@@ -125,8 +125,18 @@ func (s *Service) guardedUpdate(id, node string, toRunning bool, query string, a
 
 // Limit is the subscription limit now: the operator's switch, else the
 // newest limit a node's screens show that began after the last clear and
-// whose reset time has not passed.
+// whose reset time has not passed; with every agent account's remaining
+// limit (#435).
 func (s *Service) Limit() (wire.HostingLimit, error) {
+	out, err := s.overallLimit()
+	if err != nil {
+		return out, err
+	}
+	out.Accounts, err = s.Accounts()
+	return out, err
+}
+
+func (s *Service) overallLimit() (wire.HostingLimit, error) {
 	var out wire.HostingLimit
 	var op, setAt, cleared int64
 	err := s.db.QueryRow(`SELECT operator,set_at,cleared_at FROM hosting_limit WHERE id=1`).Scan(&op, &setAt, &cleared)
@@ -170,15 +180,17 @@ func (s *Service) Limit() (wire.HostingLimit, error) {
 	return out, nil
 }
 
-// SetLimit is the operator's switch. Off also clears a limit the screens
-// show: a showing that began before now is ignored from then on.
+// SetLimit is the operator's switch: on puts every account at 0%. Off also
+// clears a limit the screens show (a showing that began before now is
+// ignored from then on) and the operator's value of every account (#435).
 func (s *Service) SetLimit(on bool) (wire.HostingLimit, error) {
 	now := s.clock().UnixMilli()
 	var err error
 	if on {
 		_, err = s.db.Exec(`INSERT INTO hosting_limit(id,operator,set_at) VALUES(1,1,?) ON CONFLICT(id) DO UPDATE SET operator=1,set_at=CASE WHEN operator=1 THEN set_at ELSE excluded.set_at END`, now)
 	} else {
-		_, err = s.db.Exec(`INSERT INTO hosting_limit(id,operator,cleared_at) VALUES(1,0,?) ON CONFLICT(id) DO UPDATE SET operator=0,cleared_at=excluded.cleared_at`, now)
+		_, err = s.db.Exec(`INSERT INTO hosting_limit(id,operator,cleared_at) VALUES(1,0,?) ON CONFLICT(id) DO UPDATE SET operator=0,cleared_at=excluded.cleared_at;
+		UPDATE account_limits SET manual=NULL WHERE manual IS NOT NULL`, now)
 	}
 	if err != nil {
 		return wire.HostingLimit{}, err

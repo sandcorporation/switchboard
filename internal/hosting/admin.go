@@ -127,7 +127,7 @@ func (s *Service) joinAPI(w http.ResponseWriter, r *http.Request) {
 
 // decode reads a JSON body of type T; unknown fields are refused so a
 // misspelt field is not silently dropped.
-func decode[T wire.HostedSessionCreate | wire.HostedSessionChange | wire.HostGrant | wire.WorkGroup | wire.WorkGroupChange](w http.ResponseWriter, r *http.Request) (T, bool) {
+func decode[T wire.HostedSessionCreate | wire.HostedSessionChange | wire.HostGrant | wire.WorkGroup | wire.WorkGroupChange | wire.AccountLimitChange](w http.ResponseWriter, r *http.Request) (T, bool) {
 	var v T
 	dec := json.NewDecoder(io.LimitReader(r.Body, maxBody))
 	dec.DisallowUnknownFields()

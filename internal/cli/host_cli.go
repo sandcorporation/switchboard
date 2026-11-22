@@ -28,6 +28,9 @@ func cliHost(p parsedArgs, stdout io.Writer) (int, error) {
 	if _, ok := p.values["--threshold"]; ok {
 		return 0, usagef("host %s: --threshold is for host group", action)
 	}
+	if _, ok := p.values["--remaining"]; ok && action != "limit" {
+		return 0, usagef("host %s: --remaining is for host limit", action)
+	}
 	if _, ok := p.values["--dir-root"]; ok {
 		return 0, usagef("host %s: --dir-root is for host grant", action)
 	}
@@ -91,8 +94,20 @@ func cliHost(p parsedArgs, stdout io.Writer) (int, error) {
 			return 0, usagef("host set: arguments after -- are for host add")
 		}
 	case "limit":
-		if id != "" && id != "on" && id != "off" {
-			return 0, usagef("host limit: want on, off or nothing, not %q", id)
+		rem, hasRem := p.values["--remaining"]
+		switch {
+		case strings.Contains(id, "/"):
+			if !hasRem {
+				return 0, usagef("host limit %s requires --remaining PERCENT|none", id)
+			}
+			id += "=" + rem
+			if _, err := wire.ParseAccountLimit(id); err != nil {
+				return 0, usagef("host limit: %v", err)
+			}
+		case hasRem:
+			return 0, usagef("host limit: --remaining is for one account: host limit NODE/ADAPTER[/ACCOUNT] --remaining PERCENT|none")
+		case id != "" && id != "on" && id != "off":
+			return 0, usagef("host limit: want on, off, NODE/ADAPTER[/ACCOUNT] or nothing, not %q", id)
 		}
 		for _, o := range addOnly {
 			if _, ok := p.values[o]; ok {
@@ -166,7 +181,7 @@ func cliHostAuto(p parsedArgs, stdout io.Writer) (int, error) {
 	if len(p.extra) > 0 {
 		return 0, usagef("host auto: arguments after -- are for host add")
 	}
-	for _, o := range []string{"--node", "--base", "--profile", "--dir", "--parent", "--restart", "--group", "--threshold", "--adapter", "--ask-permissions", "--skip-permissions"} {
+	for _, o := range []string{"--node", "--base", "--profile", "--dir", "--parent", "--restart", "--group", "--threshold", "--remaining", "--adapter", "--ask-permissions", "--skip-permissions"} {
 		if _, ok := p.values[o]; ok {
 			return 0, usagef("host auto: %s is for host add", o)
 		}

@@ -72,6 +72,7 @@ var bossWriteRoutes = []bossWriteRoute{
 		return c.Base, nil
 	}},
 	{http.MethodPut, pathShape("terminals/limit"), globalOnly},
+	{http.MethodPut, pathShape("terminals/limit/accounts"), globalOnly},
 	// Work groups (#435) are the whole host's: a global boss's writes.
 	{http.MethodPost, pathShape("terminals/work-groups"), globalOnly},
 	{http.MethodPut, pathShape("terminals/work-groups/*"), globalOnly},

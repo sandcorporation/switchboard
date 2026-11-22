@@ -23,9 +23,15 @@ func (s *Service) RunCLI(action, id string, add wire.HostedSessionCreate, jsonOu
 	case "limit":
 		l := wire.HostingLimit{}
 		var err error
-		switch id {
-		case "on", "off":
+		switch {
+		case id == "on", id == "off":
 			l, err = s.SetLimit(id == "on")
+		case strings.Contains(id, "/"):
+			c, perr := wire.ParseAccountLimit(id)
+			if perr != nil {
+				return invalidf("%v", perr)
+			}
+			l, err = s.SetAccountLimit(c)
 		default:
 			l, err = s.Limit()
 		}
@@ -123,6 +129,7 @@ func Perms(h wire.HostedSession) string {
 func printLimit(w io.Writer, l wire.HostingLimit) {
 	if !l.Limited {
 		fmt.Fprintln(w, "not limited")
+		printAccounts(w, l.Accounts)
 		return
 	}
 	line := "limited (" + l.Source + ")"
@@ -133,4 +140,26 @@ func printLimit(w io.Writer, l wire.HostingLimit) {
 		line += ", resets " + time.UnixMilli(*l.ResetAt).Format(time.RFC3339)
 	}
 	fmt.Fprintln(w, line)
+	printAccounts(w, l.Accounts)
+}
+
+// AccountText is an account as NODE/ADAPTER[/ACCOUNT].
+func AccountText(a wire.AccountLimit) string {
+	s := a.Node + "/" + a.Adapter
+	if a.Account != "" {
+		s += "/" + a.Account
+	}
+	return s
+}
+
+func printAccounts(w io.Writer, list []wire.AccountLimit) {
+	if len(list) == 0 {
+		return
+	}
+	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(tw, "ACCOUNT\tLEFT\tSOURCE\tMANUAL\tSESSIONS")
+	for _, a := range list {
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%d\n", AccountText(a), ThresholdText(a.Remaining), dash(a.Source), ThresholdText(a.Manual), a.Sessions)
+	}
+	tw.Flush()
 }

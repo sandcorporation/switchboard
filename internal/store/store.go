@@ -889,16 +889,22 @@ func migrateHostingAdapters(db *sql.DB) error {
 // migrateWorkGroups adds work groups (#435), all additive: work_groups (a
 // name the operator chooses and its remaining-limit threshold, a
 // percentage; null is none), hosted_sessions.work_group (empty: none) and
-// host_grants.groups (a JSON list of the groups the role may choose).
+// host_grants.groups (a JSON list of the groups the role may choose);
+// account_limits (per agent account: the operator's remaining value, null
+// none, and when the account's limit last cleared) and
+// hosted_sessions.agent_account (the account the node reported the session
+// uses, empty: the adapter's default).
 // hosted_sessions.class (#190) stays, unread: work groups replaced the
 // session classes, and migrations only add.
 func migrateWorkGroups(db *sql.DB) error {
-	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS work_groups(name TEXT PRIMARY KEY, threshold INTEGER, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)`); err != nil {
+	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS work_groups(name TEXT PRIMARY KEY, threshold INTEGER, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+	CREATE TABLE IF NOT EXISTS account_limits(node TEXT NOT NULL, adapter TEXT NOT NULL, account TEXT NOT NULL, manual INTEGER, set_at INTEGER NOT NULL DEFAULT 0, cleared_at INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(node,adapter,account))`); err != nil {
 		return err
 	}
 	return addColumns(db, []columnAdd{
 		{"hosted_sessions", "work_group", `TEXT NOT NULL DEFAULT ''`},
 		{"host_grants", "groups", `TEXT NOT NULL DEFAULT ''`},
+		{"hosted_sessions", "agent_account", `TEXT NOT NULL DEFAULT ''`},
 	})
 }
 

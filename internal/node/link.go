@@ -182,11 +182,12 @@ func (l *Link) reconcile(ctx context.Context) {
 // report stores the node's states for the host and flags a change.
 func (l *Link) report() {
 	sts := l.Node.States()
+	usage, accounts := l.Node.UsageAccounts()
 	out := make([]wire.HostedNodeState, 0, len(sts))
 	for _, s := range sts {
-		out = append(out, wire.HostedNodeState{ID: s.ID, Launched: s.Launched, AgentSessionID: s.AgentSessionID, Runtime: s.Wire()})
+		out = append(out, wire.HostedNodeState{ID: s.ID, Launched: s.Launched, AgentSessionID: s.AgentSessionID, Account: accounts[s.ID], Runtime: s.Wire()})
 	}
-	limit, usage := l.Node.Limit(), l.Node.Usage()
+	limit := l.Node.Limit()
 	l.mu.Lock()
 	l.states, l.limit, l.usage = out, limit, usage
 	l.mu.Unlock()

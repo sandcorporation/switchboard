@@ -2518,6 +2518,32 @@ function drawNode(v,box){
   }
   drawSetNote(box,id);
   box.append(dl([['노드',v.name],['기계',v.machine||'-'],['OS',v.os||'-'],['버전',v.version||'-'],['등록',when(v.created_at)],['마지막 접속',when(v.last_seen_at)],['끊은 때',v.revoked_at?when(v.revoked_at):'-']]));
+  if(v.accounts&&v.accounts.length)box.append(accountTable(v,id));
+}
+// 계정 (#435): each agent account's remaining limit and the operator's value
+const accountCols=['계정','남은 %','출처','세션','수동 %',''];
+const accountSource={operator:'한도 켬',manual:'수동',adapter:'에이전트',screen:'화면'};
+function accountTable(v,id){
+  const t=node('table','','list'),head=node('tr'),body=document.createElement('tbody');
+  for(const c of accountCols)head.append(node('th',c));
+  const th=document.createElement('thead');th.append(head);t.append(th,body);
+  for(const a of v.accounts){
+    const tr=node('tr'),name=a.adapter+' / '+(a.account||'기본');
+    const inp=document.createElement('input');inp.type='number';inp.min='0';inp.max='100';inp.step='1';inp.inputMode='numeric';
+    inp.value=a.manual===null||a.manual===undefined?'':String(a.manual);inp.setAttribute('aria-label',name+' 수동 %');
+    const send=async remaining=>{
+      try{await apiSend('PUT','terminals/limit/accounts',{node:v.name,adapter:a.adapter,account:a.account||'',remaining:remaining});setNote(id,name+(remaining===null?' 수동 % 지움':' 수동 % 저장'),'ok')}
+      catch(e){setNote(id,e.message,'err')}
+      loadNodes();drawDetail();
+    };
+    const save=setButton('저장','',()=>send(thresholdOf(inp)));
+    const clear=setButton('지우기','',()=>send(null));clear.disabled=a.manual===null||a.manual===undefined;
+    const manual=document.createElement('td');manual.dataset.label=accountCols[4];manual.append(inp);
+    const acts=document.createElement('td');acts.append(save,' ',clear);
+    tr.append(cell(name,accountCols[0],'mono'),cell(a.remaining===null||a.remaining===undefined?'모름':a.remaining+'%',accountCols[1]),cell(accountSource[a.source]||'-',accountCols[2]),cell(String(a.sessions||0),accountCols[3]),manual,acts);
+    body.append(tr);
+  }
+  return t;
 }
 // ruleLast: the newest answered-rule step (#274), with the closed IDs.
 function ruleLast(l){

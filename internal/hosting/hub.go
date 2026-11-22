@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -64,12 +65,17 @@ type Hub struct {
 	// limitKnown are the subscription limit as last published (#190).
 	nodeLimit map[string]wire.NodeLimit
 	// nodeUsage is the agent usage JSON each node last reported (#434).
-	nodeUsage  map[string]string
-	limited    bool
-	limitKnown bool
-	slotOf     SlotOf
-	runSeen    map[string]int64       // host time the current run was first reported, by record id
-	bound      map[string]slotBinding // the slot each record's run follows (slots.go), by record id
+	nodeUsage map[string]string
+	// sessionAccount is the agent account each node last reported a record
+	// uses, and accountLeft each account's remaining limit as last
+	// published ("" not known), for its limit-cleared (#435).
+	sessionAccount map[string]string
+	accountLeft    map[accountKey]string
+	limited        bool
+	limitKnown     bool
+	slotOf         SlotOf
+	runSeen        map[string]int64       // host time the current run was first reported, by record id
+	bound          map[string]slotBinding // the slot each record's run follows (slots.go), by record id
 
 	tickets tickets
 
@@ -172,29 +178,79 @@ func (h *Hub) Sync() error {
 	return h.checkLimit()
 }
 
-// checkLimit publishes a change of the subscription limit: "terminals",
-// and LimitClearedKind once when it clears (recorded as ClearedAt).
+// checkLimit publishes a change of the subscription limit or of an agent
+// account's remaining limit: "terminals", and LimitClearedKind once for
+// each account that went from 0% to more or to not known (#435; recorded
+// as its ClearedAt), or once when the subscription limit clears and no
+// account did.
 func (h *Hub) checkLimit() error {
 	l, err := h.svc.Limit()
 	if err != nil {
 		return err
 	}
+	left := make(map[accountKey]string, len(l.Accounts))
+	for _, a := range l.Accounts {
+		v := ""
+		if a.Remaining != nil {
+			v = strconv.Itoa(*a.Remaining)
+		}
+		left[accountKey{a.Node, a.Adapter, a.Account}] = v
+	}
 	h.mu.Lock()
-	was, known := h.limited, h.limitKnown
-	h.limited, h.limitKnown = l.Limited, true
+	was, known, prevLeft := h.limited, h.limitKnown, h.accountLeft
+	h.limited, h.limitKnown, h.accountLeft = l.Limited, true, left
 	h.mu.Unlock()
-	if !known || was == l.Limited {
+	if !known {
 		return nil
 	}
-	if !l.Limited {
-		if err := h.svc.markCleared(h.svc.clock().UnixMilli()); err != nil {
+	now := h.svc.clock().UnixMilli()
+	changed, cleared := was != l.Limited, 0
+	for k, v := range left {
+		p, ok := prevLeft[k]
+		if !ok || p != v {
+			changed = true
+		}
+		if ok && p == "0" && v != "0" {
+			if err := h.svc.markAccountCleared(k, now); err != nil {
+				return err
+			}
+			cleared++
+		}
+	}
+	for k := range prevLeft {
+		if _, ok := left[k]; !ok {
+			changed = true
+		}
+	}
+	if was && !l.Limited {
+		if err := h.svc.markCleared(now); err != nil {
 			return err
 		}
-		h.publish("terminals", LimitClearedKind)
-		return nil
+		cleared = max(cleared, 1)
 	}
-	h.publish("terminals")
+	for i := range cleared {
+		if i == 0 {
+			h.publish("terminals", LimitClearedKind)
+		} else {
+			h.publish(LimitClearedKind)
+		}
+	}
+	if cleared == 0 && changed {
+		h.publish("terminals")
+	}
 	return nil
+}
+
+// SetAccountLimit is the operator's value for one account through the hub,
+// published at once.
+func (h *Hub) SetAccountLimit(c wire.AccountLimitChange) (wire.HostingLimit, error) {
+	if _, err := h.svc.SetAccountLimit(c); err != nil {
+		return wire.HostingLimit{}, err
+	}
+	if err := h.checkLimit(); err != nil {
+		return wire.HostingLimit{}, err
+	}
+	return h.svc.Limit()
 }
 
 // SetLimit is the operator's switch through the hub, published at once.
@@ -485,6 +541,7 @@ func (h *Hub) receive(c *nodeConn, f wire.NodeFrame) {
 	case wire.NodeStateType:
 		now := h.svc.clock().UnixMilli()
 		changed, launched := false, []wire.HostedNodeState{}
+		accounts := map[string]string{}
 		h.mu.Lock()
 		for _, st := range f.States {
 			if h.owner[st.ID] != c.name {
@@ -504,6 +561,13 @@ func (h *Hub) receive(c *nodeConn, f wire.NodeFrame) {
 				changed = true
 			}
 			h.runtime[st.ID] = rt
+			if prev, ok := h.sessionAccount[st.ID]; !ok || prev != st.Account {
+				if h.sessionAccount == nil {
+					h.sessionAccount = map[string]string{}
+				}
+				h.sessionAccount[st.ID] = st.Account
+				accounts[st.ID] = st.Account
+			}
 			if st.Launched {
 				launched = append(launched, st)
 			}
@@ -534,10 +598,18 @@ func (h *Hub) receive(c *nodeConn, f wire.NodeFrame) {
 				log.Printf("hosting: node %s usage: %v", c.name, err)
 			}
 		}
+		for id, account := range accounts {
+			if err := h.svc.setSessionAccount(id, account); err != nil {
+				log.Printf("hosting: record %s account: %v", id, err)
+			}
+		}
 		if limitChanged {
 			if err := h.svc.setNodeLimit(c.name, *f.Limit); err != nil {
 				log.Printf("hosting: node %s limit: %v", c.name, err)
-			} else if err := h.checkLimit(); err != nil {
+			}
+		}
+		if limitChanged || usageChanged || len(accounts) > 0 {
+			if err := h.checkLimit(); err != nil {
 				log.Printf("hosting: limit: %v", err)
 			}
 		}
@@ -617,6 +689,10 @@ func (h *Hub) AdminTerminalsAPI(w http.ResponseWriter, r *http.Request, rest str
 		h.limitAPI(w, r)
 		return true
 	}
+	if rest == "limit/accounts" {
+		h.accountLimitAPI(w, r)
+		return true
+	}
 	for _, sub := range []string{"/ticket", "/socket", "/log", "/events"} {
 		id, ok := strings.CutSuffix(rest, sub)
 		if !ok {
@@ -670,6 +746,30 @@ func (h *Hub) AdminTerminalsAPI(w http.ResponseWriter, r *http.Request, rest str
 		}
 	}
 	return true
+}
+
+// accountLimitAPI serves PUT /api/admin/terminals/limit/accounts: the
+// operator's remaining value of one agent account (wire.AccountLimitChange,
+// remaining null clears it); it answers the limit as GET .../limit does.
+func (h *Hub) accountLimitAPI(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPut {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	c, ok := decode[wire.AccountLimitChange](w, r)
+	if !ok {
+		return
+	}
+	l, err := h.SetAccountLimit(c)
+	var invalid InvalidError
+	switch {
+	case err == nil:
+		writeJSON(w, http.StatusOK, l)
+	case errors.As(err, &invalid):
+		http.Error(w, invalid.Error(), http.StatusBadRequest)
+	default:
+		http.Error(w, "update failed", http.StatusInternalServerError)
+	}
 }
 
 // limitAPI serves /api/admin/terminals/limit: GET the subscription limit,

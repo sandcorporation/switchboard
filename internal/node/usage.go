@@ -199,8 +199,16 @@ func readReport(path string) (usageReport, bool) {
 // (with that message's reset), else not known (nil Remaining). Nil when the
 // node sets no status command (StatusDir empty).
 func (n *Node) Usage() []wire.AgentUsage {
+	u, _ := n.UsageAccounts()
+	return u
+}
+
+// UsageAccounts is Usage with the account each record's last report named
+// (#435), by record id; a record without a report is missing (its
+// adapter's default account).
+func (n *Node) UsageAccounts() ([]wire.AgentUsage, map[string]string) {
 	if n.cfg.StatusDir == "" || n.cfg.Switchboard == "" {
-		return nil
+		return nil, nil
 	}
 	now := n.cfg.Now()
 	type session struct {
@@ -231,11 +239,15 @@ func (n *Node) Usage() []wire.AgentUsage {
 		limitReset time.Time
 	}
 	accs := map[key]*acc{}
+	accounts := map[string]string{}
 	for _, s := range ss {
 		k := key{adapter: s.adapter}
 		r, ok := readReport(n.cfg.statusFile(s.id))
 		if ok && r.Adapter == s.adapter {
 			k.account = r.Account
+			if r.Account != "" {
+				accounts[s.id] = r.Account
+			}
 		} else {
 			ok = false
 		}
@@ -282,5 +294,5 @@ func (n *Node) Usage() []wire.AgentUsage {
 	slices.SortFunc(out, func(a, b wire.AgentUsage) int {
 		return strings.Compare(a.Adapter+"\x00"+a.Account, b.Adapter+"\x00"+b.Account)
 	})
-	return out
+	return out, accounts
 }

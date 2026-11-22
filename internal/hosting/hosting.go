@@ -307,7 +307,7 @@ func boolInt(b bool) int {
 
 func unknownRuntime() wire.HostedRuntime { return wire.HostedRuntime{State: StateUnknown} }
 
-const sessionColumns = `id,node,base,label,parent,profile,directory,agent_session_id,launched,args,env,restart,desired,work_group,skip_permissions,cols,rows,restart_gen,start_gen,created_at,updated_at,dir_root,adapter`
+const sessionColumns = `id,node,base,label,parent,profile,directory,agent_session_id,launched,args,env,restart,desired,work_group,skip_permissions,cols,rows,restart_gen,start_gen,created_at,updated_at,dir_root,adapter,agent_account`
 
 type rowScanner interface{ Scan(dest ...any) error }
 
@@ -315,7 +315,7 @@ func scanSession(r rowScanner) (wire.HostedSession, error) {
 	var h wire.HostedSession
 	var launched, skip int
 	var args, env string
-	if err := r.Scan(&h.ID, &h.Node, &h.Base, &h.Label, &h.Parent, &h.Profile, &h.Directory, &h.AgentSessionID, &launched, &args, &env, &h.Restart, &h.Desired, &h.Group, &skip, &h.Cols, &h.Rows, &h.RestartGen, &h.StartGen, &h.CreatedAt, &h.UpdatedAt, &h.DirRoot, &h.Adapter); err != nil {
+	if err := r.Scan(&h.ID, &h.Node, &h.Base, &h.Label, &h.Parent, &h.Profile, &h.Directory, &h.AgentSessionID, &launched, &args, &env, &h.Restart, &h.Desired, &h.Group, &skip, &h.Cols, &h.Rows, &h.RestartGen, &h.StartGen, &h.CreatedAt, &h.UpdatedAt, &h.DirRoot, &h.Adapter, &h.Account); err != nil {
 		return h, err
 	}
 	h.Launched = launched != 0
@@ -572,5 +572,20 @@ func (s *Service) Nodes() ([]wire.NodeView, error) {
 		}
 		out = append(out, n)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	rows.Close()
+	accounts, err := s.Accounts()
+	if err != nil {
+		return nil, err
+	}
+	for i := range out {
+		for _, a := range accounts {
+			if a.Node == out[i].Name {
+				out[i].Accounts = append(out[i].Accounts, a)
+			}
+		}
+	}
+	return out, nil
 }
