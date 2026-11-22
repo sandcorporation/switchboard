@@ -31,6 +31,8 @@ var hostingPaths = []struct{ method, path string }{
 	{"POST", "/api/admin/terminals/7/autos/1/run"},
 	{"GET", "/api/admin/nodes"},
 	{"DELETE", "/api/admin/nodes/pc"},
+	{"POST", "/api/admin/node-invites"},
+	{"GET", "/api/admin/admin-actions"},
 	{"GET", "/api/node/socket"},
 	{"POST", "/api/node/join"},
 }
@@ -136,6 +138,7 @@ var hostingServed = map[string]bool{
 	"POST /api/admin/terminals/7/ticket": true, "GET /api/admin/terminals/7/socket": true,
 	"GET /api/admin/terminals/7/log":   true,
 	"GET /api/admin/terminals/7/autos": true, "POST /api/admin/terminals/7/autos/1/run": true,
+	"POST /api/admin/node-invites": true, "GET /api/admin/admin-actions": true,
 }
 
 func TestHostingOnStubsStayBehindAdminSignIn(t *testing.T) {

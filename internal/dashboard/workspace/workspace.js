@@ -468,6 +468,12 @@ function wsStart(){
     }
     dirty=later;if(later.size)dirtyT=setTimeout(flush,2000);
   }
+  // The 노드 index (#446): a session opens its terminal panel, which the
+  // right column then follows.
+  const nodeIdx=wsNodeIndex({openSession(v){
+    openTerm(v);
+    if(mq.matches)drawer(false);
+  }});
   for(const p of L.panels(st))if(p.startsWith('term:'))term(p.slice(5));
   if(location.hash.length>1&&curTab)st=L.open(st,'menu:'+curTab);
   side.session=S.follow(side.session,st.focus);
@@ -495,6 +501,7 @@ function wsStart(){
     live(kinds){
       if(kinds.includes('questions')||kinds.includes('permissions'))mark('needs','items');
       if(kinds.includes('terminals'))mark('sess');
+      nodeIdx.live(kinds);
     },
     // refresh redraws the column and the item panels after an action.
     refresh(){mark('needs','sess','items')},

@@ -266,6 +266,9 @@ type NodeView struct {
 	CreatedAt  int64  `json:"created_at"`
 	LastSeenAt *int64 `json:"last_seen_at"`
 	RevokedAt  *int64 `json:"revoked_at"`
+	// Connected says whether the node's socket is attached to this server
+	// now (#446).
+	Connected bool `json:"connected"`
 	// Adapters are the agent adapters the node reported installed (#434):
 	// the ones whose executable it found. Default is the one a session
 	// without an adapter launches with.
@@ -290,6 +293,44 @@ type AgentUsage struct {
 	Remaining *int   `json:"remaining,omitempty"`
 	ResetsAt  *int64 `json:"resets_at,omitempty"`
 	At        int64  `json:"at,omitempty"`
+}
+
+// NodeInvite is the body of POST /api/admin/node-invites (#446): the new
+// node's name.
+type NodeInvite struct {
+	Name string `json:"name"`
+}
+
+// NodeInvited answers a NodeInvite once: the same one-time code as
+// `switchboard node invite`, valid until ExpiresAt (Unix ms). The server
+// keeps only its hash and logs or records neither the code nor the hash.
+type NodeInvited struct {
+	Name      string `json:"name"`
+	Code      string `json:"code"`
+	ExpiresAt int64  `json:"expires_at"`
+}
+
+// Admin action kinds (#446), the action of an AdminAction row.
+const (
+	ActionNodeInvite    = "node.invite"
+	ActionNodeRevoke    = "node.revoke"
+	ActionGrantSet      = "grant.set"
+	ActionGrantRevoke   = "grant.revoke"
+	ActionSessionAdd    = "session.add"
+	ActionSessionChange = "session.change"
+	ActionSessionRemove = "session.remove"
+)
+
+// AdminAction is one row of GET /api/admin/admin-actions (#446): who did
+// what to which target, when (Unix ms), signed in how, from which address.
+// Target is a name or a path only.
+type AdminAction struct {
+	At     int64  `json:"at"`
+	Admin  string `json:"admin"`
+	Method string `json:"method"`
+	Action string `json:"action"`
+	Target string `json:"target"`
+	Addr   string `json:"addr"`
 }
 
 // NodeJoin is the body of POST /api/node/join: a one-time code from

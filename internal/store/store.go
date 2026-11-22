@@ -134,6 +134,9 @@ func Init(db *sql.DB) error {
 	if e = migrateHostedEvents(db); e != nil {
 		return e
 	}
+	if e = migrateAdminActions(db); e != nil {
+		return e
+	}
 	if e = migrateSystemSender(db); e != nil {
 		return e
 	}
@@ -380,6 +383,17 @@ func migrateQuestionRefusals(db *sql.DB) error {
 func migrateHostedEvents(db *sql.DB) error {
 	_, err := db.Exec(`CREATE TABLE IF NOT EXISTS hosted_events(id INTEGER PRIMARY KEY AUTOINCREMENT, session TEXT NOT NULL, at INTEGER NOT NULL, kind TEXT NOT NULL, exit_code INTEGER, reason TEXT NOT NULL DEFAULT '', restarts INTEGER NOT NULL DEFAULT 0, actor TEXT NOT NULL DEFAULT '', UNIQUE(session, at, kind, restarts));
 CREATE INDEX IF NOT EXISTS hosted_events_session ON hosted_events(session, at);`)
+	return err
+}
+
+// migrateAdminActions adds admin_actions (#446): the admin's hosting actions
+// (node invites and revokes, host grants, hosted session adds, changes and
+// removals), appended only. target is a name or a path, never a value: no
+// code, token, body or file content. method is the admin login mode ("boss"
+// for a boss role's write); addr the client address. Times are Unix ms.
+func migrateAdminActions(db *sql.DB) error {
+	_, err := db.Exec(`CREATE TABLE IF NOT EXISTS admin_actions(id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL, admin TEXT NOT NULL, method TEXT NOT NULL DEFAULT '', action TEXT NOT NULL, target TEXT NOT NULL DEFAULT '', addr TEXT NOT NULL DEFAULT '');
+CREATE INDEX IF NOT EXISTS admin_actions_target ON admin_actions(target, at);`)
 	return err
 }
 

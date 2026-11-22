@@ -711,6 +711,8 @@ sbpc node invite pc2
 
 Check: one line with a code `sbj_…`, valid 15 minutes and usable once.
 
+The dashboard makes the same code: 노드 (left index) → 노드 붙이기, the name, 초대 코드 만들기. The code shows once, with the `--join` command.
+
 If it fails: `already exists` → the name is taken (a removed node's name stays taken); pick another name.
 
 ### NW1. Windows node: download and install
