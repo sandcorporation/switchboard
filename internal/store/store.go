@@ -101,6 +101,9 @@ func Init(db *sql.DB) error {
 	if e = migrateHandoffs(db); e != nil {
 		return e
 	}
+	if e = migrateQuestionRelay(db); e != nil {
+		return e
+	}
 	if e = migrateRoleAliases(db); e != nil {
 		return e
 	}
@@ -584,6 +587,17 @@ CREATE INDEX IF NOT EXISTS idx_questions_answered ON questions(status,answered_a
 		return err
 	}
 	_, err = db.Exec(`ALTER TABLE questions ADD COLUMN answerer TEXT NOT NULL DEFAULT ''`)
+	return err
+}
+
+// migrateQuestionRelay adds questions.relay_to (#394): a JSON array of the
+// addresses that also get the answer's text, ” when none (additive).
+func migrateQuestionRelay(db *sql.DB) error {
+	has, err := HasColumn(db, "questions", "relay_to")
+	if err != nil || has {
+		return err
+	}
+	_, err = db.Exec(`ALTER TABLE questions ADD COLUMN relay_to TEXT NOT NULL DEFAULT ''`)
 	return err
 }
 
