@@ -1556,7 +1556,7 @@ registerDetail('jobs',{
   draw:async(j,sub,box)=>{
     if(j.schedule){
       const cond=j.kind==='cron'?node('code',j.cron+' ('+j.tz+')'):when(j.next_fire_at||j.last_fire_at);
-      const pairs=[['조건',cond],['다음',j.state==='active'?when(j.next_fire_at):'-'],['만료',when(j.expires_at)+(j.state==='paused'?' · 멈춘 동안 멈춤':'')],['밀린',j.missed?j.missed+'회':'-'],['역할',j.role],['기계',j.machine],['ID',String(j.id)]];
+      const pairs=[['조건',cond],['다음',j.state==='active'?when(j.next_fire_at):'-'],['만료',when(j.expires_at)+(j.state==='paused'?' · 멈춘 동안 시계 멈춤':'')],['밀린',j.missed?j.missed+'회':'-'],['역할',j.role],['기계',j.machine],['ID',String(j.id)]];
       if(j.paused_by)pairs.push(['멈춘 쪽',j.paused_by.admin?'관리자 '+j.paused_by.name:'역할 '+j.paused_by.name],['멈춘 시각',when(j.paused_at)],['까닭',j.pause_reason||'-']);
       pairs.push(['프롬프트',node('pre',j.prompt)]);
       box.append(dl(pairs));
