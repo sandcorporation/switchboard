@@ -503,7 +503,13 @@ func (s *Server) adminAPI(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	path := strings.TrimPrefix(r.URL.Path, "/api/admin/")
+	s.adminRoutes(w, r, strings.TrimPrefix(r.URL.Path, "/api/admin/"), who)
+}
+
+// adminRoutes serves an /api/admin/ path (prefix removed) for a caller past
+// the guards: a signed-in admin, or a boss role's write (bossWrite, #399),
+// which reaches the same handlers.
+func (s *Server) adminRoutes(w http.ResponseWriter, r *http.Request, path string, who adminauth.Identity) {
 	if s.hosting && hostingAdminPath(path) {
 		s.hostingAdmin(w, r, path)
 		return

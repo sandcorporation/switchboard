@@ -18,7 +18,7 @@ import (
 
 // The boss role's read-only views (#397): GET /api/boss/<view> with the
 // profile's token, the dashboard's mail, jobs, terminal, role and settings
-// tabs. Writes stay on the dashboard.
+// tabs. The writes are in boss_write_cli.go (#399).
 
 // bossView reads GET /api/boss/<path>; with jsonOut it prints the body as the
 // server sent it and returns nil.
@@ -95,8 +95,10 @@ func cliMail(c Config, p parsedArgs) (int, error) {
 		}
 		prettyTo(os.Stdout, m)
 		return ExitOK, nil
+	case "close":
+		return mailClose(c, id, jsonOut)
 	}
-	return 0, usagef("mail: unknown action %q (list, show ID)", action)
+	return 0, usagef("mail: unknown action %q (list, show ID, close ID)", action)
 }
 
 // formatMailList is one line per message, newest first: ID, state, sender →
@@ -125,6 +127,9 @@ type bossJobsView struct {
 // cliJobs runs `jobs`: the server's job ledger and schedules of every role in
 // view.
 func cliJobs(c Config, p parsedArgs) (int, error) {
+	if len(p.pos) > 0 {
+		return jobsWrite(c, p)
+	}
 	path := "jobs"
 	if s := p.values["--state"]; s != "" {
 		path += "?" + url.Values{"state": {s}}.Encode()
@@ -170,6 +175,9 @@ type bossRolesView struct {
 // cliRoles runs `roles`: roles with their group and whether revoked, the
 // leased numbered slots and the groups.
 func cliRoles(c Config, p parsedArgs) (int, error) {
+	if len(p.pos) > 0 {
+		return rolesWrite(c, p)
+	}
 	b, err := bossView(c, "roles", p.bool("--json"))
 	if b == nil || err != nil {
 		return ExitOK, err
@@ -227,6 +235,9 @@ type bossSettingsView struct {
 // global boss, the server summary and the secret settings by name (never
 // their values: the server does not send them).
 func cliSettings(c Config, p parsedArgs) (int, error) {
+	if len(p.pos) > 0 {
+		return settingsWrite(c, p)
+	}
 	b, err := bossView(c, "settings", p.bool("--json"))
 	if b == nil || err != nil {
 		return ExitOK, err
