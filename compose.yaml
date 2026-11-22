@@ -33,8 +33,16 @@ services:
       SWITCHBOARD_PUBLIC_URL: ${SWITCHBOARD_PUBLIC_URL:-}
       SWITCHBOARD_DISCORD_USERNAME: ${SWITCHBOARD_DISCORD_USERNAME:-}
       SWITCHBOARD_DISCORD_AVATAR_URL: ${SWITCHBOARD_DISCORD_AVATAR_URL:-}
+      # Terminal hosting (docs/hosting-server.md); all empty means off.
+      SWITCHBOARD_HOSTING: ${SWITCHBOARD_HOSTING:-}
+      SWITCHBOARD_HOSTING_TERMINAL: ${SWITCHBOARD_HOSTING_TERMINAL:-}
+      SWITCHBOARD_HOSTING_TERMINAL_ALLOW: ${SWITCHBOARD_HOSTING_TERMINAL_ALLOW:-}
+      SWITCHBOARD_HOSTING_REMOTE_LISTEN: ${SWITCHBOARD_HOSTING_REMOTE_LISTEN:-}
+      SWITCHBOARD_HOSTING_REMOTE_ALLOW: ${SWITCHBOARD_HOSTING_REMOTE_ALLOW:-}
     ports:
       - "${MAIL_BIND_ADDRESS:-127.0.0.1}:8097:8080"
+      # Node listener; the published address comes from the external .env. Nothing listens in the container unless the remote listener is set.
+      - "${REMOTE_BIND_ADDRESS:-127.0.0.1}:8091:8091"
     volumes:
       - switchboard_data:/data
     read_only: true
