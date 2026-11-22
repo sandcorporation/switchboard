@@ -193,7 +193,7 @@ func TestNodeInviteCLI(t *testing.T) {
 	if err := db.QueryRow(`SELECT code_hash FROM node_invites WHERE name='laptop'`).Scan(&stored); err != nil || strings.Contains(stored, invite) {
 		t.Fatalf("stored %q (%v)", stored, err)
 	}
-	if code, _, stderr = binaryCLI(t, "/data/mail.db", "node", "invite", "laptop"); code != 1 || !strings.Contains(stderr, "container default") {
+	if code, _, stderr = binaryCLI(t, "/data/mail.db", "node", "invite", "laptop"); code != 1 || !strings.Contains(stderr, "SWITCHBOARD_HOSTING is off") {
 		t.Errorf("invite against the container database = %d %s", code, stderr)
 	}
 	if code, _, stderr = binaryCLI(t, dbPath, "node", "invite", "../x"); code != 1 || !strings.Contains(stderr, "invalid name") {
@@ -204,5 +204,35 @@ func TestNodeInviteCLI(t *testing.T) {
 	}
 	if code, _, stderr = binaryCLI(t, dbPath, "node"); code != 2 || !strings.Contains(stderr, "requires --host") {
 		t.Errorf("node without --host = %d %s", code, stderr)
+	}
+}
+
+func TestInstanceDBRefusal(t *testing.T) {
+	t.Parallel()
+	env := func(kv ...string) func(string) string {
+		return func(k string) string {
+			for i := 0; i+1 < len(kv); i += 2 {
+				if kv[i] == k {
+					return kv[i+1]
+				}
+			}
+			return ""
+		}
+	}
+	for _, c := range []struct {
+		name, path string
+		getenv     func(string) string
+		want       string
+	}{
+		{"unset", "", env("SWITCHBOARD_HOSTING", "on"), "DB_PATH is unset"},
+		{"container database, hosting on", "/data/mail.db", env("SWITCHBOARD_HOSTING", "on"), ""},
+		{"container database, hosting off", "/data/mail.db", env(), "SWITCHBOARD_HOSTING is off"},
+		{"container database, hosting other", "/data/mail.db", env("SWITCHBOARD_HOSTING", "no"), "SWITCHBOARD_HOSTING is off"},
+		{"own database", "/srv/pc/switchboard.db", env(), ""},
+	} {
+		err := instanceDBRefusal("node invite", c.path, c.getenv)
+		if (c.want == "") != (err == nil) || (err != nil && !strings.Contains(err.Error(), c.want)) {
+			t.Errorf("%s: %v, want %q", c.name, err, c.want)
+		}
 	}
 }

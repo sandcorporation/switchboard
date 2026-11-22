@@ -142,7 +142,7 @@ With `SWITCHBOARD_ADMIN_PROXY_TOKEN` as the admin gate, whoever reaches the serv
 
 ## Attach a node
 
-On the host (the server container):
+On the host (the server container; `node invite`, `host grant` and the other `host` commands run against its database `/data/mail.db` and are refused with `SWITCHBOARD_HOSTING is off` unless the container has `SWITCHBOARD_HOSTING=on`):
 
 ```sh
 docker compose exec switchboard switchboard node invite pc2
