@@ -473,7 +473,7 @@ func TestTerminalAssetsServedOnlyWithHosting(t *testing.T) {
 				t.Errorf("hosting on: %s = %d (%d bytes)", p, got.code, len(got.body))
 			}
 		}
-		if on != strings.Contains(me.body, `"terminal_assets":["/assets/xterm/xterm.css","/assets/xterm/xterm.js","/assets/xterm/addon-fit.js"],"workspace_assets":["/assets/workspace/workspace.css","/assets/workspace/layout.js","/assets/workspace/side.js","/assets/workspace/term.js","/assets/workspace/workspace.js"]`) {
+		if on != strings.Contains(me.body, `"terminal_assets":["/assets/xterm/xterm.css","/assets/xterm/xterm.js","/assets/xterm/addon-fit.js"],"workspace_assets":["/assets/workspace/workspace.css","/assets/workspace/layout.js","/assets/workspace/side.js","/assets/workspace/files.js","/assets/workspace/term.js","/assets/workspace/workspace.js"]`) {
 			t.Errorf("hosting %v: me = %s", on, me.body)
 		}
 	}

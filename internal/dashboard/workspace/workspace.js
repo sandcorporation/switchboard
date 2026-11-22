@@ -15,19 +15,21 @@
 // requests; one opens as a centre panel (ask:<id>, perm:<id>) drawn by the
 // detail spec of its tab. An open detail takes the column's place; at 600px
 // and below the column is a drawer.
+// Its 파일 view (#447, wsFiles) is the session folder's tree; a file opens as
+// a centre panel (file:<id>:<path>), a read-only text view.
 function wsStart(){
-  const L=wsLayout,S=wsSide,KEY='switchboard.workspace',SKEY=KEY+'.side',DT='application/x-switchboard-panel';
+  const L=wsLayout,S=wsSide,F=wsFiles,KEY='switchboard.workspace',SKEY=KEY+'.side',DT='application/x-switchboard-panel';
   const mq=window.matchMedia('(max-width:600px)');
   const main=document.querySelector('.sc-app-page');
   const box=node('div','','ws');box.id='ws';
   main.before(box);main.hidden=true;
   const html=document.documentElement;html.classList.add('ws-on');
   const scrim=node('div','','ws-scrim');scrim.onclick=()=>{drawer(false);sideDrawer(false)};document.body.append(scrim);
-  const terms=new Map(),wraps=new Map(),titles=new Map(),items=new Map();
+  const terms=new Map(),wraps=new Map(),titles=new Map(),items=new Map(),files=new Map(),trees=new Map();
   let autoFor=null,dragging=false;
   function valid(p){
     if(p.startsWith('menu:'))return visibleTabs().includes(p.slice(5));
-    return (p.startsWith('term:')&&p.length>5)||!!S.itemOf(p);
+    return (p.startsWith('term:')&&p.length>5)||!!S.itemOf(p)||!!F.fileOf(p);
   }
   function load(){
     try{const s=L.parse(localStorage.getItem(KEY)||'',valid);if(s)return s}catch(e){}
@@ -39,6 +41,7 @@ function wsStart(){
   function title(p){
     const m=menuOf(p);
     if(m){const t=$('tab-'+m);return t?t.querySelector('.tab-name').textContent:m}
+    const f=F.fileOf(p);if(f)return F.base(f.path);
     const it=S.itemOf(p);
     if(titles.has(p)||!it)return titles.get(p)||p.slice(5);
     return it.tab==='questions'?'질문':'권한 요청';
@@ -62,6 +65,7 @@ function wsStart(){
   function content(p){
     const m=menuOf(p);
     if(m)return $('panel-'+m);
+    if(F.fileOf(p))return filePane(p);
     return S.itemOf(p)?itemPane(p):term(p.slice(5)).el;
   }
   function wrap(p){
@@ -198,6 +202,7 @@ function wsStart(){
     const m=menuOf(p),w=wraps.get(p);
     if(m)main.append($('panel-'+m));
     else if(S.itemOf(p)){const it=items.get(p);if(it)it.seq++;items.delete(p)}
+    else if(F.fileOf(p)){const f=files.get(p);if(f)f.seq++;files.delete(p)}
     else{const id=p.slice(5),t=terms.get(id);if(t){termStop(t);terms.delete(id)}if(autoFor===id)autoFor=null}
     if(w)w.remove();
     wraps.delete(p);titles.delete(p);
@@ -311,7 +316,8 @@ function wsStart(){
       if(seq!==sessSeq)return;
       if(v){
         termActs(v,out);
-        if(side.sub==='autos')await termAutos(v,out);
+        if(side.sub==='files')out.append(fileTree(v.id));
+        else if(side.sub==='autos')await termAutos(v,out);
         else if(side.sub==='settings')termSettings(v,out);
         else await termHistory(v,out);
       }else out.append(node('p','없음 · 지워졌거나 바뀜','empty'));
@@ -324,6 +330,97 @@ function wsStart(){
     sessBody.replaceChildren(...out.childNodes);
     sideEl.scrollTop=top;
     if(inBody&&!sessBody.contains(document.activeElement))sessTitle.tabIndex=-1,sessTitle.focus({preventScroll:true});
+  }
+  // ---- 파일 (#447) ----
+  // filesGet asks the files API: the listing (JSON) or, with raw, the bytes.
+  // A refusal throws the text for its code.
+  async function filesGet(id,path,raw){
+    let r;
+    try{r=await fetch('/api/admin/'+F.url(id,path,raw),{credentials:'same-origin',headers:{'Accept':raw?'*/*':'application/json'}})}
+    catch(e){throw Error('네트워크 오류 · 연결과 로그인 확인')}
+    if(r.status===401)signedOut();
+    if(r.redirected)throw Error('로그인 필요 · 다시 로그인한 뒤 새로 고침');
+    if(!r.ok){let b='';try{b=await r.text()}catch(e){}throw Error(F.problem(r.status,b))}
+    return raw?new Uint8Array(await r.arrayBuffer()):r.json();
+  }
+  // fileTree is the 파일 view of session id, kept per session so a redraw
+  // of the column keeps what is open; ↻ reads the folder again.
+  function fileTree(id){
+    let t=trees.get(id);
+    if(t)return t.el;
+    const el=node('div','','ws-files'),bar=node('div','','ws-files-bar'),re=node('button','↻','ws-files-re'),list=node('ul','','ws-tree');
+    re.type='button';re.title='다시 읽기';re.setAttribute('aria-label','다시 읽기');
+    list.setAttribute('role','tree');list.setAttribute('aria-label','세션 폴더');
+    bar.append(re);el.append(bar,list);
+    t={el:el,list:list};trees.set(id,t);
+    re.onclick=()=>fillDir(id,'',list);
+    if(termRefused)list.append(node('li','이 주소에서는 파일이 꺼져 있음','msg err'));
+    else fillDir(id,'',list);
+    return el;
+  }
+  // fillDir lists dir of session id into ul: folders first, each opening
+  // in place; a file opens as a centre panel.
+  async function fillDir(id,dir,ul){
+    ul.replaceChildren(node('li','…','empty'));
+    let ls;
+    try{ls=await filesGet(id,dir,false)}
+    catch(e){ul.replaceChildren(node('li',e.message,'msg err'));return}
+    const rows=(ls.entries||[]).map(e=>{
+      const li=node('li','','ws-tree-row'),path=F.join(dir,e.name),dirRow=e.kind==='dir';
+      li.setAttribute('role','treeitem');
+      const b=node('button','','ws-tree-item ws-tree-'+e.kind);b.type='button';b.title=path;
+      b.append(node('span',dirRow?'▸':'','ws-tree-mark'),node('span',e.name,'ws-tree-name'));
+      if(e.kind==='file')b.append(node('span',F.size(e.size),'ws-tree-size'));
+      li.append(b);
+      if(dirRow){
+        li.setAttribute('aria-expanded','false');
+        const sub=node('ul','','ws-tree');sub.setAttribute('role','group');sub.hidden=true;li.append(sub);
+        b.onclick=()=>{
+          const open=sub.hidden;sub.hidden=!open;li.setAttribute('aria-expanded',String(open));b.firstChild.textContent=open?'▾':'▸';
+          if(open)fillDir(id,path,sub);
+        };
+      }else if(e.kind==='file')b.onclick=()=>openFile(id,path);
+      else b.disabled=true;
+      return li;
+    });
+    if(!rows.length)rows.push(node('li','비어 있음','empty'));
+    if(ls.truncated)rows.push(node('li','처음 '+rows.length+'개','empty'));
+    ul.replaceChildren(...rows);
+  }
+  // openFile shows a file of session id's folder as a centre panel.
+  function openFile(id,path){
+    const p=F.pid(id,path);
+    st=L.open(st,p);if(st.max&&st.max!==p)st=L.setMax(st,null);
+    if(files.has(p))drawFile(p);
+    sideDrawer(false);commit();
+  }
+  // filePane is a file panel's element: the path, its size and the text.
+  function filePane(p){
+    let f=files.get(p);if(f)return f.el;
+    const x=F.fileOf(p),el=node('div','','ws-file'),head=node('div','','ws-item-head'),h=node('h2',x.path),meta=node('span','','ws-file-meta'),re=node('button','↻','ws-files-re'),body=node('div','','ws-file-body');
+    re.type='button';re.title='다시 읽기';re.setAttribute('aria-label','다시 읽기');h.title=x.path;
+    head.append(h,meta,re);el.append(head,body);
+    f={el:el,meta:meta,body:body,seq:0};files.set(p,f);
+    re.onclick=()=>drawFile(p);
+    drawFile(p);
+    return el;
+  }
+  async function drawFile(p){
+    const f=files.get(p),x=F.fileOf(p);if(!f||!x)return;
+    const seq=++f.seq;
+    try{
+      const ls=await filesGet(x.session,x.path,false);
+      if(seq!==f.seq)return;
+      f.meta.textContent=F.size(ls.stat.size);
+      if(ls.stat.kind!=='file'){f.body.replaceChildren(node('p','글 파일 아님','empty'));return}
+      if(ls.stat.size>F.TEXT_MAX){f.body.replaceChildren(node('p','너무 큼','empty'));return}
+      const b=await filesGet(x.session,x.path,true);
+      if(seq!==f.seq)return;
+      const t=F.textOf(b.length,b);
+      if(t.why){f.body.replaceChildren(node('p',t.why,'empty'));return}
+      const pre=node('pre','','ws-text');pre.textContent=t.text;pre.tabIndex=0;
+      f.body.replaceChildren(pre);
+    }catch(e){if(seq===f.seq)f.body.replaceChildren(node('p',e.message,'msg err'))}
   }
   // itemPane is an item panel's element, drawn by its tab's detail spec.
   function itemPane(p){

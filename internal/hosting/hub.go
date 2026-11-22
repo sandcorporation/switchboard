@@ -85,6 +85,11 @@ type Hub struct {
 	checkSeq  int64
 	// checking are the scheduled runs whose precheck is under way.
 	checking map[int64]bool
+
+	// files are the file frames sent and not yet answered, by ref
+	// (files.go).
+	files   map[string]*pendingFile
+	fileSeq int64
 }
 
 type nodeConn struct {
@@ -96,6 +101,8 @@ type nodeConn struct {
 	// is the credential ids it holds.
 	takes bool
 	held  map[string]bool
+	// files is whether the node answers file frames (#447).
+	files bool
 }
 
 // NewHub returns the hub over svc. publish may be nil.
@@ -423,6 +430,7 @@ func (h *Hub) nodeSocket(w http.ResponseWriter, r *http.Request, name string) {
 	defer cancel()
 	c := &nodeConn{name: name, out: make(chan wire.NodeFrame, nodeQueue), cancel: cancel}
 	c.held, c.takes = parseHeld(r.Header.Values(config.HeaderPrefix + config.NodeCredentialsHeaderName))
+	c.files = r.Header.Get(config.HeaderPrefix+config.NodeFilesHeaderName) == "1"
 	go func() {
 		for {
 			select {
@@ -473,6 +481,7 @@ func (h *Hub) attach(c *nodeConn) {
 	if old, ok := h.conns[c.name]; ok {
 		old.cancel()
 		h.dropChecksLocked(old)
+		h.dropFilesLocked(old)
 	}
 	h.conns[c.name] = c
 	delete(h.away, c.name)
@@ -503,6 +512,7 @@ func (h *Hub) detach(c *nodeConn) {
 	delete(h.conns, c.name)
 	h.away[c.name] = h.svc.clock().UnixMilli()
 	h.dropChecksLocked(c)
+	h.dropFilesLocked(c)
 	h.mu.Unlock()
 	if err := h.svc.nodeLeft(c.name); err != nil {
 		log.Printf("hosting: node %s left: %v", c.name, err)
@@ -648,6 +658,10 @@ func (h *Hub) receive(c *nodeConn, f wire.NodeFrame) {
 		if f.CheckResult != nil {
 			h.checkAnswered(c, *f.CheckResult)
 		}
+	case wire.NodeFileResultType:
+		if f.FileResult != nil {
+			h.fileAnswered(c, *f.FileResult)
+		}
 	}
 }
 
@@ -693,7 +707,7 @@ func (h *Hub) AdminTerminalsAPI(w http.ResponseWriter, r *http.Request, rest str
 		h.accountLimitAPI(w, r)
 		return true
 	}
-	for _, sub := range []string{"/ticket", "/socket", "/log", "/events"} {
+	for _, sub := range []string{"/ticket", "/socket", "/log", "/events", "/files", "/files/raw"} {
 		id, ok := strings.CutSuffix(rest, sub)
 		if !ok {
 			continue
@@ -707,6 +721,10 @@ func (h *Hub) AdminTerminalsAPI(w http.ResponseWriter, r *http.Request, rest str
 			h.terminalSocket(w, r, id)
 		case sub == "/events":
 			h.eventsAPI(w, r, id)
+		case sub == "/files":
+			h.filesAPI(w, r, id)
+		case sub == "/files/raw":
+			h.rawAPI(w, r, id)
 		default:
 			h.logAPI(w, r, id)
 		}

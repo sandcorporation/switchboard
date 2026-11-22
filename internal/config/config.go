@@ -35,6 +35,12 @@ const VersionHeaderName = "Version"
 // no credentials and the node's sessions use the profiles their records name.
 const NodeCredentialsHeaderName = "Node-Credentials"
 
+// NodeFilesHeaderName is HeaderPrefix + this on GET /api/node/socket
+// (#447): a node that answers file frames sends it ("1"). The host sends
+// file frames only to such a node; the dashboard shows files as not
+// supported on the others.
+const NodeFilesHeaderName = "Node-Files"
+
 // CLIMinName is SWITCHBOARD_CLI_MIN without the prefix: the minimum client
 // major.minor (#308), read with EnvFrom. Unset or invalid: the server's own.
 const CLIMinName = "CLI_MIN"
