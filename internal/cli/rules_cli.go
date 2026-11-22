@@ -346,7 +346,7 @@ func rulesEdit(c Config, id int64, p parsedArgs, out io.Writer) (int, error) {
 		return 0, fmt.Errorf("rule #%d: only an admin or a global boss edits rules", id)
 	}
 	q := wire.RuleRequest{Kind: old.Kind, Text: old.Text, Topic: old.Topic, Scope: *old.Scope, Group: old.Group, Sources: old.Sources,
-		SourceText: old.SourceText, Replace: []int64{id}, Device: old.Device, IdempotencyKey: p.values["--idem"]}
+		SourceText: old.SourceText, Replace: []int64{id}, Alongside: true, Device: old.Device, IdempotencyKey: p.values["--idem"]}
 	if len(p.pos) == 3 {
 		q.Text = p.pos[2]
 	}

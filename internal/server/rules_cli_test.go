@@ -127,3 +127,28 @@ func TestRulesCLI(t *testing.T) {
 		t.Fatalf("usage error: %+v", r)
 	}
 }
+
+// rules edit replaces only the row it names; the other rows in force on the
+// same scope and topic stay in force.
+func TestRulesEditReplacesOnlyOne(t *testing.T) {
+	t.Parallel()
+	h := newCLIHarnessWith(t, func(s *Server) { s.bossRoles = map[string]bool{"a": true} })
+	h.configure([]string{"--profile", "boss"}, "a")
+	boss := []string{"DB_PATH=", "SWITCHBOARD_PROFILE=boss"}
+	h.mustRun(boss, "rules", "add", "--kind", "tip", "--scope", "service:b", "--topic", "ci", "--new-topic", "--source", "x", "one")
+	h.mustRun(boss, "rules", "add", "--kind", "tip", "--scope", "service:b", "--topic", "ci", "--source", "x", "--alongside", "two")
+	h.mustRun(boss, "rules", "add", "--kind", "tip", "--scope", "service:b", "--topic", "ci", "--source", "x", "--alongside", "three")
+	if out := h.mustRun(boss, "rules", "edit", "2", "two, edited"); !strings.Contains(out, "#4 요령 ci") {
+		t.Fatalf("edit: %q", out)
+	}
+	h.mustRun(boss, "rules", "edit", "1", "--alongside", "one, edited")
+	out := h.mustRun(boss, "rules", "list", "--kind", "tip", "--topic", "ci")
+	for _, want := range []string{"#3 ", "#4 ", "#5 "} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("list lacks %q: %q", want, out)
+		}
+	}
+	if strings.Contains(out, "#1 ") || strings.Contains(out, "#2 ") {
+		t.Fatalf("replaced rows still listed: %q", out)
+	}
+}

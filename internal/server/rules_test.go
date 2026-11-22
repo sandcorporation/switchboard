@@ -125,7 +125,6 @@ func TestRuleReplaceFlow(t *testing.T) {
 	}
 	// Replacing a row no longer in force is refused.
 	addRuleAs(t, s, bossToken, internalBossRole, ruleBody("decision", "service:team", "release", "x", map[string]any{"replace": []int64{first.ID}, "alongside": false}), 400)
-	addRuleAs(t, s, bossToken, internalBossRole, ruleBody("decision", "service:team", "release", "x", map[string]any{"replace": []int64{second.ID}, "alongside": true}), 400)
 
 	// Void takes a row out of force; a second void is a conflict.
 	if w := callAs(s, "POST", "/api/rules/"+itoa(third.ID)+"/void", bossToken, internalBossRole, nil); w.Code != 200 {

@@ -1766,7 +1766,7 @@ function ruleEditForm(r){
   f.append(node('h3','고치기','sechead'),text,when3,src,row,msg);
   f.onsubmit=e=>{
     e.preventDefault();
-    postRule(Object.assign(ruleSourceBody(src.value),{kind:r.kind,text:text.value,topic:r.topic,scope:r.scope,group:r.group||'',device:r.device||'',match:ruleMatchBody(wt.value,wc.value,wp.value),replace:[r.id]}),msg,n=>{loadRules();openDetail('rules',String(n.id))});
+    postRule(Object.assign(ruleSourceBody(src.value),{kind:r.kind,text:text.value,topic:r.topic,scope:r.scope,group:r.group||'',device:r.device||'',match:ruleMatchBody(wt.value,wc.value,wp.value),replace:[r.id],alongside:true}),msg,n=>{loadRules();openDetail('rules',String(n.id))});
   };
   off.onclick=async()=>{
     if(!confirm('#'+r.id+' 줄을 무효로 돌린다. 되돌릴 수 없다.'))return;
