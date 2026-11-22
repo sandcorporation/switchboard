@@ -15,6 +15,7 @@ import (
 	"github.com/sandcorporation/switchboard/internal/mail"
 	"github.com/sandcorporation/switchboard/internal/presence"
 	"github.com/sandcorporation/switchboard/internal/reports"
+	"github.com/sandcorporation/switchboard/internal/rules"
 	"github.com/sandcorporation/switchboard/internal/store"
 	"github.com/sandcorporation/switchboard/internal/wire"
 )
@@ -96,6 +97,31 @@ func (s *Server) insight() *insight.Service {
 // identity rules, with the base resolver the answered rule compares.
 func (s *Server) reports() *reports.Service {
 	return reports.New(s.db, s.now, s.ids(), insight.NewBaseResolver(s.db).Of)
+}
+
+// rules is the rules ledger over this server's database and clock, with
+// identity's groups and asks' answered questions passed in (#406).
+func (s *Server) rules() *rules.Service {
+	ids := s.ids()
+	return rules.New(s.db, s.now, rules.Hooks{
+		GroupOf: func(role string) string { g, _ := ids.GroupOf(role); return g.Prefix },
+		Answers: func(qs []string) ([]wire.Decision, error) { return s.asks().DecisionsByID(qs) },
+	})
+}
+
+// ruleCaller is p as the rules ledger sees it: a global boss reads in full
+// and writes; any other role reads its own group's rows that apply to it.
+func (s *Server) ruleCaller(p identity.Principal) rules.Caller {
+	ids := s.ids()
+	base := p.Base
+	if base == "" {
+		base = p.Role
+	}
+	if ids.IsGlobalBoss(p) {
+		return rules.Caller{Role: base, Full: true}
+	}
+	g, _ := ids.GroupOf(base)
+	return rules.Caller{Role: base, Group: g.Prefix}
 }
 
 // jobs is the job ledger over this server's database, clock and identity
