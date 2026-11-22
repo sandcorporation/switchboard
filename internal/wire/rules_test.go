@@ -33,3 +33,28 @@ func TestRuleRequestMultiLine(t *testing.T) {
 		t.Fatal("too long accepted")
 	}
 }
+
+// Conditions: checked when a row goes in, matched on a tool call.
+func TestRuleMatch(t *testing.T) {
+	if (RuleMatch{Command: "("}).Check() == nil || (RuleMatch{Tool: "a b"}).Check() == nil || (RuleMatch{Path: "a/***"}).Check() == nil {
+		t.Fatal("bad conditions accepted")
+	}
+	for _, c := range []struct {
+		m    RuleMatch
+		call ToolCall
+		want bool
+	}{
+		{RuleMatch{Tool: "mcp__*"}, ToolCall{Tool: "mcp__x__y"}, true},
+		{RuleMatch{Tool: "Bash"}, ToolCall{Tool: "BashOutput"}, false},
+		{RuleMatch{Path: "**"}, ToolCall{Path: "/a/b"}, true},
+		{RuleMatch{Path: "*.go"}, ToolCall{Path: "a/b.go"}, false},
+		{RuleMatch{Path: "a/**/*.go"}, ToolCall{Path: "a/b.go"}, true},
+		{RuleMatch{Path: "a/?.go"}, ToolCall{Path: "a/bc.go"}, false},
+		{RuleMatch{Command: "rm -rf"}, ToolCall{Tool: "Edit"}, false},
+		{RuleMatch{}, ToolCall{Tool: "Bash"}, false},
+	} {
+		if got := c.m.Hits(c.call); got != c.want {
+			t.Errorf("%+v on %+v: %v", c.m, c.call, got)
+		}
+	}
+}

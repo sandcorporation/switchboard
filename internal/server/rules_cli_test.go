@@ -93,6 +93,27 @@ func TestRulesCLI(t *testing.T) {
 	if out = h.mustRun(worker, "rules", "show", "5"); out != "#5 요령 배포\n\ngreen first\n- then tag\n- then notes" {
 		t.Fatalf("multi-line show: %q", out)
 	}
+	// #408 T2: conditions on add and edit, mine, hit and the count in show.
+	out = h.mustRun(boss, "rules", "add", "--kind", "decision", "--scope", "service:b", "--topic", "release", "--source", "x", "--when-tool", "Bash", "--when-command", "git push .*--force", "no force push")
+	if !strings.Contains(out, "#6 결정 release") || !strings.Contains(out, "걸림 도구 Bash · 명령 /git push .*--force/") {
+		t.Fatalf("add with conditions: %q", out)
+	}
+	if r := h.run(boss, "rules", "add", "--kind", "tip", "--scope", "service:b", "--topic", "release", "--source", "x", "--alongside", "--when-command", "(", "y"); r.code != 2 || !strings.Contains(r.stderr, "match command") {
+		t.Fatalf("bad regexp: %+v", r)
+	}
+	out = h.mustRun(boss, "rules", "edit", "6", "--when-command", "", "--when-path", "**/deploy/*", "no force push, ever")
+	if !strings.Contains(out, "#7 결정 release") || !strings.Contains(out, "걸림 도구 Bash · 경로 **/deploy/*") || !strings.Contains(out, "#6 대체됨") {
+		t.Fatalf("edit: %q", out)
+	}
+	if out = h.mustRun(worker, "rules", "mine"); !strings.Contains(out, "#7 결정 release no force push, ever [도구 Bash · 경로 **/deploy/*]") || !strings.Contains(out, "#5 요령 배포 green first") {
+		t.Fatalf("mine: %q", out)
+	}
+	if out = h.mustRun(worker, "rules", "hit", "7,6,3"); out != "센 줄 #7" {
+		t.Fatalf("hit: %q", out)
+	}
+	if out = h.mustRun(boss, "rules", "show", "7"); !strings.Contains(out, "걸린 수 1") {
+		t.Fatalf("show hits: %q", out)
+	}
 	r = h.run(boss, "rules", "add", "--kind", "tip", "--scope", "all", "--topic", "배 포", "--source", "x", "y")
 	lines := strings.Split(strings.TrimSpace(r.stderr), "\n")
 	if r.code != 2 || len(lines) < 2 || !strings.Contains(lines[len(lines)-1], "topic \"배 포\"") || !strings.Contains(lines[0], "--help") {

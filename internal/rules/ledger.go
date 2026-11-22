@@ -23,6 +23,8 @@ import (
 //	GET    {id}          one row; for a full caller with its history and answers
 //	POST   {id}/void     void a row in force (full callers)
 //	GET    topics        the topics, with the rows in force c sees
+//	GET    mine          the rows in force reaching c's role, for its session hook (ETag)
+//	POST   hits          count hits of c's rows ({"ids":[…]})
 //	GET    tags          the service and role tags (full callers)
 //	PUT    tags/services set a service's tags (full callers)
 //	POST   tags/roles    change a role's tags (full callers)
@@ -35,6 +37,10 @@ func (s *Service) API(w http.ResponseWriter, r *http.Request, c Caller, rest str
 		s.addAPI(w, r, c)
 	case rest == "topics" && r.Method == http.MethodGet:
 		s.topicsAPI(w, c)
+	case rest == "mine" && r.Method == http.MethodGet:
+		s.mineAPI(w, r, c)
+	case rest == "hits" && r.Method == http.MethodPost:
+		s.hitsAPI(w, r, c)
 	case rest == "tags" || strings.HasPrefix(rest, "tags/"):
 		s.tagsAPI(w, r, c, strings.TrimPrefix(strings.TrimPrefix(rest, "tags"), "/"))
 	default:
@@ -218,6 +224,13 @@ func (s *Service) listAPI(w http.ResponseWriter, r *http.Request, c Caller) {
 			return
 		}
 	}
+	var hc map[int64]hitCount
+	if !limited {
+		if hc, err = s.hitCounts(); err != nil {
+			http.Error(w, "query failed", http.StatusInternalServerError)
+			return
+		}
+	}
 	out := wire.RuleList{Rules: []wire.Rule{}, Full: !limited}
 	for _, rw := range rows {
 		if limited && !rd.sees(rw) {
@@ -229,7 +242,7 @@ func (s *Service) listAPI(w http.ResponseWriter, r *http.Request, c Caller) {
 		if limited {
 			out.Rules = append(out.Rules, brief(rw))
 		} else {
-			out.Rules = append(out.Rules, rw.Rule)
+			out.Rules = append(out.Rules, withHits(rw.Rule, hc))
 		}
 	}
 	writeJSON(w, out)
@@ -304,7 +317,12 @@ func (s *Service) showAPI(w http.ResponseWriter, r *http.Request, c Caller, id i
 		writeJSON(w, wire.RuleDetail{Rule: brief(rw)})
 		return
 	}
-	d := wire.RuleDetail{Rule: rw.Rule}
+	hc, err := s.hitCounts()
+	if err != nil {
+		http.Error(w, "query failed", http.StatusInternalServerError)
+		return
+	}
+	d := wire.RuleDetail{Rule: withHits(rw.Rule, hc)}
 	if d.History, err = s.history(rw); err != nil {
 		http.Error(w, "query failed", http.StatusInternalServerError)
 		return

@@ -128,8 +128,11 @@ func (s RuleScope) Normal() (RuleScope, error) {
 	return RuleScope{Kind: s.Kind, Values: vals}, nil
 }
 
-// RuleMatch is when a rule is hit (#406 ②; stored, not used yet): a tool
-// name, a command text pattern, a file path pattern. Empty is none.
+// RuleMatch is when a rule is hit (#408 T2): a tool name (exact, or a
+// pattern where * is any text), a command text (a Go regular expression,
+// found anywhere in the text) and a file path (a glob: * is any text but
+// '/', ** any text, ? one character but '/'). Every condition set must hold;
+// empty is none.
 type RuleMatch struct {
 	Tool    string `json:"tool,omitempty"`
 	Command string `json:"command,omitempty"`
@@ -138,6 +141,127 @@ type RuleMatch struct {
 
 // Empty reports whether no condition is set.
 func (m RuleMatch) Empty() bool { return m == RuleMatch{} }
+
+// maxMatchLen is the longest condition, in bytes.
+const maxMatchLen = 500
+
+// Check checks the conditions: a tool pattern without spaces, a command
+// that compiles as a regular expression, a path glob without a run of three
+// stars.
+func (m RuleMatch) Check() error {
+	for _, f := range []struct{ name, v string }{{"tool", m.Tool}, {"command", m.Command}, {"path", m.Path}} {
+		if len(f.v) > maxMatchLen {
+			return fmt.Errorf("match %s: up to %d bytes", f.name, maxMatchLen)
+		}
+	}
+	if strings.ContainsAny(m.Tool, " \t\n") {
+		return fmt.Errorf("match tool %q: a tool name, or a pattern with *, without spaces", m.Tool)
+	}
+	if _, err := regexp.Compile(m.Command); err != nil {
+		return fmt.Errorf("match command: %v", err)
+	}
+	if strings.Contains(m.Path, "***") || strings.ContainsAny(m.Path, "\n\x00") {
+		return fmt.Errorf("match path %q: a glob (*, ** and ?)", m.Path)
+	}
+	return nil
+}
+
+// ToolCall is what a session is about to do, as a rule's conditions see it:
+// the tool's name, its command text (a shell command) and the file path it
+// touches. Empty fields are absent.
+type ToolCall struct {
+	Tool    string `json:"tool"`
+	Command string `json:"command,omitempty"`
+	Path    string `json:"path,omitempty"`
+}
+
+// Hits reports whether call meets every condition set. A condition on a
+// field the call lacks does not hold; with no condition it is false (such a
+// rule goes in the directive footer, not into tool calls). A condition that
+// does not compile does not hold.
+func (m RuleMatch) Hits(call ToolCall) bool {
+	if m.Empty() {
+		return false
+	}
+	if m.Tool != "" && !globRE(m.Tool, false).MatchString(call.Tool) {
+		return false
+	}
+	if m.Command != "" {
+		re, err := regexp.Compile(m.Command)
+		if err != nil || call.Command == "" || !re.MatchString(call.Command) {
+			return false
+		}
+	}
+	if m.Path != "" && (call.Path == "" || !globRE(m.Path, true).MatchString(call.Path)) {
+		return false
+	}
+	return true
+}
+
+// globRE turns a pattern into an anchored regular expression. For a path,
+// * stops at '/', ** does not, "**/" is also no directory at all, and ?
+// is one character but '/'; otherwise * is any text.
+func globRE(p string, path bool) *regexp.Regexp {
+	var b strings.Builder
+	b.WriteString("^")
+	for i := 0; i < len(p); {
+		switch {
+		case path && strings.HasPrefix(p[i:], "**/"):
+			b.WriteString("(?:.*/)?")
+			i += 3
+		case path && strings.HasPrefix(p[i:], "**"):
+			b.WriteString(".*")
+			i += 2
+		case p[i] == '*' && path:
+			b.WriteString("[^/]*")
+			i++
+		case p[i] == '*':
+			b.WriteString(".*")
+			i++
+		case p[i] == '?' && path:
+			b.WriteString("[^/]")
+			i++
+		default:
+			r, n := utf8.DecodeRuneInString(p[i:])
+			b.WriteString(regexp.QuoteMeta(string(r)))
+			i += n
+		}
+	}
+	b.WriteString("$")
+	return regexp.MustCompile(b.String())
+}
+
+// RuleHint is one row of GET /api/rules/mine: a row in force reaching the
+// caller with no device, as a session hook needs it.
+type RuleHint struct {
+	ID      int64      `json:"id"`
+	Kind    string     `json:"kind"`
+	Topic   string     `json:"topic"`
+	Summary string     `json:"summary"` // the text's first line
+	Match   *RuleMatch `json:"match,omitempty"`
+}
+
+// RuleHints is GET /api/rules/mine; the response's ETag names this set.
+type RuleHints struct {
+	Rules []RuleHint `json:"rules"`
+}
+
+// RuleHitsRequest is POST /api/rules/hits: the rows a session hit.
+type RuleHitsRequest struct {
+	IDs []int64 `json:"ids"`
+}
+
+// RuleHitsResult is its answer: the rows counted (the others were outside
+// the caller's rows or repeated).
+type RuleHitsResult struct {
+	Counted []int64 `json:"counted"`
+}
+
+// FirstLine is a rule text's summary line.
+func FirstLine(text string) string {
+	line, _, _ := strings.Cut(text, "\n")
+	return strings.TrimSpace(line)
+}
 
 // Rule is one row of the ledger. A role that reads only its own scope (not
 // an admin, not a global boss) gets ID, Kind, Text and Topic only; the
@@ -157,6 +281,8 @@ type Rule struct {
 	ReplacedBy int64      `json:"replaced_by,omitempty"`
 	Device     string     `json:"device,omitempty"` // the mechanism that enforces it; such a rule is not put into sessions
 	Match      *RuleMatch `json:"match,omitempty"`
+	Hits       int64      `json:"hits,omitempty"`        // times sessions hit it (full readers)
+	LastHitAt  *time.Time `json:"last_hit_at,omitempty"` // the last hit (full readers)
 	Author     string     `json:"author,omitempty"`
 	CreatedAt  *time.Time `json:"created_at,omitempty"`
 	VoidedBy   string     `json:"voided_by,omitempty"`
@@ -226,6 +352,16 @@ func (q *RuleRequest) Check() error {
 	}
 	if len(q.Device) > 200 {
 		return errors.New("device: up to 200 bytes")
+	}
+	if q.Match != nil {
+		m := RuleMatch{Tool: strings.TrimSpace(q.Match.Tool), Command: q.Match.Command, Path: strings.TrimSpace(q.Match.Path)}
+		if err := m.Check(); err != nil {
+			return err
+		}
+		q.Match = &m
+		if m.Empty() {
+			q.Match = nil
+		}
 	}
 	return nil
 }

@@ -3,7 +3,7 @@
 // service's roles inherit; and who reads which rows.
 //
 // Everything about rules lives here: the tables rules, rule_topics,
-// service_tags and role_tags are read and written only by this package (the
+// rule_hits, service_tags and role_tags are read and written only by this package (the
 // boundary test keeps it so). What the ledger needs from other packages is
 // passed in: the caller (Caller, built by the server from identity: an
 // admin or a global boss reads in full and writes; any other role reads its

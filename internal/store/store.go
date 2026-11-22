@@ -173,7 +173,17 @@ func Init(db *sql.DB) error {
 	if e = migrateHostGrants(db); e != nil {
 		return e
 	}
-	return migrateRules(db)
+	if e = migrateRules(db); e != nil {
+		return e
+	}
+	return migrateRuleHits(db)
+}
+
+// migrateRuleHits adds rule_hits (#408 T2, internal/rules): per rule row,
+// how many times sessions hit it and when last.
+func migrateRuleHits(db *sql.DB) error {
+	_, err := db.Exec(`CREATE TABLE IF NOT EXISTS rule_hits(rule_id INTEGER PRIMARY KEY, hits INTEGER NOT NULL DEFAULT 0, last_at TEXT NOT NULL DEFAULT '')`)
+	return err
 }
 
 // migrateRules adds the rules ledger (#406 ①, internal/rules): rules (a

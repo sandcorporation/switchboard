@@ -51,6 +51,25 @@ func cliRules(c Config, p parsedArgs, out io.Writer) (int, error) {
 			return 0, err
 		}
 		return rulesAdd(c, p, out)
+	case "edit":
+		if len(p.pos) != 2 && len(p.pos) != 3 {
+			return 0, usagef("rules edit needs a rule number and, to change it, the new text as one argument")
+		}
+		id, err := strconv.ParseInt(strings.TrimPrefix(p.pos[1], "#"), 10, 64)
+		if err != nil || id <= 0 {
+			return 0, usagef("rules edit: invalid rule number %q", p.pos[1])
+		}
+		return rulesEdit(c, id, p, out)
+	case "mine":
+		if err := nargs(1, "mine takes no argument"); err != nil {
+			return 0, err
+		}
+		return rulesMine(c, p, out)
+	case "hit":
+		if err := nargs(2, "hit needs rule numbers (N[,N])"); err != nil {
+			return 0, err
+		}
+		return rulesHit(c, p, out)
 	case "topics":
 		if err := nargs(1, "topics takes no argument"); err != nil {
 			return 0, err
@@ -59,7 +78,7 @@ func cliRules(c Config, p parsedArgs, out io.Writer) (int, error) {
 	case "tag":
 		return rulesTag(c, p, out)
 	}
-	return 0, usagef("rules: unknown action %q (list, show, add, void, topics or tag)", action)
+	return 0, usagef("rules: unknown action %q (list, show, add, edit, void, topics, tag, mine or hit)", action)
 }
 
 // rulesCall is slotCall that hands back a non-2xx status and body instead of
@@ -195,6 +214,12 @@ func rulesShow(c Config, id int64, p parsedArgs, out io.Writer) (int, error) {
 	if d.Device != "" {
 		fmt.Fprintf(out, "장치 %s\n", d.Device)
 	}
+	if m := ruleMatchText(d.Match); m != "" {
+		fmt.Fprintf(out, "걸림 %s\n", m)
+	}
+	if d.Hits > 0 {
+		fmt.Fprintf(out, "걸린 수 %d (마지막 %s)\n", d.Hits, ruleStamp(d.LastHitAt))
+	}
 	fmt.Fprintf(out, "적은 이 %s %s\n", d.Author, ruleStamp(d.CreatedAt))
 	if d.VoidedBy != "" {
 		fmt.Fprintf(out, "무효로 돌린 이 %s %s\n", d.VoidedBy, ruleStamp(d.VoidedAt))
@@ -272,8 +297,66 @@ func rulesAdd(c Config, p parsedArgs, out io.Writer) (int, error) {
 			return 0, err
 		}
 	}
+	q.Match = ruleMatchFlags(p, nil)
+	return postRule(c, q, "add", p, out)
+}
+
+// ruleMatchFlags is base (nil for none) with the --when-* flags given; an
+// empty value clears that condition.
+func ruleMatchFlags(p parsedArgs, base *wire.RuleMatch) *wire.RuleMatch {
+	var m wire.RuleMatch
+	if base != nil {
+		m = *base
+	}
+	for _, f := range []struct {
+		flag string
+		dst  *string
+	}{{"--when-tool", &m.Tool}, {"--when-command", &m.Command}, {"--when-path", &m.Path}} {
+		if v, ok := p.values[f.flag]; ok {
+			*f.dst = v
+		}
+	}
+	if m.Empty() {
+		return nil
+	}
+	return &m
+}
+
+// rulesEdit is `rules edit N [TEXT]`: a new row replacing N with its kind,
+// topic, scope, group, device, conditions and sources, changed by TEXT,
+// --when-*, --device and --source.
+func rulesEdit(c Config, id int64, p parsedArgs, out io.Writer) (int, error) {
+	b, err := slotCall(c, "GET", "/api/rules/"+strconv.FormatInt(id, 10), nil)
+	if err != nil {
+		return 0, err
+	}
+	var old wire.RuleDetail
+	if err = json.Unmarshal(b, &old); err != nil {
+		return 0, fmt.Errorf("unexpected response from server: %v", err)
+	}
+	if old.Scope == nil {
+		return 0, fmt.Errorf("rule #%d: only an admin or a global boss edits rules", id)
+	}
+	q := wire.RuleRequest{Kind: old.Kind, Text: old.Text, Topic: old.Topic, Scope: *old.Scope, Group: old.Group, Sources: old.Sources,
+		SourceText: old.SourceText, Replace: []int64{id}, Device: old.Device, IdempotencyKey: p.values["--idem"]}
+	if len(p.pos) == 3 {
+		q.Text = p.pos[2]
+	}
+	if v, ok := p.values["--device"]; ok {
+		q.Device = v
+	}
+	if vals := p.multi["--source"]; len(vals) > 0 {
+		q.Sources, q.SourceText = ruleSources(vals)
+	}
+	q.Match = ruleMatchFlags(p, old.Match)
+	return postRule(c, q, "edit", p, out)
+}
+
+// postRule posts q for rules add or edit and prints the row, or on a 409
+// the rows in force and the flags to add.
+func postRule(c Config, q wire.RuleRequest, action string, p parsedArgs, out io.Writer) (int, error) {
 	if err := q.Check(); err != nil {
-		return 0, usagef("rules add: %v", err)
+		return 0, usagef("rules %s: %v", action, err)
 	}
 	status, b, err := rulesCall(c, "POST", "/api/rules", q)
 	if err != nil {
@@ -307,6 +390,9 @@ func rulesAdd(c Config, p parsedArgs, out io.Writer) (int, error) {
 		return 0, fmt.Errorf("unexpected response from server: %v", err)
 	}
 	fmt.Fprintln(out, ruleLine(r))
+	if m := ruleMatchText(r.Match); m != "" {
+		fmt.Fprintln(out, "  걸림 "+m)
+	}
 	for _, old := range r.Replaces {
 		fmt.Fprintf(out, "  #%d 대체됨\n", old)
 	}
@@ -452,4 +538,80 @@ func rulesTag(c Config, p parsedArgs, out io.Writer) (int, error) {
 		return ExitOK, nil
 	}
 	return 0, usagef("rules tag: unknown action %q (list, set or role)", p.pos[1])
+}
+
+// ruleMatchText is a row's conditions: 도구 T · 명령 /RE/ · 경로 GLOB.
+func ruleMatchText(m *wire.RuleMatch) string {
+	if m == nil {
+		return ""
+	}
+	var parts []string
+	if m.Tool != "" {
+		parts = append(parts, "도구 "+m.Tool)
+	}
+	if m.Command != "" {
+		parts = append(parts, "명령 /"+m.Command+"/")
+	}
+	if m.Path != "" {
+		parts = append(parts, "경로 "+m.Path)
+	}
+	return strings.Join(parts, " · ")
+}
+
+// rulesMine is `rules mine`: the rows a session hook of this role matches
+// tool calls against (GET /api/rules/mine), one per line with its
+// conditions; a row without one goes into directive mail instead.
+func rulesMine(c Config, p parsedArgs, out io.Writer) (int, error) {
+	b, err := slotCall(c, "GET", "/api/rules/mine", nil)
+	if err != nil {
+		return 0, err
+	}
+	if p.bool("--json") {
+		return printRaw(out, b)
+	}
+	var h wire.RuleHints
+	if err = json.Unmarshal(b, &h); err != nil {
+		return 0, fmt.Errorf("unexpected response from server: %v", err)
+	}
+	if len(h.Rules) == 0 {
+		fmt.Fprintln(out, "규칙 없음")
+	}
+	for _, r := range h.Rules {
+		line := fmt.Sprintf("#%d %s %s %s", r.ID, ruleKind(r.Kind), r.Topic, r.Summary)
+		if m := ruleMatchText(r.Match); m != "" {
+			line += " [" + m + "]"
+		}
+		fmt.Fprintln(out, line)
+	}
+	return ExitOK, nil
+}
+
+// rulesHit is `rules hit N[,N]`: counts a hit of these rows (POST
+// /api/rules/hits); rows outside the role's are left out.
+func rulesHit(c Config, p parsedArgs, out io.Writer) (int, error) {
+	ids, err := parseRuleIDs(p.pos[1])
+	if err != nil {
+		return 0, err
+	}
+	b, err := slotCall(c, "POST", "/api/rules/hits", wire.RuleHitsRequest{IDs: ids})
+	if err != nil {
+		return 0, err
+	}
+	if p.bool("--json") {
+		return printRaw(out, b)
+	}
+	var res wire.RuleHitsResult
+	if err = json.Unmarshal(b, &res); err != nil {
+		return 0, fmt.Errorf("unexpected response from server: %v", err)
+	}
+	parts := make([]string, len(res.Counted))
+	for i, id := range res.Counted {
+		parts[i] = "#" + strconv.FormatInt(id, 10)
+	}
+	if len(parts) == 0 {
+		fmt.Fprintln(out, "센 줄 없음")
+	} else {
+		fmt.Fprintln(out, "센 줄 "+strings.Join(parts, " "))
+	}
+	return ExitOK, nil
 }
