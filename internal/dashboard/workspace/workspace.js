@@ -16,7 +16,8 @@
 // detail spec of its tab. An open detail takes the column's place; at 600px
 // and below the column is a drawer.
 // Its 파일 view (#447, wsFiles) is the session folder's tree; a file opens as
-// a centre panel (file:<id>:<path>), a read-only text view.
+// a centre panel (file:<id>:<path>): by extension an <img>, <audio> or
+// <video> streaming /files/raw (Range seeks), else a read-only text view.
 function wsStart(){
   const L=wsLayout,S=wsSide,F=wsFiles,KEY='switchboard.workspace',SKEY=KEY+'.side',DT='application/x-switchboard-panel';
   const mq=window.matchMedia('(max-width:600px)');
@@ -413,6 +414,16 @@ function wsStart(){
       if(seq!==f.seq)return;
       f.meta.textContent=F.size(ls.stat.size);
       if(ls.stat.kind!=='file'){f.body.replaceChildren(node('p','글 파일 아님','empty'));return}
+      const kind=F.kindOf(x.path);
+      if(kind!=='text'){
+        // The browser streams the bytes itself from /files/raw: Range (206)
+        // seeks audio and video; an svg is an <img>, never run.
+        const m=document.createElement(kind==='image'?'img':kind);
+        m.className='ws-media ws-'+kind;m.src='/api/admin/'+F.url(x.session,x.path,true,seq);
+        if(kind==='image')m.alt=F.base(x.path);else{m.controls=true;m.preload='metadata'}
+        m.onerror=()=>{if(seq===f.seq)f.body.replaceChildren(node('p','열 수 없음','msg err'))};
+        f.body.replaceChildren(m);return;
+      }
       if(ls.stat.size>F.TEXT_MAX){f.body.replaceChildren(node('p','너무 큼','empty'));return}
       const b=await filesGet(x.session,x.path,true);
       if(seq!==f.seq)return;

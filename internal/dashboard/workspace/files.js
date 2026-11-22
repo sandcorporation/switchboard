@@ -23,8 +23,8 @@ function join(dir,name){return dir?dir+'/'+name:name}
 // base is a path's last segment.
 function base(path){const i=path.lastIndexOf('/');return i<0?path:path.slice(i+1)}
 // url is the files API path (after /api/admin/) of session's path; raw for
-// the content.
-function url(session,path,raw){return 'terminals/'+encodeURIComponent(session)+'/files'+(raw?'/raw':'')+'?path='+encodeURIComponent(path)}
+// the content; v makes a re-read a new URL (a media element caches by it).
+function url(session,path,raw,v){return 'terminals/'+encodeURIComponent(session)+'/files'+(raw?'/raw':'')+'?path='+encodeURIComponent(path)+(v?'&v='+v:'')}
 // problem is the text for a failed files request: the server's code
 // ({code, error} JSON) or the status.
 function problem(status,body){
@@ -51,6 +51,17 @@ function textOf(size,bytes){
   try{return {text:new TextDecoder('utf-8',{fatal:true}).decode(b)}}
   catch(e){return {why:'글 파일 아님'}}
 }
+// kindOf is how a file's panel shows it, by extension: image, audio, video
+// or text (anything else is tried as text). Mirrors the server's content-type
+// allow list (hosting.FileContentType).
+const KINDS={png:'image',jpg:'image',jpeg:'image',gif:'image',webp:'image',svg:'image',
+  mp3:'audio',m4a:'audio',wav:'audio',ogg:'audio',oga:'audio',flac:'audio',
+  mp4:'video',m4v:'video',webm:'video',mov:'video',ogv:'video'};
+function kindOf(path){
+  const b=base(path),i=b.lastIndexOf('.');
+  if(i<0)return 'text';
+  return KINDS[b.slice(i+1).toLowerCase()]||'text';
+}
 // size is a byte count for a row.
 function size(n){
   if(n<1024)return n+' B';
@@ -58,6 +69,6 @@ function size(n){
   if(n<1<<30)return (n/(1<<20)).toFixed(n<10<<20?1:0)+' MB';
   return (n/(1<<30)).toFixed(1)+' GB';
 }
-const api={TEXT_MAX:TEXT_MAX,pid:pid,fileOf:fileOf,join:join,base:base,url:url,problem:problem,textOf:textOf,size:size};
+const api={TEXT_MAX:TEXT_MAX,pid:pid,fileOf:fileOf,join:join,base:base,url:url,problem:problem,textOf:textOf,kindOf:kindOf,size:size};
 if(typeof module==='object'&&module.exports)module.exports=api;else root.wsFiles=api;
 })(this);

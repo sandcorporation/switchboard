@@ -160,4 +160,6 @@
 .ws-file .ws-item-head h2{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ws-file-meta{flex:none;color:var(--color-muted);font-size:.85em}
 .ws-file-body{flex:1;min-height:0;overflow:auto;padding:var(--space-3)}
+.ws-media{display:block;max-width:100%;max-height:100%;margin:0 auto;object-fit:contain}
+.ws-audio{width:100%}
 .ws-text{margin:0;font-family:var(--font-mono,ui-monospace,monospace);font-size:.85rem;line-height:1.45;white-space:pre;tab-size:4}
