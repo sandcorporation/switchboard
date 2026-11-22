@@ -112,9 +112,20 @@ func printList(w io.Writer, list []wire.HostedSession) {
 		if !h.AcceptingWork {
 			work = "no"
 		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", h.ID, h.Node, h.Base, dash(h.Group), Perms(h), label, h.Desired, h.Runtime.State, work, h.Restart, h.Directory, strings.Join(h.Args, " "))
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", h.ID, h.Node, h.Base, dash(h.Group), Perms(h), label, h.Desired, stateText(h), work, h.Restart, h.Directory, strings.Join(h.Args, " "))
 	}
 	tw.Flush()
+}
+
+// DetachedMark follows the state of a running session that holds no live
+// slot (#463).
+const DetachedMark = " (no mailbox)"
+
+func stateText(h wire.HostedSession) string {
+	if h.Detached {
+		return h.Runtime.State + DetachedMark
+	}
+	return h.Runtime.State
 }
 
 // Perms is a record's permission mode as host list shows it: "skip" when

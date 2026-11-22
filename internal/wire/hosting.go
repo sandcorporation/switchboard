@@ -66,6 +66,10 @@ type HostedSession struct {
 	// lease ended but the process runs, PresenceOffline otherwise.
 	Slot     *HostedSlot `json:"slot,omitempty"`
 	Presence string      `json:"presence,omitempty"`
+	// Detached marks a running session that holds no live slot for longer
+	// than the attach grace (#463): up, but not on its mailbox. The host's
+	// list only; it clears when a slot is live again.
+	Detached bool `json:"detached,omitempty"`
 }
 
 // Presence values of a HostedSession.

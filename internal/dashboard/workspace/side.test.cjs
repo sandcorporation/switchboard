@@ -38,3 +38,15 @@ test('a stored state that does not read back gives the initial one',()=>{
   assert.deepStrictEqual(S.parse('{"session":"a1","sub":"screen"}'),{session:'a1',sub:'log'});
   for(const t of ['','{','null','[]','{"session":3}'])assert.deepStrictEqual(S.parse(t),S.initial(),t);
 });
+
+test('needs lists a detached session beside the questions',()=>{
+  const ss=[
+    {id:'a1',node:'pc',base:'team/worker',label:'x',detached:true,slot:{role:'team/worker-1'},runtime:{started_at:Date.parse('2026-01-02T00:00:02Z')}},
+    {id:'a2',node:'pc',base:'team/boss',runtime:{}},
+  ];
+  const qs=[{id:'q',status:'pending',asker:'team/boss',created_at:'2026-01-02T00:00:03Z',questions:[{header:'판'}]}];
+  assert.deepStrictEqual(S.needs(qs,[],ss),[
+    {pid:'term:a1',kind:'detached',title:'team/worker-1',who:'x',at:'2026-01-02T00:00:02.000Z'},
+    {pid:'ask:q',kind:'ask',title:'판',who:'team/boss',at:'2026-01-02T00:00:03Z'},
+  ]);
+});

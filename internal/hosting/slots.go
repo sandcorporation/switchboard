@@ -236,15 +236,20 @@ func (h *Hub) withSlots(recs []wire.HostedSession) {
 	h.mu.Lock()
 	slotOf := h.slotOf
 	runs := make(map[string]int64, len(recs))
+	runAt := make(map[string]int64, len(recs))
 	for _, r := range recs {
-		if run, seen := h.runSeen[r.ID]; seen && r.Launched {
-			runs[r.ID] = run
+		if run, seen := h.runSeen[r.ID]; seen {
+			runAt[r.ID] = run
+			if r.Launched {
+				runs[r.ID] = run
+			}
 		}
 	}
 	h.mu.Unlock()
 	if slotOf == nil || len(recs) == 0 {
 		return
 	}
+	now := h.svc.clock()
 	machines, err := h.svc.nodeMachines()
 	if err != nil {
 		log.Printf("hosting: slots: %v", err)
@@ -272,13 +277,38 @@ func (h *Hub) withSlots(recs []wire.HostedSession) {
 		}
 		sl, ok := recordSlot(slots, r, bound)
 		if !ok {
+			recs[i].Detached = detached(alive, time.UnixMilli(runAt[r.ID]), runAt[r.ID] != 0, now)
 			continue
 		}
 		recs[i].Slot = &wire.HostedSlot{Role: sl.Role, Directory: sl.Directory, SessionID: sl.SessionID, LeaseUntil: sl.LeaseUntil.UnixMilli(), Online: sl.Live}
 		if sl.Live {
 			recs[i].Presence = wire.PresenceOnline
+		} else {
+			// Last attached at its last heartbeat, or when this run began,
+			// whichever is later.
+			since := time.UnixMilli(runAt[r.ID])
+			if sl.Seen.After(since) {
+				since = sl.Seen
+			}
+			recs[i].Detached = detached(alive, since, true, now)
 		}
 	}
+}
+
+// AttachGrace is how long a running hosted session may go without a live
+// slot before it is marked detached (#463). The agent has to start, load its
+// plugin and register, and the first response of a fresh session can be
+// slow, so the wait is generous: a session that has not attached within
+// three minutes of starting (or of its slot's last heartbeat) is not going
+// to by itself, for instance when the folder's own settings pick another
+// mailbox profile.
+const AttachGrace = 3 * time.Minute
+
+// detached reports a running process, known since the given time, with no
+// live slot for longer than AttachGrace. It only reads: the session is not
+// restarted, stopped or announced.
+func detached(running bool, since time.Time, known bool, now time.Time) bool {
+	return running && known && now.Sub(since) > AttachGrace
 }
 
 // stateRunning is the node's observed state of a live process.

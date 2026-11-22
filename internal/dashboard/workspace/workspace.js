@@ -271,16 +271,17 @@ function wsStart(){
   async function loadNeeds(){
     const seq=++needSeq;
     try{
-      const [q,pm]=await Promise.all([api('questions?status=pending&limit=500'),api('permissions?status=pending')]);
+      const [q,pm,tm]=await Promise.all([api('questions?status=pending&limit=500'),api('permissions?status=pending'),api('terminals').catch(()=>[])]);
       if(seq!==needSeq)return;
-      const rows=S.needs(q.questions,pm.permissions),a=document.activeElement,was=needList.contains(a)?a.dataset.p:'';
+      const sess=Array.isArray(tm)?tm:[];
+      const rows=S.needs(q.questions,pm.permissions,sess),a=document.activeElement,was=needList.contains(a)?a.dataset.p:'';
       needN=rows.length;needCount.textContent=String(rows.length);
       for(const c of box.querySelectorAll('.ws-sidecount'))c.textContent=needN?String(needN):'';
       needList.replaceChildren(...rows.map(r=>{
         const li=node('li',''),b=node('button','','ws-need');b.type='button';b.dataset.p=r.pid;b.title=r.title;
-        const ask=r.kind==='ask';
-        b.append(badge(ask?'질문':'권한',ask?'warning':'info'),node('span',r.title,'ws-need-title'),node('span',r.who+' · '+when(r.at),'ws-need-who'));
-        b.onclick=()=>openItem(r.pid);li.append(b);return li;
+        const ask=r.kind==='ask',det=r.kind==='detached';
+        b.append(badge(det?'못 붙음':ask?'질문':'권한',det?'danger':ask?'warning':'info'),node('span',r.title,'ws-need-title'),node('span',r.who+(r.at?' · '+when(r.at):''),'ws-need-who'));
+        b.onclick=det?()=>{const v=sess.find(x=>'term:'+x.id===r.pid);if(v){openTerm(v);sideDrawer(false)}}:()=>openItem(r.pid);li.append(b);return li;
       }));
       if(!rows.length)needList.append(node('li','대기 없음','empty'));
       markNeeds();
