@@ -26,9 +26,17 @@ func (s *Service) AdminGrantsAPI(w http.ResponseWriter, r *http.Request) {
 		if !ok {
 			return
 		}
-		writeGrant(w, http.StatusOK)(s.SetGrant(g))
+		g, err := s.SetGrant(g)
+		if err == nil {
+			s.recordAction(r, wire.ActionGrantSet, g.Role)
+		}
+		writeGrant(w, http.StatusOK)(g, err)
 	case http.MethodDelete:
-		writeGrant(w, http.StatusOK)(s.RevokeGrant(r.URL.Query().Get("role")))
+		g, err := s.RevokeGrant(r.URL.Query().Get("role"))
+		if err == nil {
+			s.recordAction(r, wire.ActionGrantRevoke, g.Role)
+		}
+		writeGrant(w, http.StatusOK)(g, err)
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}

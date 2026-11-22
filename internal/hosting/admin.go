@@ -35,6 +35,9 @@ func (s *Service) AdminTerminalsAPI(w http.ResponseWriter, r *http.Request, rest
 				return true
 			}
 			h, err := s.Create(c)
+			if err == nil {
+				s.recordAction(r, wire.ActionSessionAdd, h.ID)
+			}
 			writeResult(w, http.StatusCreated, h, err)
 		default:
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -52,9 +55,15 @@ func (s *Service) AdminTerminalsAPI(w http.ResponseWriter, r *http.Request, rest
 			return true
 		}
 		h, err := s.Update(rest, c)
+		if err == nil {
+			s.recordAction(r, wire.ActionSessionChange, rest)
+		}
 		writeResult(w, http.StatusOK, h, err)
 	case http.MethodDelete:
 		h, err := s.Delete(rest)
+		if err == nil {
+			s.recordAction(r, wire.ActionSessionRemove, rest)
+		}
 		writeResult(w, http.StatusOK, h, err)
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -80,6 +89,11 @@ func (h *Hub) AdminNodesAPI(w http.ResponseWriter, r *http.Request, rest string)
 			http.Error(w, "query failed", http.StatusInternalServerError)
 			return true
 		}
+		h.mu.Lock()
+		for i := range out {
+			_, out[i].Connected = h.conns[out[i].Name]
+		}
+		h.mu.Unlock()
 		writeJSON(w, http.StatusOK, out)
 		return true
 	}
@@ -94,6 +108,7 @@ func (h *Hub) AdminNodesAPI(w http.ResponseWriter, r *http.Request, rest string)
 	case err != nil:
 		http.Error(w, "update failed", http.StatusInternalServerError)
 	default:
+		h.svc.recordAction(r, wire.ActionNodeRevoke, n.Name)
 		writeJSON(w, http.StatusOK, n)
 	}
 	return true
@@ -127,7 +142,7 @@ func (s *Service) joinAPI(w http.ResponseWriter, r *http.Request) {
 
 // decode reads a JSON body of type T; unknown fields are refused so a
 // misspelt field is not silently dropped.
-func decode[T wire.HostedSessionCreate | wire.HostedSessionChange | wire.HostGrant | wire.WorkGroup | wire.WorkGroupChange | wire.AccountLimitChange](w http.ResponseWriter, r *http.Request) (T, bool) {
+func decode[T wire.HostedSessionCreate | wire.HostedSessionChange | wire.HostGrant | wire.WorkGroup | wire.WorkGroupChange | wire.AccountLimitChange | wire.NodeInvite](w http.ResponseWriter, r *http.Request) (T, bool) {
 	var v T
 	dec := json.NewDecoder(io.LimitReader(r.Body, maxBody))
 	dec.DisallowUnknownFields()
@@ -156,7 +171,7 @@ func writeResult(w http.ResponseWriter, ok int, h wire.HostedSession, err error)
 	}
 }
 
-func writeJSON[T wire.HostedSession | []wire.HostedSession | wire.HostingLimit | wire.NodeView | []wire.NodeView | wire.NodeJoined | wire.TerminalTicket | []wire.TerminalLogEntry | []wire.HostedEvent | wire.HostGrant | []wire.HostGrant | wire.WorkGroup | []wire.WorkGroup](w http.ResponseWriter, code int, v T) {
+func writeJSON[T wire.HostedSession | []wire.HostedSession | wire.HostingLimit | wire.NodeView | []wire.NodeView | wire.NodeJoined | wire.TerminalTicket | []wire.TerminalLogEntry | []wire.HostedEvent | wire.HostGrant | []wire.HostGrant | wire.WorkGroup | []wire.WorkGroup | wire.NodeInvited | []wire.AdminAction](w http.ResponseWriter, code int, v T) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
 	_ = json.NewEncoder(w).Encode(v)

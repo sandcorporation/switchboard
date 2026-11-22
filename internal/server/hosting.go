@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sandcorporation/switchboard/internal/adminauth"
 	"github.com/sandcorporation/switchboard/internal/config"
 	"github.com/sandcorporation/switchboard/internal/dashboard"
 	"github.com/sandcorporation/switchboard/internal/hosting"
@@ -72,9 +73,10 @@ func loopbackAddr(addr string) bool {
 }
 
 // hostingAdminPath reports whether an /api/admin/ path (prefix removed) is a
-// hosting route: terminals…, nodes… or host-grants.
+// hosting route: terminals…, nodes…, host-grants, node-invites (#446) or
+// admin-actions (#446).
 func hostingAdminPath(path string) bool {
-	for _, p := range []string{"terminals", "nodes", "host-grants"} {
+	for _, p := range []string{"terminals", "nodes", "host-grants", "node-invites", "admin-actions"} {
 		if rest, ok := strings.CutPrefix(path, p); ok && (rest == "" || strings.HasPrefix(rest, "/")) {
 			return true
 		}
@@ -98,8 +100,15 @@ func hostingStub(w http.ResponseWriter) {
 
 // hostingAdmin serves an /api/admin/ hosting path (prefix removed) for an
 // identified admin past the write guard: the records and the node list, and
-// the stub for the routes of later tickets.
-func (s *Server) hostingAdmin(w http.ResponseWriter, r *http.Request, path string) {
+// the stub for the routes of later tickets. who (and boss, for a boss
+// role's write) goes on the request as the actor of the admin actions the
+// handlers record (#446).
+func (s *Server) hostingAdmin(w http.ResponseWriter, r *http.Request, path string, who adminauth.Identity, boss *identity.Principal) {
+	method := who.Mode
+	if boss != nil {
+		method = "boss"
+	}
+	r = hosting.WithActor(r, hosting.Actor{Admin: who.User, Method: method, Addr: s.adminAuth().ClientIP(r)})
 	if terminalPath(path) {
 		switch code := s.terminalGate(r); code {
 		case http.StatusNotFound:
@@ -110,8 +119,15 @@ func (s *Server) hostingAdmin(w http.ResponseWriter, r *http.Request, path strin
 			return
 		}
 	}
-	if path == "host-grants" {
+	switch path {
+	case "host-grants":
 		s.hostingService().AdminGrantsAPI(w, r)
+		return
+	case "node-invites":
+		s.hostingService().AdminInviteAPI(w, r)
+		return
+	case "admin-actions":
+		s.hostingService().AdminActionsAPI(w, r)
 		return
 	}
 	if rest, ok := strings.CutPrefix(path, "terminals"); ok && s.hostingHub().AdminTerminalsAPI(w, r, strings.TrimPrefix(rest, "/")) {

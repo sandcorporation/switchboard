@@ -718,6 +718,7 @@ func TestDashboardWorkspaceLoadsWithHosting(t *testing.T) {
 		"$('panel-'+n).hidden=ws?false:!on;",
 		"if(ws)ws.showMenu(name);",
 		"if(tabShown(k))liveDirty.add(k);",
+		"if(ws)ws.live(kinds);",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("page missing %q", want)
@@ -734,12 +735,17 @@ func TestDashboardWorkspaceLoadsWithHosting(t *testing.T) {
 		"window.matchMedia('(max-width:600px)')",
 		"if(m)main.append($('panel-'+m));",
 		"else{const id=p.slice(5),t=terms.get(id);if(t){termStop(t);terms.delete(id)}",
+		"const nodeIdx=wsNodeIndex({openSession(v){",
+		"tabs.before(idx);tabs.after(box);",
+		"apiSend('POST','node-invites',{name:invName.value.trim()})",
+		"if(!confirm(n.name+' 노드를 끊을까요?",
+		"if(!confirm(g.role+' 역할의 '+n.name+' 허가를 거둘까요?'))return;",
 	} {
 		if !strings.Contains(src, want) {
 			t.Errorf("workspace missing %q", want)
 		}
 	}
-	for _, name := range []string{"workspace/layout.test.cjs", "workspace/side.test.cjs", "workspace/", "workspace/../dashboard.go"} {
+	for _, name := range []string{"workspace/layout.test.cjs", "workspace/side.test.cjs", "workspace/nodes.test.cjs", "workspace/", "workspace/../dashboard.go"} {
 		w := httptest.NewRecorder()
 		Assets(w, httptest.NewRequest("GET", AssetsPrefix+name, nil))
 		if w.Code != 404 {
@@ -783,8 +789,9 @@ func TestDashboardWorkspaceSide(t *testing.T) {
 	}
 }
 
-// TestWorkspaceLayout runs the workspace's unit tests (workspace/layout.test.cjs,
-// workspace/side.test.cjs) under node, skipped without node unless SWITCHBOARD_TEST_NODE=require.
+// TestWorkspaceLayout runs the workspace's unit tests (workspace/*.test.cjs:
+// the layout, the right column and the 노드 index's data side) under node,
+// skipped without node unless SWITCHBOARD_TEST_NODE=require.
 func TestWorkspaceLayout(t *testing.T) {
 	node, err := exec.LookPath("node")
 	if err != nil {
@@ -793,9 +800,9 @@ func TestWorkspaceLayout(t *testing.T) {
 		}
 		t.Skip("node not installed")
 	}
-	cmd := exec.Command(node, "--test", "layout.test.cjs", "side.test.cjs")
+	cmd := exec.Command(node, "--test", "layout.test.cjs", "side.test.cjs", "nodes.test.cjs")
 	cmd.Dir = "workspace"
 	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("node --test workspace/layout.test.cjs side.test.cjs: %v\n%s", err, out)
+		t.Fatalf("node --test workspace/layout.test.cjs side.test.cjs nodes.test.cjs: %v\n%s", err, out)
 	}
 }

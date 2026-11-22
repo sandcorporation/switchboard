@@ -483,7 +483,7 @@ func (s *Server) adminAPI(w http.ResponseWriter, r *http.Request) {
 // which reaches the same handlers; boss is that role, nil for an admin.
 func (s *Server) adminRoutes(w http.ResponseWriter, r *http.Request, path string, who adminauth.Identity, boss *identity.Principal) {
 	if s.hosting && hostingAdminPath(path) {
-		s.hostingAdmin(w, r, path)
+		s.hostingAdmin(w, r, path, who, boss)
 		return
 	}
 	if path == "live" && r.Method == http.MethodGet {
