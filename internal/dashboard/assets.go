@@ -28,10 +28,10 @@ var TerminalAssets = []string{
 }
 
 // workspace holds the host-mode workspace (#444): the panel layout, the
-// terminal panels, the frame and its stylesheet. layout.test.cjs (node unit
-// tests) is not embedded.
+// right column (#445), the terminal panels, the frame and its stylesheet. The
+// node unit tests (*.test.cjs) are not embedded.
 //
-//go:embed workspace/layout.js workspace/term.js workspace/workspace.js workspace/workspace.css
+//go:embed workspace/layout.js workspace/side.js workspace/term.js workspace/workspace.js workspace/workspace.css
 var workspace embed.FS
 
 // WorkspaceAssets are the workspace's files, loaded by the page only when the
@@ -39,6 +39,7 @@ var workspace embed.FS
 var WorkspaceAssets = []string{
 	AssetsPrefix + "workspace/workspace.css",
 	AssetsPrefix + "workspace/layout.js",
+	AssetsPrefix + "workspace/side.js",
 	AssetsPrefix + "workspace/term.js",
 	AssetsPrefix + "workspace/workspace.js",
 }

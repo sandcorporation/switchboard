@@ -685,6 +685,7 @@ function hideDetail(){
 }
 const toneClass={success:'sc-badge--success',info:'sc-badge--info',warning:'sc-badge--warning',danger:'sc-badge--danger',neutral:'sc-badge--neutral'};
 async function drawDetail(){
+  if(ws)ws.refresh();
   const c=detailCur;if(!c)return;
   const seq=++detailSeq,spec=details[c.tab],box=document.createElement('div');
   let head={title:c.id,badge:null},subs=[],sub=c.sub;
@@ -2598,6 +2599,7 @@ const liveReload={progress:loadProgress,sessions:loadSessions,reports:loadReport
 const liveCounts={reports:refreshReportCount,questions:refreshQuestionCount,permissions:refreshPermissionCount,metrics:refreshMetricsCount};
 let liveBoot='',liveSeq=0,liveDelay=1000,liveDirty=new Set(),liveStale=new Set(),liveTimer=0,liveDetail=false;
 function liveMark(kinds){
+  if(ws)ws.live(kinds);
   for(const k of kinds){
     if(detailCur&&(details[detailCur.tab].kinds||[detailCur.tab]).includes(k))liveDetail=true;
     if(!liveReload[k])continue;

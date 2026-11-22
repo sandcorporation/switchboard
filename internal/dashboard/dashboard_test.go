@@ -737,7 +737,7 @@ func TestDashboardWorkspaceLoadsWithHosting(t *testing.T) {
 			t.Errorf("workspace missing %q", want)
 		}
 	}
-	for _, name := range []string{"workspace/layout.test.cjs", "workspace/", "workspace/../dashboard.go"} {
+	for _, name := range []string{"workspace/layout.test.cjs", "workspace/side.test.cjs", "workspace/", "workspace/../dashboard.go"} {
 		w := httptest.NewRecorder()
 		Assets(w, httptest.NewRequest("GET", AssetsPrefix+name, nil))
 		if w.Code != 404 {
@@ -746,8 +746,41 @@ func TestDashboardWorkspaceLoadsWithHosting(t *testing.T) {
 	}
 }
 
-// TestWorkspaceLayout runs the layout's unit tests (workspace/layout.test.cjs)
-// under node, skipped without node unless SWITCHBOARD_TEST_NODE=require.
+// The right column (#445) follows the focused panel's session with the
+// detail's own 기록·예약·설정 functions, lists every session's pending
+// questions and permission requests, and opens one as a centre panel; the
+// page hands it live changes and redraws after an action.
+func TestDashboardWorkspaceSide(t *testing.T) {
+	w := httptest.NewRecorder()
+	Page(w, httptest.NewRequest("GET", "/", nil))
+	body := w.Body.String()
+	for _, want := range []string{
+		"async function drawDetail(){\n  if(ws)ws.refresh();",
+		"function liveMark(kinds){\n  if(ws)ws.live(kinds);",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("page missing %q", want)
+		}
+	}
+	src := workspaceSource(t)
+	for _, want := range []string{
+		"$('appMain').append(sideEl);",
+		"const id=S.follow(side.session,st.focus);",
+		"api('questions?status=pending&limit=500'),api('permissions?status=pending')",
+		"if(side.sub==='autos')await termAutos(v,out);\n        else if(side.sub==='settings')termSettings(v,out);\n        else await termHistory(v,out);",
+		"const spec=details[x.tab],seq=++it.seq,out=document.createElement('div');",
+		"return (p.startsWith('term:')&&p.length>5)||!!S.itemOf(p);",
+		"if(detailCur){sessShown='';sessBody.replaceChildren();return}",
+		".has-detail>.ws-side{display:none}",
+	} {
+		if !strings.Contains(src, want) {
+			t.Errorf("workspace missing %q", want)
+		}
+	}
+}
+
+// TestWorkspaceLayout runs the workspace's unit tests (workspace/layout.test.cjs,
+// workspace/side.test.cjs) under node, skipped without node unless SWITCHBOARD_TEST_NODE=require.
 func TestWorkspaceLayout(t *testing.T) {
 	node, err := exec.LookPath("node")
 	if err != nil {
@@ -756,9 +789,9 @@ func TestWorkspaceLayout(t *testing.T) {
 		}
 		t.Skip("node not installed")
 	}
-	cmd := exec.Command(node, "--test", "layout.test.cjs")
+	cmd := exec.Command(node, "--test", "layout.test.cjs", "side.test.cjs")
 	cmd.Dir = "workspace"
 	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("node --test workspace/layout.test.cjs: %v\n%s", err, out)
+		t.Fatalf("node --test workspace/layout.test.cjs side.test.cjs: %v\n%s", err, out)
 	}
 }
