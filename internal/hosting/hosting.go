@@ -11,6 +11,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/sandcorporation/switchboard/internal/agent"
+	_ "github.com/sandcorporation/switchboard/internal/agent/builtin"
 	"regexp"
 	"strings"
 	"time"
@@ -74,18 +76,6 @@ var (
 	idPattern       = regexp.MustCompile(`^hs_[0-9a-f]{32}$`)
 )
 
-// refusedArgs are agent flags the node sets itself (session id, resume) or
-// that make the agent non-interactive.
-var refusedArgs = map[string]string{
-	"--session-id": "the node sets the session id",
-	"--resume":     "the node resumes the conversation itself",
-	"-r":           "the node resumes the conversation itself",
-	"--continue":   "the node resumes the conversation itself",
-	"-c":           "the node resumes the conversation itself",
-	"--print":      "a hosted session is interactive",
-	"-p":           "a hosted session is interactive",
-}
-
 // refusedEnvWords mark environment names that look like secrets. Secrets
 // belong in the profile file on the node, which neither host nor node reads.
 var refusedEnvWords = []string{"TOKEN", "SECRET", "KEY", "PASSWORD"}
@@ -93,7 +83,7 @@ var refusedEnvWords = []string{"TOKEN", "SECRET", "KEY", "PASSWORD"}
 func checkArgs(args []string) error {
 	for _, a := range args {
 		name, _, _ := strings.Cut(a, "=")
-		if why, ok := refusedArgs[name]; ok {
+		if why, ok := agent.Default().RefusedArgs()[name]; ok {
 			return invalidf("args: %s is not allowed (%s)", name, why)
 		}
 	}

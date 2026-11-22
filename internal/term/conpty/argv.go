@@ -14,7 +14,7 @@ type CommandLine struct {
 
 // ResolveCommand turns a Spec's argv into a CommandLine. argv[0] is
 // resolved with lookPath (exec.LookPath, which honours PATHEXT). A .cmd or
-// .bat shim (npm installs claude as one) cannot be created directly, so it
+// .bat shim (npm installs agent CLIs as one) cannot be created directly, so it
 // runs as `<comspec> /d /s /c "<shim> <args>"`: /d skips AutoRun, and /s
 // makes cmd strip exactly the outer quotes, so the quoted arguments inside
 // reach the shim as composed. quote composes one argument

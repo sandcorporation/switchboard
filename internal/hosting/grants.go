@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/sandcorporation/switchboard/internal/agent"
 	"io"
 	"slices"
 	"strings"
@@ -179,7 +180,7 @@ func (s *Service) admit(role string, c *wire.HostedSessionCreate) (string, error
 	if c.Class == "" {
 		c.Class = wire.ClassExecute
 	}
-	if err := wire.CheckRoleArgs(c.Args); err != nil {
+	if err := agent.CheckRoleArgs(agent.Default(), c.Args); err != nil {
 		return "", forbiddenf("%v", err)
 	}
 	if len(c.Env) > 0 {

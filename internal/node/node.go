@@ -13,6 +13,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/sandcorporation/switchboard/internal/agent"
 	"slices"
 	"strings"
 	"sync"
@@ -67,8 +68,9 @@ const (
 	// CrashLoopRuns short runs within CrashLoopWindow make a crash loop.
 	CrashLoopRuns   = 5
 	CrashLoopWindow = 30 * time.Minute
-	// ResumeFailRuns --resume runs in a row that exit non-zero within
-	// ResumeFailRun mean the conversation is gone.
+	// ResumeFailRuns resumed runs in a row that the adapter counts as failed
+	// (for the default: non-zero within ResumeFailRun) mean the
+	// conversation is gone.
 	ResumeFailRuns = 2
 	ResumeFailRun  = 15 * time.Second
 )
@@ -175,6 +177,9 @@ type state struct {
 	fresh bool
 	// resumed is true when the current run was launched with --resume.
 	resumed bool
+	// agent is the adapter the current run was launched with (nil before
+	// the first launch: the default).
+	agent agent.Adapter
 	// fails counts consecutive relaunches since the last long run.
 	fails int
 	// short holds the exit times of short runs within CrashLoopWindow.
@@ -200,6 +205,14 @@ type state struct {
 }
 
 // clearFailures forgets backoff and crash loop (Start, Restart).
+// adapter is the adapter of the state's current run.
+func (s *state) adapter() agent.Adapter {
+	if s.agent == nil {
+		return agent.Default()
+	}
+	return s.agent
+}
+
 func (s *state) clearFailures() {
 	s.fails, s.short, s.next, s.crash, s.resumeFails = 0, nil, time.Time{}, false, 0
 	s.NextAttemptAt = time.Time{}
@@ -609,7 +622,7 @@ func (n *Node) reconcile(ctx context.Context, r Record, in term.Info, exists boo
 // exited applies the restart rules to a run of a record that restarts: the
 // backoff, the crash loop and the resume failure.
 func (n *Node) exited(s *state, code int, ran time.Duration, now time.Time) {
-	if s.resumed && code != 0 && ran < ResumeFailRun {
+	if s.resumed && s.adapter().ResumeFailed(code, ran) {
 		s.resumeFails++
 	} else {
 		s.resumeFails = 0
@@ -721,6 +734,7 @@ func (n *Node) launch(ctx context.Context, r Record, s *state, kind, actor strin
 		return fmt.Errorf("node: launch %s: %w", spec.Name, err)
 	}
 	s.resumed = s.Launched
+	s.agent = n.cfg.adapterFor(r)
 	s.Launched = true
 	if s.Run == 0 {
 		s.Run = r.LastRun

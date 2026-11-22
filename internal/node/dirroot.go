@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/sandcorporation/switchboard/internal/agent"
 	"os"
 	"path/filepath"
 
@@ -93,5 +94,5 @@ func checkRoleArgs(r Record) error {
 	if r.DirRoot == "" {
 		return nil
 	}
-	return wire.CheckRoleArgs(r.Args)
+	return agent.CheckRoleArgs(agent.Default(), r.Args)
 }
