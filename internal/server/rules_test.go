@@ -41,7 +41,7 @@ func addRuleAs(t *testing.T, s *Server, token, role string, body map[string]any,
 
 func addRule(t *testing.T, s *Server, body map[string]any) wire.Rule {
 	t.Helper()
-	w := addRuleAs(t, s, bossToken, "sandcorp/boss", body, 201)
+	w := addRuleAs(t, s, bossToken, internalBossRole, body, 201)
 	var r wire.Rule
 	if err := json.Unmarshal(w.Body.Bytes(), &r); err != nil {
 		t.Fatal(err)
@@ -87,13 +87,13 @@ func showRule(t *testing.T, s *Server, token, role string, id int64, want int) w
 // alongside; a replaced row leaves the default list and stays in history.
 func TestRuleReplaceFlow(t *testing.T) {
 	s := rulesServer(t)
-	addRuleAs(t, s, bossToken, "sandcorp/boss", ruleBody("decision", "service:team", "release", "ship on green", nil), 400) // no such topic
+	addRuleAs(t, s, bossToken, internalBossRole, ruleBody("decision", "service:team", "release", "ship on green", nil), 400) // no such topic
 	first := addRule(t, s, ruleBody("decision", "service:team", "release", "ship on green", map[string]any{"new_topic": true}))
-	if first.Status != wire.RuleActive || first.Author != "sandcorp/boss" || first.Scope.String() != "service:team" {
+	if first.Status != wire.RuleActive || first.Author != internalBossRole || first.Scope.String() != "service:team" {
 		t.Fatalf("first = %+v", first)
 	}
 
-	w := addRuleAs(t, s, bossToken, "sandcorp/boss", ruleBody("decision", "service:partner-x,team", "release", "ship on Fridays too", nil), 409)
+	w := addRuleAs(t, s, bossToken, internalBossRole, ruleBody("decision", "service:partner-x,team", "release", "ship on Fridays too", nil), 409)
 	var c wire.RuleConflict
 	if err := json.Unmarshal(w.Body.Bytes(), &c); err != nil || len(c.Rules) != 1 || c.Rules[0].ID != first.ID {
 		t.Fatalf("conflict = %s", w.Body)
@@ -105,37 +105,37 @@ func TestRuleReplaceFlow(t *testing.T) {
 	if !slices.Equal(second.Replaces, []int64{first.ID}) {
 		t.Fatalf("second = %+v", second)
 	}
-	old := showRule(t, s, bossToken, "sandcorp/boss", first.ID, 200)
+	old := showRule(t, s, bossToken, internalBossRole, first.ID, 200)
 	if old.Status != wire.RuleReplaced || old.ReplacedBy != second.ID || len(old.History) != 1 || old.History[0].ID != second.ID {
 		t.Fatalf("replaced row = %+v", old)
 	}
-	if got := ruleIDs(listRulesAs(t, s, bossToken, "sandcorp/boss", "").Rules); !slices.Equal(got, []int64{other.ID, second.ID}) {
+	if got := ruleIDs(listRulesAs(t, s, bossToken, internalBossRole, "").Rules); !slices.Equal(got, []int64{other.ID, second.ID}) {
 		t.Fatalf("in force = %v", got)
 	}
-	if got := ruleIDs(listRulesAs(t, s, bossToken, "sandcorp/boss", "?all=1").Rules); len(got) != 3 {
+	if got := ruleIDs(listRulesAs(t, s, bossToken, internalBossRole, "?all=1").Rules); len(got) != 3 {
 		t.Fatalf("all = %v", got)
 	}
 
 	third := addRule(t, s, ruleBody("tip", "service:team", "release", "tag the build", map[string]any{"alongside": true}))
-	if got := ruleIDs(listRulesAs(t, s, bossToken, "sandcorp/boss", "?topic=release").Rules); !slices.Equal(got, []int64{second.ID, third.ID}) {
+	if got := ruleIDs(listRulesAs(t, s, bossToken, internalBossRole, "?topic=release").Rules); !slices.Equal(got, []int64{second.ID, third.ID}) {
 		t.Fatalf("alongside = %v", got)
 	}
-	if got := listRulesAs(t, s, bossToken, "sandcorp/boss", "?topic=release&kind=tip").Rules; len(got) != 1 || got[0].ID != third.ID {
+	if got := listRulesAs(t, s, bossToken, internalBossRole, "?topic=release&kind=tip").Rules; len(got) != 1 || got[0].ID != third.ID {
 		t.Fatalf("kind=tip = %v", got)
 	}
 	// Replacing a row no longer in force is refused.
-	addRuleAs(t, s, bossToken, "sandcorp/boss", ruleBody("decision", "service:team", "release", "x", map[string]any{"replace": []int64{first.ID}, "alongside": false}), 400)
-	addRuleAs(t, s, bossToken, "sandcorp/boss", ruleBody("decision", "service:team", "release", "x", map[string]any{"replace": []int64{second.ID}, "alongside": true}), 400)
+	addRuleAs(t, s, bossToken, internalBossRole, ruleBody("decision", "service:team", "release", "x", map[string]any{"replace": []int64{first.ID}, "alongside": false}), 400)
+	addRuleAs(t, s, bossToken, internalBossRole, ruleBody("decision", "service:team", "release", "x", map[string]any{"replace": []int64{second.ID}, "alongside": true}), 400)
 
 	// Void takes a row out of force; a second void is a conflict.
-	if w := callAs(s, "POST", "/api/rules/"+itoa(third.ID)+"/void", bossToken, "sandcorp/boss", nil); w.Code != 200 {
+	if w := callAs(s, "POST", "/api/rules/"+itoa(third.ID)+"/void", bossToken, internalBossRole, nil); w.Code != 200 {
 		t.Fatalf("void: %d %s", w.Code, w.Body)
 	}
-	if w := callAs(s, "POST", "/api/rules/"+itoa(third.ID)+"/void", bossToken, "sandcorp/boss", nil); w.Code != 409 {
+	if w := callAs(s, "POST", "/api/rules/"+itoa(third.ID)+"/void", bossToken, internalBossRole, nil); w.Code != 409 {
 		t.Fatalf("void again: %d %s", w.Code, w.Body)
 	}
-	v := showRule(t, s, bossToken, "sandcorp/boss", third.ID, 200)
-	if v.Status != wire.RuleVoid || v.VoidedBy != "sandcorp/boss" || v.VoidedAt == nil {
+	v := showRule(t, s, bossToken, internalBossRole, third.ID, 200)
+	if v.Status != wire.RuleVoid || v.VoidedBy != internalBossRole || v.VoidedAt == nil {
 		t.Fatalf("void row = %+v", v)
 	}
 }
@@ -164,7 +164,7 @@ func TestRuleWriters(t *testing.T) {
 
 	body := ruleBody("decision", "service:team", "release", "ship on green", map[string]any{"new_topic": true, "idempotency_key": "k1"})
 	one := addRule(t, s, body)
-	w = addRuleAs(t, s, bossToken, "sandcorp/boss", body, 200)
+	w = addRuleAs(t, s, bossToken, internalBossRole, body, 200)
 	var again wire.Rule
 	_ = json.Unmarshal(w.Body.Bytes(), &again)
 	if again.ID != one.ID {
@@ -177,10 +177,10 @@ func TestRuleWriters(t *testing.T) {
 func TestRuleSources(t *testing.T) {
 	s := rulesServer(t)
 	q := askQuestionAs(t, s, workerToken, "team/worker", 201)
-	addRuleAs(t, s, bossToken, "sandcorp/boss", ruleBody("decision", "all", "release", "ship", map[string]any{"new_topic": true, "sources": []string{q.ID}, "source_text": ""}), 400)
-	answerQuestionAs(t, s, bossToken, "sandcorp/boss", q.ID, sampleAnswers(), 200)
+	addRuleAs(t, s, bossToken, internalBossRole, ruleBody("decision", "all", "release", "ship", map[string]any{"new_topic": true, "sources": []string{q.ID}, "source_text": ""}), 400)
+	answerQuestionAs(t, s, bossToken, internalBossRole, q.ID, sampleAnswers(), 200)
 	r := addRule(t, s, ruleBody("decision", "all", "release", "ship", map[string]any{"new_topic": true, "sources": []string{q.ID}, "source_text": ""}))
-	d := showRule(t, s, bossToken, "sandcorp/boss", r.ID, 200)
+	d := showRule(t, s, bossToken, internalBossRole, r.ID, 200)
 	if len(d.Answers) != 1 || d.Answers[0].ID != q.ID || d.Answers[0].Items[0].Chosen[0] != "예" {
 		t.Fatalf("answers = %+v", d.Answers)
 	}

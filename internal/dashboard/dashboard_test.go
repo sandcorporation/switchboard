@@ -14,10 +14,10 @@ func TestDashboardTabsSkeleton(t *testing.T) {
 	if !strings.Contains(body, `role="tablist"`) {
 		t.Fatal("dashboard has no tablist")
 	}
-	// Tab order matters: 운영 (진행, 세션, 메일, 보고, 작업), 응답 (질문, 권한 요청),
+	// Tab order matters: 운영 (진행, 세션, 메일, 보고, 작업), 응답 (질문, 권한 요청, 규칙),
 	// 관리 (지표, 터미널, 설정).
 	last := -1
-	for _, name := range []string{"progress", "sessions", "mail", "reports", "jobs", "questions", "permissions", "metrics", "terminals", "settings"} {
+	for _, name := range []string{"progress", "sessions", "mail", "reports", "jobs", "questions", "permissions", "rules", "metrics", "terminals", "settings"} {
 		tab := `id="tab-` + name + `" data-tab="` + name + `" aria-controls="panel-` + name + `"`
 		i := strings.Index(body, tab)
 		if i < 0 {
@@ -168,7 +168,7 @@ func TestDashboardLiveUpdates(t *testing.T) {
 		}
 	}
 	// Every tab has a live reload.
-	for _, name := range []string{"progress", "sessions", "metrics", "mail", "permissions", "questions", "settings"} {
+	for _, name := range []string{"progress", "sessions", "metrics", "mail", "permissions", "questions", "rules", "settings"} {
 		if !regexp.MustCompile(`liveReload=\{[^}]*\b` + name + `:`).MatchString(body) {
 			t.Fatalf("no live reload for %s", name)
 		}
