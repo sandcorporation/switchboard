@@ -32,13 +32,20 @@ function itemOf(pid){
   return tab?{tab:tab,id:pid.slice(i+1)}:null;
 }
 // needs is the 「답이 필요함」 rows, oldest first: questions and permission
-// requests still pending, each {pid, kind, title, who, at}.
-function needs(questions,perms){
+// requests still pending and sessions not on their mailbox, each
+// {pid, kind, title, who, at}.
+function needs(questions,perms,sessions){
   const out=[];
   for(const q of questions||[])if(q&&q.id&&(q.status===undefined||q.status==='pending'))
     out.push({pid:'ask:'+q.id,kind:'ask',title:(q.questions||[]).map(x=>x.header).join(' · ')||q.id,who:q.asker||'',at:q.created_at||''});
   for(const v of perms||[])if(v&&v.id&&(v.status===undefined||v.status==='pending'))
     out.push({pid:'perm:'+v.id,kind:'perm',title:(v.tool||'')+(v.summary?' · '+v.summary:''),who:v.requester||'',at:v.created_at||''});
+  // A running session that is not on its mailbox (#463) waits on a person
+  // too: it is listed with the questions, and clears when it attaches.
+  for(const v of sessions||[])if(v&&v.id&&v.detached){
+    const st=v.runtime&&v.runtime.started_at;
+    out.push({pid:'term:'+v.id,kind:'detached',title:(v.slot&&v.slot.role)||v.base||v.id,who:v.label||v.node||'',at:st?new Date(st).toISOString():''});
+  }
   const t=x=>{const n=Date.parse(x.at);return isNaN(n)?Infinity:n};
   return out.sort((a,b)=>t(a)-t(b));
 }

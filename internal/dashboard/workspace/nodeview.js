@@ -114,6 +114,7 @@ function wsNodeIndex(opts){
       const li=node('li'),a=node('button','','ws-sess-row');a.type='button';a.dataset.key='s:'+v.id;
       const t=termSt(v);
       a.append(node('span',termRole(v)+(v.label?' · '+v.label:''),'ws-sess-name'),node('span',termStateText(t,v.runtime||{}),'muted'));
+      if(v.detached){const d=node('span','못 붙음','sc-badge sc-badge--danger');d.title='실행 중이지만 메일함 슬롯이 붙어 있지 않음';a.append(d)}
       a.title=v.directory||'';
       a.onclick=()=>opts.openSession(v);
       li.append(a);sl.append(li);

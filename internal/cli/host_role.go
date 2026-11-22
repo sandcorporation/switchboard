@@ -213,7 +213,7 @@ func printRoleHosted(w io.Writer, list []wire.HostedSession) {
 		if label == "" {
 			label = "-"
 		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", h.ID, h.Node, h.Base, dashEmpty(h.Group), label, h.Desired, h.Runtime.State, h.Directory)
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", h.ID, h.Node, h.Base, dashEmpty(h.Group), label, h.Desired, stateWithMailbox(h), h.Directory)
 	}
 	tw.Flush()
 }
@@ -223,4 +223,11 @@ func dashEmpty(v string) string {
 		return "-"
 	}
 	return v
+}
+
+func stateWithMailbox(h wire.HostedSession) string {
+	if h.Detached {
+		return h.Runtime.State + " (no mailbox)"
+	}
+	return h.Runtime.State
 }

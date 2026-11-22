@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sandcorporation/switchboard/internal/hosting"
 	"github.com/sandcorporation/switchboard/internal/term/termtest"
 	"github.com/sandcorporation/switchboard/internal/wire"
 )
@@ -391,5 +392,54 @@ func TestHostedSessionIgnoresASharedSlotRow(t *testing.T) {
 		}
 		r.plugin("heartbeat", g.Role, "/work/app", own)
 		r.sync()
+	}
+}
+
+// A running hosted session with no live slot is shown as detached once the
+// attach grace has passed (#463); it attaches again and the mark clears. A
+// stopped session is never detached. Nothing is relaunched or stopped.
+func TestHostedSessionWithoutSlotShowsDetachedAfterGrace(t *testing.T) {
+	t.Parallel()
+	s, url, clock := hostedSlotServer(t)
+	r := newHostedRig(t, s, url, clock, "team/worker", workerToken, "/work/app")
+	if h := r.listed(); h.Detached {
+		t.Fatalf("detached right after the launch: %+v", h)
+	}
+	clock.add(hosting.AttachGrace - time.Second)
+	if h := r.listed(); h.Detached {
+		t.Fatalf("detached inside the grace: %+v", h)
+	}
+	clock.add(2 * time.Second)
+	launches, stops := len(r.fake.Launches()), len(r.fake.Stops())
+	if h := r.listed(); !h.Detached || h.Runtime.State != "running" {
+		t.Fatalf("not detached after the grace: %+v", h)
+	}
+	if len(r.fake.Launches()) != launches || len(r.fake.Stops()) != stops {
+		t.Fatal("the node acted on a detached session")
+	}
+
+	r.plugin("register", "team/worker", "/work/app", r.record().AgentSessionID)
+	if h := r.listed(); h.Detached {
+		t.Fatalf("still detached with a live slot: %+v", h)
+	}
+
+	// The lease lapses: detached again only after the grace from the last
+	// heartbeat.
+	clock.add(s.presenceCfg.SlotLease + time.Second)
+	if h := r.listed(); h.Detached {
+		t.Fatalf("detached on the lapse itself: %+v", h)
+	}
+	clock.add(hosting.AttachGrace)
+	if h := r.listed(); !h.Detached {
+		t.Fatalf("not detached after the lapse and the grace: %+v", h)
+	}
+
+	if _, err := s.hostingService().SetDesired(r.id, "stopped"); err != nil {
+		t.Fatal(err)
+	}
+	r.sync()
+	eventually(t, "stopped", func() bool { return r.runtime().State == "stopped" })
+	if h := r.listed(); h.Detached {
+		t.Fatalf("a stopped session is detached: %+v", h)
 	}
 }
