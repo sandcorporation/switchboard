@@ -16,6 +16,11 @@ type CLIPair struct {
 	Why    string // instead of CLI: why there is no command
 }
 
+// The session APIs the dashboard does not call have their commands too
+// (#408): GET rules/mine is `rules mine` and POST rules/hits `rules hit`
+// (docs/rules-hints.md); the dashboard shows their result as each row's
+// hit count and conditions in the 규칙 tab (GET rules, GET rules/{}).
+//
 // CLIPairs is the table. Keep it in the dashboard's order.
 var CLIPairs = []CLIPair{
 	{Method: "GET", Path: "me", Why: "the page's sign-in check and first-screen settings; the CLI signs in with the profile's role token"},
