@@ -5,7 +5,9 @@ The rules ledger (`internal/rules`, README "Rules ledger") reaches a session two
 - A row with hit conditions (`match`) goes to the session's tool calls, through a hook of the agent plugin. The plugin lives outside this repository; this page is its contract with the server.
 - A row without conditions goes to the end of a boss role's directive mail, added by the server (`SWITCHBOARD_RULES_FOOTER`, default on).
 
-A row with a `device` (the mechanism that enforces it) goes to neither.
+A row with a `device` (the mechanism that enforces it) goes to neither, and neither does a proposed row (a proposer's tip waiting for approval, README "Rules ledger: proposals and answer classes").
+
+A third hook keeps the ledger fed: the Stop hook does not let a session end its turn while a person's answer to one of its panel questions is unclassified (below).
 
 ## The pre-tool-call hook
 
@@ -71,3 +73,40 @@ A boss role's directive (a new message, not a reply, not `no_reply`) ends with t
 ```
 
 Each decision is a line; the tips are one line with their count and topics. The footer is part of the stored body: an idempotent retry returns the message as first sent. Replies in the thread get no footer. `SWITCHBOARD_RULES_FOOTER=off` turns it off.
+
+## The Stop hook: unclassified answers
+
+Every answer a person gives to a panel question (in the dashboard or the asking session's panel) starts unclassified for the role that asked. Answers given before this came in are not counted; answers a boss role gives are not counted either. At the end of each turn the plugin's Stop hook:
+
+1. Reads `GET /api/rules/unclassified` with the role's token and role header, sending `If-None-Match` with the `ETag` it kept; `304` means the kept body still holds.
+2. When `count` is 0, lets the turn end.
+3. Otherwise blocks the stop (the same way it holds a turn for a missing report) with a reason that lists each answer, one per line: `<id> <header>`, and what to do: `switchboard rules classify <id> --rule N` when the answer became rule N (or add the row with `--source <id>`, which classifies it), or `--once` when it held for this job only.
+
+When the server cannot be reached or answers an error, the hook lets the turn end: it never traps a session on its own failure. It blocks at most a few times in a row for the same answers (the plugin's choice) and then lets the turn end with a note, so a session that cannot classify is not held forever.
+
+```http
+GET /api/rules/unclassified
+Authorization: Bearer <token>
+X-Switchboard-Role: team/worker
+If-None-Match: "9b1e04c2a7d3f580"
+```
+
+```json
+{"count":2,"answers":[
+  {"id":"q_3f2a9c0d81b7e645","asker":"team/worker","header":"배포","answered_at":"2026-11-23T09:00:00Z"},
+  {"id":"q_81b7e6453f2a9c0d","asker":"team/worker","header":"캐시","answered_at":"2026-11-23T09:05:00Z"}
+]}
+```
+
+The role's own answers only, oldest first. An admin and a global boss get every role's, with `roles` (`[{"role","count"}]`), and may narrow to one with `?role=`. The ETag is a hash of the body.
+
+```http
+POST /api/rules/classify
+
+{"question":"q_3f2a9c0d81b7e645","rule":12}
+{"question":"q_81b7e6453f2a9c0d","once":true}
+```
+
+Only the asking role (or an admin or a global boss) classifies its answer; another role's is 404. `rule` must be a row the caller reads (or one it proposed); exactly one of `rule` and `once`. A classified answer may be classified again. The answer comes back as `{"id","asker","header","answered_at","class":"rule"|"once","rule"?}`.
+
+CLI: `switchboard rules unclassified [--role ROLE] [--json]`, `switchboard rules classify <id> --rule N|--once [--json]`.
