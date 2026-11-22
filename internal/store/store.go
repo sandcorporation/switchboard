@@ -140,6 +140,9 @@ func Init(db *sql.DB) error {
 	if e = migrateBossWrites(db); e != nil {
 		return e
 	}
+	if e = migrateLedgerViews(db); e != nil {
+		return e
+	}
 	if e = migrateReports(db); e != nil {
 		return e
 	}
@@ -540,6 +543,16 @@ CREATE INDEX IF NOT EXISTS idx_mailbox_views_at ON mailbox_views(viewed_at)`)
 func migrateBossWrites(db *sql.DB) error {
 	_, err := db.Exec(`CREATE TABLE IF NOT EXISTS boss_writes(id INTEGER PRIMARY KEY AUTOINCREMENT,role TEXT NOT NULL,method TEXT NOT NULL,path TEXT NOT NULL,target TEXT NOT NULL DEFAULT '',status INTEGER NOT NULL DEFAULT 0,written_at INTEGER NOT NULL);
 CREATE INDEX IF NOT EXISTS idx_boss_writes_at ON boss_writes(written_at)`)
+	return err
+}
+
+// migrateLedgerViews adds the audit log of reads of one job or schedule
+// with its command or prompt by anyone but its owner (#404, additive):
+// viewer (an admin's name, admin=1, or a role), kind (job or schedule),
+// item ID, owner role and time. The command and prompt are never kept.
+func migrateLedgerViews(db *sql.DB) error {
+	_, err := db.Exec(`CREATE TABLE IF NOT EXISTS ledger_views(id INTEGER PRIMARY KEY AUTOINCREMENT,viewer TEXT NOT NULL,admin INTEGER NOT NULL DEFAULT 0,kind TEXT NOT NULL,item_id INTEGER NOT NULL,owner TEXT NOT NULL,viewed_at INTEGER NOT NULL);
+CREATE INDEX IF NOT EXISTS idx_ledger_views_at ON ledger_views(viewed_at)`)
 	return err
 }
 

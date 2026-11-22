@@ -341,6 +341,12 @@ func jobShow(c Config, id int64, jsonOut bool) (int, error) {
 	if err != nil {
 		return 0, err
 	}
+	printJob(j)
+	return ExitOK, nil
+}
+
+// printJob prints one job with its command (job show, jobs show).
+func printJob(j wire.Job) {
 	fmt.Printf("job      #%d\nstate    %s\nlabel    %s\nowner    %s@%s\ncwd      %s\ncommand  %s\ncreated  %s\nexpires  %s\nextends  %t\n",
 		j.ID, stateText(j), j.Label, j.Role, j.Machine, j.Cwd, j.Command, j.CreatedAt.Format(time.RFC3339), j.ExpiresAt.Format(time.RFC3339), j.Extends)
 	if j.EndedAt != nil {
@@ -349,7 +355,6 @@ func jobShow(c Config, id int64, jsonOut bool) (int, error) {
 	if j.Error != "" {
 		fmt.Printf("error    %s\n", j.Error)
 	}
-	return ExitOK, nil
 }
 
 func jobStop(c Config, id int64, jsonOut bool) (int, error) {

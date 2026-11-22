@@ -225,8 +225,8 @@ var commands = []command{
 			{"--limit", "N", "list: at most N messages, 1-500 (default 100)"},
 			optJSON, optProfile,
 		}},
-	{name: "jobs", args: "[stop ID | rm ID | rm-schedule ID]", nargs: 2, optArgs: true,
-		summary: "List the server's job ledger and schedules of every role in view, the dashboard's jobs tab (boss roles only; commands and prompts left out); stop a job, remove an ended job's record or remove a schedule (rm and rm-schedule need --yes). `job list` is the same ledger for your own jobs",
+	{name: "jobs", args: "[show ID | stop ID | rm ID | rm-schedule ID]", nargs: 2, optArgs: true,
+		summary: "List the server's job ledger and schedules of every role in view, the dashboard's jobs tab (boss roles only; commands and prompts left out); show one job with its command (the read is recorded; `schedule show ID` for a schedule's prompt), stop a job, remove an ended job's record or remove a schedule (rm and rm-schedule need --yes). `job list` is the same ledger for your own jobs",
 		options: []option{
 			{"--state", "STATE", "only jobs and schedules in STATE (live: not ended)"},
 			optYes, optJSON, optProfile,

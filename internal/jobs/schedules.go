@@ -33,8 +33,9 @@ const maxCatchUp = 100000
 // slash):
 //
 //	POST   ""   create (idempotent on the role and key)
-//	GET    ""   list: the role's own, every role's for a boss role
-//	GET    "ID" show (owner only)
+//	GET    ""   list: the role's own, every role's for a boss role (another
+//	            role's prompt left out: OwnSchedules)
+//	GET    "ID" show: the owner, or a boss role over it (recorded)
 //	DELETE "ID" remove (owner only)
 func (s *Service) ScheduleAPI(w http.ResponseWriter, r *http.Request, p identity.Principal, rest string) {
 	if rest == "" {
@@ -50,8 +51,8 @@ func (s *Service) ScheduleAPI(w http.ResponseWriter, r *http.Request, p identity
 				}
 				role = p.Role
 			}
-			// A role's own list carries the prompts (#292).
-			out, err := s.schedules(role, r.URL.Query().Get("state"))
+			// The role's own rows carry the prompt (OwnSchedules).
+			out, err := s.OwnSchedules(s.ViewOf(p), role, r.URL.Query().Get("state"))
 			if err != nil {
 				http.Error(w, "query failed", http.StatusInternalServerError)
 				return
@@ -67,6 +68,12 @@ func (s *Service) ScheduleAPI(w http.ResponseWriter, r *http.Request, p identity
 		http.Error(w, "invalid schedule ID", http.StatusBadRequest)
 		return
 	}
+	if r.Method == http.MethodGet {
+		// The owner, or a boss role over it (recorded, #404).
+		sc, err := s.ShowSchedule(s.ViewOf(p), id)
+		writeShown(w, "schedule", sc, err)
+		return
+	}
 	sc, err := s.GetSchedule(id)
 	if err != nil || sc.Role != p.Role {
 		// Another role's schedule is as unknown as a missing one.
@@ -78,10 +85,8 @@ func (s *Service) ScheduleAPI(w http.ResponseWriter, r *http.Request, p identity
 		return
 	}
 	switch r.Method {
-	case http.MethodGet:
-		writeJSON(w, http.StatusOK, sc)
 	case http.MethodDelete:
-		s.removeSchedule(w, id)
+		s.removeSchedule(w, sc.ID)
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
@@ -93,6 +98,7 @@ func (s *Service) ScheduleAPI(w http.ResponseWriter, r *http.Request, p identity
 //
 //	GET    ""   the schedules in view, ?role= and ?state=; no prompt text
 //	            (ListSchedules)
+//	GET    "ID" one schedule with its prompt (recorded: ShowSchedule)
 //	DELETE "ID" remove
 func (s *Service) ScheduleAdminAPI(w http.ResponseWriter, r *http.Request, v View, rest string) {
 	if rest == "" {
@@ -111,6 +117,11 @@ func (s *Service) ScheduleAdminAPI(w http.ResponseWriter, r *http.Request, v Vie
 	id, err := strconv.ParseInt(rest, 10, 64)
 	if err != nil || id <= 0 {
 		http.Error(w, "invalid schedule ID", http.StatusBadRequest)
+		return
+	}
+	if r.Method == http.MethodGet {
+		sc, err := s.ShowSchedule(v, id)
+		writeShown(w, "schedule", sc, err)
 		return
 	}
 	if r.Method != http.MethodDelete {

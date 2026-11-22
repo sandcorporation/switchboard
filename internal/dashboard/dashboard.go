@@ -1412,8 +1412,10 @@ function reportRow(r){
 }
 // ---- 작업 (#291) ----
 // Jobs, watches and schedules (#292) of every role: a live job has 중지, an
-// ended job and every schedule 지우기, each behind a confirm. The command and
-// prompt text are never shown.
+// ended job and every schedule 지우기, each behind a confirm. The list shows
+// labels only; a row opens the detail (#jobs/job:<id> or sched:<id>, #404),
+// which loads that one item with its command or prompt (the server records
+// the read).
 const jobCols=['종류','이름','역할','기계','상태','시작','만료','마지막 줄',''];
 const jobKinds={command:'명령',watch:'감시',cron:'예약',once:'예약 1회'};
 const jobStates={handed:['넘겨짐','neutral'],running:['실행 중','info'],exited:['끝남','success'],failed:['시작 실패','danger'],stopped:['중지됨','neutral'],expired:['만료','warning'],lost:['잃음','danger']};
@@ -1480,6 +1482,7 @@ function jobRow(j){
   }
   act.append(msg);
   tr.append(cell(jobKinds[j.kind]||j.kind,jobCols[0],'nowrap'),name,cell(j.role,jobCols[2],'nowrap'),cell(j.machine,jobCols[3],'nowrap'),st,started,expires,tail,act);
+  detailRow(tr,'jobs','job:'+j.id);
   return tr;
 }
 function schedRow(j){
@@ -1504,8 +1507,37 @@ function schedRow(j){
   });
   act.append(b,msg);
   tr.append(cell(jobKinds[j.kind]||j.kind,jobCols[0],'nowrap'),name,cell(j.role,jobCols[2],'nowrap'),cell(j.machine,jobCols[3],'nowrap'),st,created,expires,next,act);
+  detailRow(tr,'jobs','sched:'+j.id);
   return tr;
 }
+function jobBadge(j){
+  if(j.schedule)return schedStates[j.state]||[j.state,'neutral'];
+  const [t,c]=jobStates[j.state]||[j.state,'neutral'];
+  return j.state==='exited'&&j.exit_code?[t+' · exit '+j.exit_code,'danger']:[t,c];
+}
+registerDetail('jobs',{
+  list:'작업',kinds:['jobs'],
+  load:async id=>{
+    const i=id.indexOf(':'),kind=id.slice(0,i),n=encodeURIComponent(id.slice(i+1));
+    if(kind!=='job'&&kind!=='sched')return null;
+    try{
+      if(kind==='job')return await api('jobs/'+n);
+      const sc=await api('schedules/'+n);sc.schedule=true;return sc;
+    }catch(e){if(e.status===404)return null;throw e}
+  },
+  head:j=>({title:'#'+j.id+' '+j.label,badge:jobBadge(j)}),
+  subs:j=>[['body',j.schedule?'예약':'명령']],
+  draw:async(j,sub,box)=>{
+    if(j.schedule){
+      const cond=j.kind==='cron'?node('code',j.cron+' ('+j.tz+')'):when(j.next_fire_at||j.last_fire_at);
+      box.append(dl([['조건',cond],['다음',j.state==='active'?when(j.next_fire_at):'-'],['만료',when(j.expires_at)],['밀린',j.missed?j.missed+'회':'-'],['역할',j.role],['기계',j.machine],['ID',String(j.id)],['프롬프트',node('pre',j.prompt)]]));
+      return;
+    }
+    box.append(dl([['종류',jobKinds[j.kind]||j.kind],['역할',j.role],['기계',j.machine],['작업 폴더',node('code',j.cwd)],['시작',when(j.started_at||j.created_at)],['만료',when(j.expires_at)],['ID',String(j.id)],['명령',node('pre',j.command)]]));
+    if(j.error)box.append(node('p',j.error,'err'));
+    if(j.tail)box.append(node('h3','마지막 출력','sechead'),node('pre',j.tail));
+  }
+});
 // A linked thread: the directive with its state (열림 / 끝남, the answered
 // rule's Open), then the replies in order (답 marks one the answered rule
 // counts). An open directive names its sender, who closes it. Each opens the

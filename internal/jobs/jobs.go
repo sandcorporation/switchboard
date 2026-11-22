@@ -48,7 +48,8 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 //
 //	POST ""          create (idempotent on the role and key)
 //	GET  ""          list: the role's own jobs, every role's for a boss role
-//	GET  "ID"        show (owner only)
+//	                 (another role's command left out: OwnJobs)
+//	GET  "ID"        show: the owner, or a boss role over it (recorded)
 //	POST "ID/report" the runner's state (owner only)
 //	POST "ID/stop"   ask the runner to stop (owner only)
 //	POST "ID/lines"  a watch's batch of output lines (owner only)
@@ -79,6 +80,12 @@ func (s *Service) API(w http.ResponseWriter, r *http.Request, p identity.Princip
 		http.Error(w, "invalid job ID", http.StatusBadRequest)
 		return
 	}
+	if action == "" && r.Method == http.MethodGet {
+		// The owner, or a boss role over it (recorded, #404).
+		j, err := s.ShowJob(s.ViewOf(p), id)
+		writeShown(w, "job", j, err)
+		return
+	}
 	j, err := s.Get(id)
 	if err != nil || j.Role != p.Role {
 		// Another role's job is as unknown as a missing one.
@@ -90,8 +97,6 @@ func (s *Service) API(w http.ResponseWriter, r *http.Request, p identity.Princip
 		return
 	}
 	switch {
-	case action == "" && r.Method == http.MethodGet:
-		writeJSON(w, http.StatusOK, j)
 	case action == "report" && r.Method == http.MethodPost:
 		s.report(w, r, j)
 	case action == "stop" && r.Method == http.MethodPost:
@@ -157,7 +162,7 @@ func (s *Service) list(w http.ResponseWriter, r *http.Request, p identity.Princi
 		}
 		role = p.Role
 	}
-	out, err := s.query(role, r.URL.Query().Get("state"))
+	out, err := s.OwnJobs(s.ViewOf(p), role, r.URL.Query().Get("state"))
 	if err != nil {
 		http.Error(w, "query failed", http.StatusInternalServerError)
 		return
@@ -209,6 +214,7 @@ func (s *Service) query(role, state string) ([]wire.Job, error) {
 //
 //	GET    ""        the jobs in view, ?role= and ?state= (live: not ended);
 //	                 the command text is left out (ListJobs)
+//	GET    "ID"      one job with its command (recorded: ShowJob)
 //	POST   "ID/stop" ask the runner to stop
 //	DELETE "ID"      remove an ended job's record
 func (s *Service) AdminAPI(w http.ResponseWriter, r *http.Request, v View, rest string) {
@@ -229,6 +235,11 @@ func (s *Service) AdminAPI(w http.ResponseWriter, r *http.Request, v View, rest 
 	id, err := strconv.ParseInt(idPart, 10, 64)
 	if err != nil || id <= 0 {
 		http.Error(w, "invalid job ID", http.StatusBadRequest)
+		return
+	}
+	if action == "" && r.Method == http.MethodGet {
+		j, err := s.ShowJob(v, id)
+		writeShown(w, "job", j, err)
 		return
 	}
 	j, err := s.Get(id)

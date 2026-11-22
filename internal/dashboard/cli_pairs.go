@@ -32,6 +32,8 @@ var CLIPairs = []CLIPair{
 	{Method: "GET", Path: "reports/{}", CLI: "report show"},
 	{Method: "GET", Path: "jobs", CLI: "jobs"},
 	{Method: "GET", Path: "schedules", CLI: "jobs"},
+	{Method: "GET", Path: "jobs/{}", CLI: "jobs show"},
+	{Method: "GET", Path: "schedules/{}", CLI: "schedule show"},
 	{Method: "POST", Path: "jobs/{}/stop", CLI: "jobs stop"},
 	{Method: "DELETE", Path: "jobs/{}", CLI: "jobs rm"},
 	{Method: "DELETE", Path: "schedules/{}", CLI: "jobs rm-schedule"},
