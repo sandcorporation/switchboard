@@ -176,13 +176,9 @@ func BaseOf(q Queryer, name string) string {
 // a numbered form of it (see Reserved), and mail to it is refused.
 const SystemSender = "switchboard/system"
 
-// LegacySystemSender is the system sender's old name. It stays reserved, and
-// mail sent under it still counts as system mail.
-const LegacySystemSender = "agent-mail/system" // remove in phase 3 (3단계에 제거): stored as sender in old mail
-
-// IsSystemSender reports whether name is the system sender under either name.
+// IsSystemSender reports whether name is the system sender.
 func IsSystemSender(name string) bool {
-	return name == SystemSender || name == LegacySystemSender
+	return name == SystemSender
 }
 
 // Reserved reports whether name is the system sender or a numbered form

@@ -37,7 +37,6 @@ func answeredFixture(t *testing.T, s *Server, at time.Time) (open []int64, answe
 	// System mail does not.
 	system := d("system", "T-5", "read", 4*time.Minute)
 	mailAt(t, s, flowRow{sender: identity.SystemSender, recipient: "hq/boss", task: "T-5", at: at.Add(5 * time.Minute), thread: system})
-	mailAt(t, s, flowRow{sender: identity.LegacySystemSender, recipient: "hq/boss", task: "T-5", at: at.Add(6 * time.Minute), thread: system})
 	// A completed directive stays hidden without any reply.
 	d("completed", "", "complete", 5*time.Minute)
 	return []int64{task, other, before, system}, answered, total

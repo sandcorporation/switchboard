@@ -38,7 +38,7 @@ func TestServerConfigReadsBothEnvNames(t *testing.T) {
 	}
 }
 
-func TestHeadersAcceptBothNamesAndCountOld(t *testing.T) {
+func TestOldPrefixHeadersAreIgnored(t *testing.T) {
 	s := testServer(t)
 	s.admin.ProxyToken = "proxy-secret"
 	get := func(set map[string]string) int {
@@ -54,36 +54,24 @@ func TestHeadersAcceptBothNamesAndCountOld(t *testing.T) {
 	if c := get(map[string]string{"X-Switchboard-Role": "a"}); c != 200 {
 		t.Fatalf("new header: %d", c)
 	}
-	if n := s.oldHeaders.Snapshot()[config.LegacyHeaderPrefix+"Role"]; n != 0 {
-		t.Fatalf("new header counted as old: %d", n)
-	}
-	if c := get(map[string]string{config.LegacyHeaderPrefix + "Role": "a"}); c != 200 {
-		t.Fatalf("old header: %d", c)
-	}
-	// The new header wins: a wrong old one beside it is ignored.
-	if c := get(map[string]string{"X-Switchboard-Role": "a", config.LegacyHeaderPrefix + "Role": "b"}); c != 200 {
+	// An old-prefix role header beside the new one changes nothing.
+	if c := get(map[string]string{"X-Switchboard-Role": "a", "X-Agent-Mail-Role": "b"}); c != 200 {
 		t.Fatalf("both headers: %d", c)
 	}
-	if n := s.oldHeaders.Snapshot()[config.LegacyHeaderPrefix+"Role"]; n != 1 {
-		t.Fatalf("old header count=%d, want 1", n)
-	}
-
-	// Admin and dashboard headers: both names.
-	newAdmin := map[string]string{"X-Switchboard-Admin": "proxy-secret"}
-	if w := adminRequestWith(s, "GET", "/api/admin/metrics", "", newAdmin); w.Code != 200 {
+	// The old admin header no longer opens the admin API.
+	if w := adminRequestWith(s, "GET", "/api/admin/metrics", "", map[string]string{"X-Switchboard-Admin": "proxy-secret"}); w.Code != 200 {
 		t.Fatalf("new admin header: %d", w.Code)
 	}
-	oldAdmin := map[string]string{config.LegacyHeaderPrefix + "Admin": "proxy-secret"}
-	if w := adminRequestWith(s, "GET", "/api/admin/metrics", "", oldAdmin); w.Code != 200 {
+	if w := adminRequestWith(s, "GET", "/api/admin/metrics", "", map[string]string{"X-Agent-Mail-Admin": "proxy-secret"}); w.Code != 401 {
 		t.Fatalf("old admin header: %d", w.Code)
 	}
-	w := adminRequestWith(s, "GET", "/api/admin/metrics", "", oldAdmin)
+	w := adminRequestWith(s, "GET", "/api/admin/metrics", "", map[string]string{"X-Switchboard-Admin": "proxy-secret"})
 	var m wire.MetricsReport
-	if err := json.Unmarshal(w.Body.Bytes(), &m); err != nil || m.Aliases == nil {
+	if err := json.Unmarshal(w.Body.Bytes(), &m); err != nil || m.Aliases == nil || m.Aliases.OldEnv == nil {
 		t.Fatalf("admin metrics aliases: %v %s", err, w.Body)
 	}
-	if m.Aliases.OldHeaders[config.LegacyHeaderPrefix+"Admin"] != 2 || m.Aliases.OldHeaders[config.LegacyHeaderPrefix+"Role"] != 1 || m.Aliases.OldEnv == nil {
-		t.Fatalf("aliases: %+v", m.Aliases)
+	if strings.Contains(w.Body.String(), "old_headers") {
+		t.Fatalf("old_headers still reported: %s", w.Body)
 	}
 	// The boss-facing /api/metrics keeps its shape.
 	t.Setenv("AGENT_MAIL_BOSS_ROLES", "a")
@@ -95,18 +83,17 @@ func TestHeadersAcceptBothNamesAndCountOld(t *testing.T) {
 	}
 }
 
-func TestDashboardWriteAcceptsBothHeaders(t *testing.T) {
+func TestDashboardWriteNeedsNewHeader(t *testing.T) {
 	t.Parallel()
 	s := testServer(t)
 	s.admin.ProxyToken = "proxy-secret"
-	for _, h := range []string{"X-Switchboard-Dashboard", config.LegacyHeaderPrefix + "Dashboard"} {
-		hs := map[string]string{"Content-Type": "application/json", h: "1", "Sec-Fetch-Site": "same-origin"}
-		if w := adminRequest(s, "PUT", "/api/admin/question-settings/a", `{}`, hs); w.Code == 403 {
-			t.Fatalf("%s refused: %d %s", h, w.Code, w.Body)
-		}
+	hs := map[string]string{"Content-Type": "application/json", "X-Switchboard-Dashboard": "1", "Sec-Fetch-Site": "same-origin"}
+	if w := adminRequest(s, "PUT", "/api/admin/question-settings/a", `{}`, hs); w.Code == 403 {
+		t.Fatalf("new header refused: %d %s", w.Code, w.Body)
 	}
-	if s.oldHeaders.Snapshot()[config.LegacyHeaderPrefix+"Dashboard"] != 1 {
-		t.Fatalf("dashboard count: %v", s.oldHeaders.Snapshot())
+	old := map[string]string{"Content-Type": "application/json", "X-Agent-Mail-Dashboard": "1", "Sec-Fetch-Site": "same-origin"}
+	if w := adminRequest(s, "PUT", "/api/admin/question-settings/a", `{}`, old); w.Code != 403 {
+		t.Fatalf("old header accepted: %d %s", w.Code, w.Body)
 	}
 }
 

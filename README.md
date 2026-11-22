@@ -1,23 +1,8 @@
 # Switchboard
 
-Switchboard (formerly Agent Mail) is a small self hosted mailbox for stable, role addressed agent identities. The service owns the identity boundary and durable message store; identities such as `sandcorp/boss` or `codemit/worker-1` are configured roles, not Orca session or terminal handles. A role keeps the same inbox after an agent session restarts.
+Switchboard is a small self hosted mailbox for stable, role addressed agent identities. The service owns the identity boundary and durable message store; identities such as `sandcorp/boss` or `codemit/worker-1` are configured roles, not Orca session or terminal handles. A role keeps the same inbox after an agent session restarts.
 
 Why we built it: [A role mailbox for AI sessions](https://sandcorp.co.kr/blog/role-mailbox-for-ai-sessions). Made by [Sandcorp](https://sandcorp.co.kr).
-
-## Old names (aliases)
-
-The product was called Agent Mail. Until the aliases are removed, the old names keep working, so running sessions and scripts need no change. The new name wins when both are set.
-
-| New | Old (still accepted) |
-|---|---|
-| CLI `switchboard` | `agent-mail` (same binary; help shows the name it was run as) | <!-- 3단계에 제거 -->
-| `SWITCHBOARD_*` environment (server and CLI) | `AGENT_MAIL_*`; the server logs the old names it read at startup |
-| profile directory `<config>/switchboard/` | `<config>/agent-mail/` (a profile found only there is copied once to the new directory, owner-only; the old file stays, unused) | <!-- 3단계에 제거 -->
-| headers `X-Switchboard-Role` / `-Admin` / `-Dashboard` | `X-Agent-Mail-*` | <!-- 3단계에 제거 -->
-| system sender `switchboard/system` | `agent-mail/system` (reserved; counted as system mail) | <!-- 3단계에 제거 -->
-| image `ghcr.io/<owner>/switchboard` | `ghcr.io/<owner>/agent-mail` (same tags) | <!-- 3단계에 제거 -->
-
-`compose.yaml` and the Jenkins deployment use the new image and `SWITCHBOARD_*` keys; the Compose project and service are `switchboard` and the data volume is `switchboard_switchboard_data` (moved from `agent-mail_agent_mail_data` with `scripts/rename-compose-project.sh`, [docs/rename-compose-project.md](docs/rename-compose-project.md)). `GET /api/admin/metrics` reports old-name use since start as `aliases: {old_headers: {name: count}, old_env: [names]}`, also shown at the bottom of the dashboard's 지표 tab.
 
 ## Design decisions
 
@@ -210,7 +195,7 @@ The Compose file binds to loopback by default (`127.0.0.1:8097`). For private ne
 `docker compose up -d --build` above builds locally (the image is tagged `switchboard:local`). The production path never builds on the server:
 
 1. A pull request runs `CI` (tests, vet, build).
-2. A push to `main` runs `promote`: the same checks in parallel with `image`, which builds a multi-arch image (`linux/amd64`, `linux/arm64`; Docker pulls the host's architecture) and pushes `ghcr.io/sandcorporation/switchboard:<commit sha>`, which the deployment pulls, and the same tag under the old `ghcr.io/sandcorporation/agent-mail` (3단계에 제거). When both pass, `production` is fast-forwarded to that commit (`scripts/ci/promote.sh`). `production` only moves forward; roll back with a revert PR. <!-- 대장 결정 전 유지 -->
+2. A push to `main` runs `promote`: the same checks in parallel with `image`, which builds a multi-arch image (`linux/amd64`, `linux/arm64`; Docker pulls the host's architecture) and pushes `ghcr.io/sandcorporation/switchboard:<commit sha>`, which the deployment pulls,. When both pass, `production` is fast-forwarded to that commit (`scripts/ci/promote.sh`). `production` only moves forward; roll back with a revert PR.
 3. A Jenkins job using the `Jenkinsfile` watches `production` only. Through the `sandcorp` shared library (`sandcorpDeploy`) it waits for the GHCR image of the `production` head, pulls it on the node labelled `switchboard-deploy`, recreates the `switchboard` service with `SWITCHBOARD_IMAGE` set to that image (`--no-build`), waits for the container health check and runs `/health` inside the container. If the new container does not become healthy it switches back to the previous successfully deployed image. The `ROLLBACK_SHA` job parameter deploys an older published image (commits before #157 were published only under the old image name).
 
 Nothing deploys until such a job exists. Host-specific values are not in this repository: the deploy node is chosen by its Jenkins label, and secrets plus `MAIL_BIND_ADDRESS` come from the `.env` file in the job workspace on that node (mode `0600`, same `SWITCHBOARD_*` keys as above), or, optionally, from an env file outside the workspace named by the node's `DEPLOY_ENV_FILE` environment variable. The workspace `.env` is the default; note that Jenkins can wipe the workspace when a checkout fails, so keep a copy of it. The first clone into a new workspace also empties it: put the `.env` there after the job's first run (which stops at the check below), then run the job again. The deploy stops before replacing anything if `SWITCHBOARD_TOKENS` or `MAIL_BIND_ADDRESS` is empty. Keep the Compose project name `switchboard` so the existing `switchboard_switchboard_data` volume is reused; moving from a manual deployment only recreates the container. The deploy node needs Docker with Compose and pull access to the GHCR package.
@@ -384,7 +369,7 @@ Orca integration belongs in a separate wake/session adapter. This service has no
 
 ## Install and uninstall CLI
 
-GitHub Actions builds versioned archives for Windows, Linux, and macOS (amd64 and arm64 where supported), plus SHA-256 checksums. Download the archive for your platform from Releases, verify `checksums.txt`, and place `switchboard`/`switchboard.exe` on PATH. The CLI does not update itself: `switchboard version --check` asks the server and prints `server vY, this vX`, plus `update: switchboard_<vY>_<os>_<arch>.tar.gz` (`.zip` on Windows) when this CLI is below the server's minimum (exit 3); exit 0 when current or a development build, exit 1 with one stderr line when the server cannot be reached. Configure the endpoint, role, and token as above. Config is stored at the OS user config directory under `switchboard/config.json` with user-only permissions (a profile that exists only under the old `agent-mail/` directory is copied there once on first use; the old copy is left in place and no longer read). To uninstall, remove the binary and that config directory; removing config deletes the local token copy. Server messages remain until the operator removes the service volume. <!-- 3단계에 제거 -->
+GitHub Actions builds versioned archives for Windows, Linux, and macOS (amd64 and arm64 where supported), plus SHA-256 checksums. Download the archive for your platform from Releases, verify `checksums.txt`, and place `switchboard`/`switchboard.exe` on PATH. The CLI does not update itself: `switchboard version --check` asks the server and prints `server vY, this vX`, plus `update: switchboard_<vY>_<os>_<arch>.tar.gz` (`.zip` on Windows) when this CLI is below the server's minimum (exit 3); exit 0 when current or a development build, exit 1 with one stderr line when the server cannot be reached. Configure the endpoint, role, and token as above. Config is stored at the OS user config directory under `switchboard/config.json` with user-only permissions. To uninstall, remove the binary and that config directory; removing config deletes the local token copy. Server messages remain until the operator removes the service volume.
 
 A hosting instance on a PC (`switchboard up`, Windows and Linux, separate from the operations instance): [docs/hosting-pc.md](docs/hosting-pc.md).
 

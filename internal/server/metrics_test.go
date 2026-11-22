@@ -122,7 +122,6 @@ func TestMetricsPendingAgeExcludesSystemMail(t *testing.T) {
 	mailAt(t, s, flowRow{sender: "a", recipient: "b", at: now.Add(-3 * time.Hour), status: "pending"})
 	mailAt(t, s, flowRow{sender: "a", recipient: "b", at: now.Add(-time.Hour), status: "pending"})
 	mailAt(t, s, flowRow{sender: identity.SystemSender, recipient: "b", at: now.Add(-5 * time.Hour), status: "pending"})
-	mailAt(t, s, flowRow{sender: identity.LegacySystemSender, recipient: "b", at: now.Add(-6 * time.Hour), status: "pending"})
 	mailAt(t, s, flowRow{sender: "b", recipient: "a", at: now.Add(-30 * time.Minute), status: "pending"})
 	mailAt(t, s, flowRow{sender: "b", recipient: "a", at: now.Add(-9 * time.Hour), status: "read"})
 	mailAt(t, s, flowRow{sender: identity.SystemSender, recipient: "team/worker-1", at: now.Add(-9 * time.Hour), status: "pending"})

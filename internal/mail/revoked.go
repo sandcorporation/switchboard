@@ -26,8 +26,8 @@ type revokedMail struct {
 // mailboxes it wrote to.
 func NoticeRevoked(tx *sql.Tx, role, stamp string, now time.Time) ([]string, error) {
 	rows, err := tx.Query(`SELECT m.id,m.sender,m.recipient,m.subject,m.created_at FROM messages m `+StatusJoin+
-		` WHERE (m.recipient=? OR substr(m.recipient,1,?)=?) AND m.sender NOT IN (?,?) AND `+StatusExpr+`='pending' ORDER BY m.id`,
-		role, len(role)+1, role+"-", identity.SystemSender, identity.LegacySystemSender)
+		` WHERE (m.recipient=? OR substr(m.recipient,1,?)=?) AND m.sender<>? AND `+StatusExpr+`='pending' ORDER BY m.id`,
+		role, len(role)+1, role+"-", identity.SystemSender)
 	if err != nil {
 		return nil, err
 	}
