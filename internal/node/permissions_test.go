@@ -57,7 +57,8 @@ func TestSkipPermissionsAppliesAtTheNextRestart(t *testing.T) {
 	a.RestartGen++
 	n.Assign([]node.Record{a})
 	r.reconcile(n)
-	want := append(append([]string{"/opt/agent/claude", "--resume", "conv-a"}, claudeSkip...), "--model", "opus")
+	pinned := `{"skipDangerousModePermissionPrompt":true,` + rigSettings[1:]
+	want := []string{"/opt/agent/claude", "--resume", "conv-a", "--dangerously-skip-permissions", "--settings", pinned, "--model", "opus"}
 	if got := r.launches(); len(got) != 2 || !slices.Equal(got[1], want) {
 		t.Fatalf("launches %q, want second %q", got, want)
 	}

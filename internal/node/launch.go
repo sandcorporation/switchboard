@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -153,8 +154,12 @@ func (c Config) Argv(r Record, launched bool) []string {
 	if rep, ok := a.(agent.Reporter); ok && own && c.Switchboard != "" && c.StatusDir != "" {
 		added = rep.ReportArgs(added, r.Args, c.statusCommand(a.Name(), r.ID))
 	}
+	args := r.Args
+	if p, ok := a.(agent.EnvPinner); ok && own {
+		added, args = p.PinEnvArgs(added, r.Args, c.identity(r), folderReader(r.Directory))
+	}
 	argv = append(argv, added...)
-	for _, arg := range r.Args {
+	for _, arg := range args {
 		if agent.RefusedArg(a, arg) {
 			continue
 		}
@@ -248,17 +253,47 @@ func (c Config) DroppedMarkers() []string {
 	return out
 }
 
-// ChildEnv is a record's environment: the node's, minus the role token, the
-// node token and the agent session markers, with the identity variables set from the record, the
-// colour variables, then the record's non-secret env.
-func (c Config) ChildEnv(r Record) []string {
-	identity := []struct{ name, value string }{
+// identityNames are the identity variables' names (without the prefix) and
+// values for a record's session.
+func (c Config) identityNames(r Record) []struct{ name, value string } {
+	return []struct{ name, value string }{
 		{config.ChildProfileName, r.Profile},
 		{config.ChildEndpointName, c.Endpoint},
 		{config.ChildMachineName, c.Machine},
 		{config.ChildLabelName, r.Label},
 		{config.ChildParentName, r.Parent},
 	}
+}
+
+// identity is the identity variables ChildEnv sets for a record's session,
+// the ones the adapter keeps over the folder's own settings (#462). The old
+// names are not among them: nothing reads them any more.
+func (c Config) identity(r Record) []agent.EnvVar {
+	var out []agent.EnvVar
+	for _, v := range c.identityNames(r) {
+		if v.value != "" {
+			out = append(out, agent.EnvVar{Name: config.EnvPrefix + v.name, Value: v.value})
+		}
+	}
+	return out
+}
+
+// folderReader reads a file a record's args name: relative to the
+// record's folder dir.
+func folderReader(dir string) func(string) ([]byte, error) {
+	return func(name string) ([]byte, error) {
+		if !filepath.IsAbs(name) && dir != "" {
+			name = filepath.Join(dir, name)
+		}
+		return os.ReadFile(name)
+	}
+}
+
+// ChildEnv is a record's environment: the node's, minus the role token, the
+// node token and the agent session markers, with the identity variables set from the record, the
+// colour variables, then the record's non-secret env.
+func (c Config) ChildEnv(r Record) []string {
+	identity := c.identityNames(r)
 	drop := map[string]bool{
 		config.EnvPrefix + config.TokenName: true,
 		config.LegacyEnv(config.TokenName):  true,

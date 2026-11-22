@@ -21,6 +21,10 @@
 // "inbox" prints its slot's inbox ("mail <sender> <subject>" per message,
 // newest first, or "inbox empty"), anything else is echoed as "echo <line>".
 //
+// Like the real CLI it applies the env of its working directory's
+// .claude/settings.json and .claude/settings.local.json over its
+// environment, and the env of --settings over those (SettingsEnv).
+//
 // With SWITCHBOARD_PROFILE naming a profile file in SWITCHBOARD_CONFIG_DIR
 // it also plays the switchboard plugin (slot.go): it registers its slot
 // ("slot <role>") with SWITCHBOARD_MACHINE and its working directory,
@@ -30,9 +34,11 @@ package fakeagent
 
 import (
 	"bufio"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -89,6 +95,9 @@ const (
 // Run is the fake agent: args without the program name, environ as
 // "KEY=value", input and output in place of the terminal.
 func Run(args, environ []string, in io.Reader, out io.Writer) int {
+	if wd, err := os.Getwd(); err == nil {
+		environ = SettingsEnv(environ, args, wd)
+	}
 	getenv := func(k string) string {
 		for i := len(environ) - 1; i >= 0; i-- {
 			if name, v, ok := strings.Cut(environ[i], "="); ok && name == k {
@@ -247,6 +256,53 @@ func Run(args, environ []string, in io.Reader, out io.Writer) int {
 		}
 	}
 	return 0
+}
+
+// SettingsEnv is environ with the settings layers over it the way the real
+// CLI applies them (#462): the env of the folder's .claude/settings.json,
+// then of its .claude/settings.local.json, then of the last --settings in
+// args (inline JSON, or a file relative to dir). A later layer replaces an
+// earlier one's variable.
+func SettingsEnv(environ, args []string, dir string) []string {
+	read := func(name string) []byte {
+		if !filepath.IsAbs(name) {
+			name = filepath.Join(dir, name)
+		}
+		b, _ := os.ReadFile(name)
+		return b
+	}
+	layers := [][]byte{read(filepath.Join(".claude", "settings.json")), read(filepath.Join(".claude", "settings.local.json"))}
+	flag := ""
+	for i := 0; i < len(args); i++ {
+		if name, v, eq := strings.Cut(args[i], "="); name == "--settings" {
+			if eq {
+				flag = v
+			} else if i+1 < len(args) {
+				flag = args[i+1]
+				i++
+			}
+		}
+	}
+	if strings.HasPrefix(strings.TrimSpace(flag), "{") {
+		layers = append(layers, []byte(flag))
+	} else if flag != "" {
+		layers = append(layers, read(flag))
+	}
+	out := slices.Clone(environ)
+	for _, b := range layers {
+		var settings struct {
+			Env map[string]string `json:"env"`
+		}
+		if len(b) == 0 || json.Unmarshal(b, &settings) != nil {
+			continue
+		}
+		names := slices.Sorted(maps.Keys(settings.Env))
+		for _, k := range names {
+			out = slices.DeleteFunc(out, func(kv string) bool { n, _, _ := strings.Cut(kv, "="); return n == k })
+			out = append(out, k+"="+settings.Env[k])
+		}
+	}
+	return out
 }
 
 // parseArgs finds the conversation flag. Exactly one of --session-id and

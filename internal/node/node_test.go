@@ -32,6 +32,10 @@ type rig struct {
 	cfg  node.Config
 }
 
+// rigSettings is the --settings a rig's claude session gets: the identity
+// the node hands it, kept over the folder's own settings (#462).
+const rigSettings = `{"env":{"SWITCHBOARD_PROFILE":"team-worker","SWITCHBOARD_ENDPOINT":"http://127.0.0.1:8090","SWITCHBOARD_MACHINE":"pc-1"}}`
+
 func newRig(t *testing.T) *rig {
 	r := &rig{t: t, fake: termtest.New(), now: t0}
 	r.fake.SetClock(func() time.Time { return r.now })
@@ -128,8 +132,8 @@ func TestFirstLaunchUsesSessionIDThenResume(t *testing.T) {
 	}
 	r.relaunch(n)
 	want := [][]string{
-		{"/opt/agent/claude", "--session-id", "conv-a", "--model", "opus"},
-		{"/opt/agent/claude", "--resume", "conv-a", "--model", "opus"},
+		{"/opt/agent/claude", "--session-id", "conv-a", "--settings", rigSettings, "--model", "opus"},
+		{"/opt/agent/claude", "--resume", "conv-a", "--settings", rigSettings, "--model", "opus"},
 	}
 	if got := r.launches(); !slices.EqualFunc(got, want, slices.Equal) {
 		t.Fatalf("launches %q, want %q", got, want)
@@ -330,7 +334,7 @@ func TestArgsNeverCarryPrintOrContinue(t *testing.T) {
 	a := rec("a")
 	a.Args = []string{"-p", "--continue", "--print=x", "--resume", "--session-id", "--model", "opus"}
 	r.reconcile(r.node(a))
-	want := []string{"/opt/agent/claude", "--session-id", "conv-a", "--model", "opus"}
+	want := []string{"/opt/agent/claude", "--session-id", "conv-a", "--settings", rigSettings, "--model", "opus"}
 	if got := r.launches(); len(got) != 1 || !slices.Equal(got[0], want) {
 		t.Fatalf("argv %q, want %q", got, want)
 	}
