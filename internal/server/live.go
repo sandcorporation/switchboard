@@ -117,6 +117,10 @@ func (s *Server) api(w http.ResponseWriter, r *http.Request) {
 	if !admin && r.Method == http.MethodGet && strings.HasPrefix(path, "messages/") && strings.Count(path, "/") == 1 {
 		write = true
 	}
+	// A boss role's write (#399) changes what the same admin write does.
+	if bossPath, ok := strings.CutPrefix(path, "boss/"); ok && !admin && write {
+		path, admin = bossPath, true
+	}
 	kinds := liveKinds(path, admin)
 	if !write || kinds == nil {
 		s.serveAPI(w, r)

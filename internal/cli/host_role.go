@@ -68,13 +68,21 @@ func cliHostGrant(p parsedArgs, stdout io.Writer) (int, error) {
 // hostAsRole runs a checked `host ACTION [ID]` as the profile's role through
 // the server: add, list, start, stop and remove of the sessions under it,
 // within the admin's grant.
-func hostAsRole(action, id string, add wire.HostedSessionCreate, jsonOut bool, stdout io.Writer) (int, error) {
-	if !roleActions[action] {
+//
+// A boss role (#399) also makes the dashboard's other terminal actions
+// (hostBossActions) through /api/boss/terminals, and add, start, stop and
+// remove there when the grant route refuses them (403 or 404).
+func hostAsRole(action, id string, add wire.HostedSessionCreate, change wire.HostedSessionChange, p parsedArgs, stdout io.Writer) (int, error) {
+	jsonOut := p.bool("--json")
+	if !roleActions[action] && !hostBossActions[action] {
 		return 0, fmt.Errorf("host %s is the admin's: run it on the host machine with DB_PATH naming this instance's database (a role token can add, list, start, stop and remove)", action)
 	}
 	c, err := loadConfig()
 	if err != nil {
 		return 0, fmt.Errorf("host: %w (or, on the host machine, set DB_PATH to name this instance's own database)", err)
+	}
+	if hostBossActions[action] {
+		return hostAsBoss(c, action, id, change, add, p, stdout)
 	}
 	url := strings.TrimRight(c.Endpoint, "/") + "/api/host/terminals"
 	method := http.MethodGet
@@ -100,6 +108,11 @@ func hostAsRole(action, id string, add wire.HostedSessionCreate, jsonOut bool, s
 	}
 	if b == nil {
 		if b, err = roleHostCall(c, method, url, body); err != nil {
+			if action != "list" && refusal(err) {
+				if code, bossErr := hostAsBoss(c, action, id, change, add, p, stdout); !refusal(bossErr) {
+					return code, bossErr
+				}
+			}
 			return 0, err
 		}
 	}
@@ -133,10 +146,18 @@ func hostAsRole(action, id string, add wire.HostedSessionCreate, jsonOut bool, s
 // hostAutoAsRole runs `host auto ACTION` with a role token: list is a boss
 // role's view (#397); the server refuses every other action (they are the
 // admin's) and the refusal is the error.
-func hostAutoAsRole(action string, jsonOut bool, stdout io.Writer) (int, error) {
+//
+// show, run, pause, resume and rm are a boss role's (#399), through
+// /api/boss/terminals.
+func hostAutoAsRole(action, ref string, runs int, p parsedArgs, stdout io.Writer) (int, error) {
+	jsonOut := p.bool("--json")
 	c, err := loadConfig()
 	if err != nil {
 		return 0, fmt.Errorf("host auto: %w (or, on the host machine, set DB_PATH to name this instance's own database)", err)
+	}
+	switch action {
+	case "show", "run", "pause", "resume", "rm":
+		return hostAutoAsBoss(c, action, ref, runs, p, stdout)
 	}
 	if action == "list" {
 		// A role that is no boss (or a server without the view) gets the
@@ -152,6 +173,11 @@ func hostAutoAsRole(action string, jsonOut bool, stdout io.Writer) (int, error) 
 		err = fmt.Errorf("host auto: the server did not refuse a role token")
 	}
 	return 0, err
+}
+
+// refusal reports whether err is the server's 403 or 404.
+func refusal(err error) bool {
+	return err != nil && (strings.Contains(err.Error(), "server returned 403") || strings.Contains(err.Error(), "server returned 404"))
 }
 
 func roleHostCall(c Config, method, url string, body io.Reader) ([]byte, error) {

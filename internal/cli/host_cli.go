@@ -60,15 +60,28 @@ func cliHost(p parsedArgs, stdout io.Writer) (int, error) {
 		if id == "" {
 			return 0, usagef("host set requires ID")
 		}
-		if skip == nil {
-			return 0, usagef("host set requires --skip-permissions on|off")
+		// With a boss role's token (no DB_PATH) set also changes what the
+		// dashboard's session form does: label, parent, class, restart and
+		// the agent arguments after --.
+		bossSet := map[string]bool{}
+		if !adminHost() {
+			bossSet = map[string]bool{"--label": true, "--parent": true, "--class": true, "--restart": true}
 		}
+		changes := skip != nil || len(p.extra) > 0 && !adminHost()
 		for _, o := range addOnly {
-			if _, ok := p.values[o]; ok {
+			if _, ok := p.values[o]; ok && !bossSet[o] {
 				return 0, usagef("host set: %s is for host add", o)
+			} else if ok {
+				changes = true
 			}
 		}
-		if len(p.extra) > 0 {
+		if adminHost() && skip == nil {
+			return 0, usagef("host set requires --skip-permissions on|off")
+		}
+		if !changes {
+			return 0, usagef("host set requires --skip-permissions on|off, or with a boss role's token --label, --parent, --class, --restart or -- ARGS")
+		}
+		if adminHost() && len(p.extra) > 0 {
 			return 0, usagef("host set: arguments after -- are for host add")
 		}
 	case "limit":
@@ -83,7 +96,10 @@ func cliHost(p parsedArgs, stdout io.Writer) (int, error) {
 		if len(p.extra) > 0 {
 			return 0, usagef("host limit: arguments after -- are for host add")
 		}
-	case "list", "nodes", "start", "stop", "restart", "new-conversation", "remove":
+	case "list", "nodes", "start", "stop", "restart", "new-conversation", "remove", "events", "log", "revoke-node":
+		if (action == "events" || action == "log" || action == "revoke-node") && adminHost() {
+			return 0, usagef("host %s: a boss role's action through the server; unset DB_PATH", action)
+		}
 		listing := action == "list" || action == "nodes"
 		if listing && id != "" {
 			return 0, usagef("host %s: unexpected argument %q", action, id)
@@ -100,7 +116,7 @@ func cliHost(p parsedArgs, stdout io.Writer) (int, error) {
 			return 0, usagef("host %s: arguments after -- are for host add", action)
 		}
 	default:
-		return 0, usagef("host: unknown action %q (add, list, nodes, set, start, stop, restart, new-conversation, remove, limit, grant, revoke-grant)", action)
+		return 0, usagef("host: unknown action %q (add, list, nodes, set, start, stop, restart, new-conversation, remove, events, log, revoke-node, limit, grant, revoke-grant)", action)
 	}
 	add := wire.HostedSessionCreate{
 		Node: p.values["--node"], Base: p.values["--base"], Profile: p.values["--profile"], Directory: p.values["--dir"],
@@ -113,7 +129,17 @@ func cliHost(p parsedArgs, stdout io.Writer) (int, error) {
 		return hostNodes(p.bool("--json"), stdout)
 	}
 	if !adminHost() {
-		return hostAsRole(action, id, add, p.bool("--json"), stdout)
+		change := wire.HostedSessionChange{SkipPermissions: skip}
+		for o, f := range map[string]**string{"--label": &change.Label, "--parent": &change.Parent, "--class": &change.Class, "--restart": &change.Restart} {
+			if v, ok := p.values[o]; ok {
+				*f = &v
+			}
+		}
+		if len(p.extra) > 0 {
+			args := append([]string{}, p.extra...)
+			change.Args = &args
+		}
+		return hostAsRole(action, id, add, change, p, stdout)
 	}
 	return host(action, id, add, p.bool("--json"), stdout)
 }
@@ -203,7 +229,7 @@ func cliHostAuto(p parsedArgs, stdout io.Writer) (int, error) {
 		}
 	}
 	if !adminHost() {
-		return hostAutoAsRole(action, p.bool("--json"), stdout)
+		return hostAutoAsRole(action, ref, runs, p, stdout)
 	}
 	if hostAuto == nil {
 		return 0, usagef("host auto: not available in this binary")

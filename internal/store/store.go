@@ -137,6 +137,9 @@ func Init(db *sql.DB) error {
 	if e = migrateMailboxViews(db); e != nil {
 		return e
 	}
+	if e = migrateBossWrites(db); e != nil {
+		return e
+	}
 	if e = migrateReports(db); e != nil {
 		return e
 	}
@@ -528,6 +531,15 @@ CREATE INDEX IF NOT EXISTS idx_presence_log_started ON presence_log(started_at);
 func migrateMailboxViews(db *sql.DB) error {
 	_, err := db.Exec(`CREATE TABLE IF NOT EXISTS mailbox_views(id INTEGER PRIMARY KEY AUTOINCREMENT,viewer TEXT NOT NULL,mailbox TEXT NOT NULL,message_id INTEGER NOT NULL DEFAULT 0,viewed_at INTEGER NOT NULL);
 CREATE INDEX IF NOT EXISTS idx_mailbox_views_at ON mailbox_views(viewed_at)`)
+	return err
+}
+
+// migrateBossWrites adds the audit log of a boss role's dashboard writes
+// through its token (#399, additive): role, method, path, target, status and
+// time. Request bodies are never kept.
+func migrateBossWrites(db *sql.DB) error {
+	_, err := db.Exec(`CREATE TABLE IF NOT EXISTS boss_writes(id INTEGER PRIMARY KEY AUTOINCREMENT,role TEXT NOT NULL,method TEXT NOT NULL,path TEXT NOT NULL,target TEXT NOT NULL DEFAULT '',status INTEGER NOT NULL DEFAULT 0,written_at INTEGER NOT NULL);
+CREATE INDEX IF NOT EXISTS idx_boss_writes_at ON boss_writes(written_at)`)
 	return err
 }
 

@@ -215,8 +215,8 @@ var commands = []command{
 			{"--ndjson", "", "stream the server's ndjson export unchanged"},
 			optJSON, optProfile,
 		}},
-	{name: "mail", args: "ACTION [ID]", nargs: 2, optArgs: true, synopsis: "(ACTION: list | show ID)",
-		summary: "Read every role's mail, the dashboard's mail tab (boss roles only; a group boss sees its groups): list newest first, or show one message, leaving its state and recording the view",
+	{name: "mail", args: "ACTION [ID]", nargs: 2, optArgs: true, synopsis: "(ACTION: list | show ID | close ID)",
+		summary: "Read every role's mail, the dashboard's mail tab (boss roles only; a group boss sees its groups): list newest first, show one message, leaving its state and recording the view, or close a directive as the dashboard does (recorded)",
 		options: []option{
 			{"--open", "", "list: only mail not complete"},
 			{"--from", "ROLE", "list: only mail from ROLE"},
@@ -225,18 +225,23 @@ var commands = []command{
 			{"--limit", "N", "list: at most N messages, 1-500 (default 100)"},
 			optJSON, optProfile,
 		}},
-	{name: "jobs",
-		summary: "List the server's job ledger and schedules of every role in view, the dashboard's jobs tab (boss roles only; commands and prompts left out). `job list` is the same ledger for your own jobs",
+	{name: "jobs", args: "[stop ID | rm ID | rm-schedule ID]", nargs: 2, optArgs: true,
+		summary: "List the server's job ledger and schedules of every role in view, the dashboard's jobs tab (boss roles only; commands and prompts left out); stop a job, remove an ended job's record or remove a schedule (rm and rm-schedule need --yes). `job list` is the same ledger for your own jobs",
 		options: []option{
 			{"--state", "STATE", "only jobs and schedules in STATE (live: not ended)"},
-			optJSON, optProfile,
+			optYes, optJSON, optProfile,
 		}},
-	{name: "roles",
-		summary: "List roles (group, revoked or not), leased numbered slots and groups (boss roles only; a group boss sees its groups)",
-		options: []option{optJSON, optProfile}},
-	{name: "settings",
-		summary: "Show the dashboard's settings: question settings, recent refused questions and, for a global boss, the server summary and which secret settings are set (names only, never values) (boss roles only)",
-		options: []option{optJSON, optProfile}},
+	{name: "roles", args: "[revoke ROLE | restore ROLE]", nargs: 2, optArgs: true,
+		summary: "List roles (group, revoked or not), leased numbered slots and groups, or revoke (needs --yes) or restore a role (boss roles only; a group boss sees and changes its groups)",
+		options: []option{optYes, optJSON, optProfile}},
+	{name: "settings", args: "[set TARGET | rm TARGET]", nargs: 2, optArgs: true,
+		summary: "Show the dashboard's settings: question settings, recent refused questions and, for a global boss, the server summary and which secret settings are set (names only, never values); set or remove (needs --yes) a question setting of a role, PREFIX/* or * (boss roles only; a group boss its groups, * is a global boss's)",
+		options: []option{
+			{"--can-ask", "on|off", "set: the target may ask questions (left out: unchanged)"},
+			{"--watchers", "ROLE[,ROLE]", "set: roles told about its questions; - for none (left out: unchanged)"},
+			{"--discord", "on|off", "set: send its questions to Discord (left out: unchanged)"},
+			optYes, optJSON, optProfile,
+		}},
 	{name: "permission", args: "ACTION [ID]", nargs: 2, optArgs: true, synopsis: "(ACTION: request | show ID | answer ID | list)",
 		summary: "Ask for, show, answer or list tool permission requests (only a boss role answers; the requester's parent is notified)",
 		options: []option{
@@ -254,8 +259,8 @@ var commands = []command{
 			{"--status", "STATUS", "list: only pending, answered or withdrawn questions"},
 			optJSON, optProfile,
 		}},
-	{name: "host", args: "ACTION [ID]", nargs: 3, optArgs: true, extra: true, synopsis: "(ACTION: add | list | nodes | set ID | start ID | stop ID | restart ID | new-conversation ID | remove ID | limit [on|off] | grant ROLE | grant list | revoke-grant ROLE | auto add ID | auto list | auto show AUTO-ID | auto run AUTO-ID | auto pause AUTO-ID | auto resume AUTO-ID | auto rm AUTO-ID) [-- AGENT ARGS...]",
-		summary: "Manage hosted sessions in this instance's database (DB_PATH, not the container default): add a record, list them, change one's permission mode, set one to run or stop, restart one with resume (clears a crash loop), start one in a new conversation, remove one, show or set the subscription limit; grant: let a role add, list, start, stop and remove sessions under itself with its own token (base roles, nodes and directory roots; without DB_PATH, host runs as the profile's role within its grant, and list and auto list of a boss role show every record in view); nodes: the node list for a boss role, through the server; auto: scheduled runs of a session (at each cron time in this machine's zone the host launches it when stopped and mails the prompt to its base role)",
+	{name: "host", args: "ACTION [ID]", nargs: 3, optArgs: true, extra: true, synopsis: "(ACTION: add | list | nodes | set ID | start ID | stop ID | restart ID | new-conversation ID | remove ID | events ID | log ID | revoke-node NAME | limit [on|off] | grant ROLE | grant list | revoke-grant ROLE | auto add ID | auto list | auto show AUTO-ID | auto run AUTO-ID | auto pause AUTO-ID | auto resume AUTO-ID | auto rm AUTO-ID) [-- AGENT ARGS...]",
+		summary: "Manage hosted sessions in this instance's database (DB_PATH, not the container default): add a record, list them, change one's permission mode, set one to run or stop, restart one with resume (clears a crash loop), start one in a new conversation, remove one, show or set the subscription limit; grant: let a role add, list, start, stop and remove sessions under itself with its own token (base roles, nodes and directory roots; without DB_PATH, host runs as the profile's role within its grant, and list and auto list of a boss role show every record in view); nodes: the node list for a boss role, through the server; auto: scheduled runs of a session (at each cron time in this machine's zone the host launches it when stopped and mails the prompt to its base role); a boss role's token without DB_PATH makes the dashboard's terminal actions on the sessions in view (#399, recorded): set (also --label, --parent, --class, --restart, -- ARGS), start, stop, restart, new-conversation, remove, events, log, limit, revoke-node, auto show, run, pause, resume and rm",
 		options: []option{
 			{"--node", "NAME", "add: node the session runs on"},
 			{"--base", "ROLE", "add: base role (must exist)"},
@@ -276,6 +281,7 @@ var commands = []command{
 			{"--check", "CMD", "auto add: shell command the node runs in the session's directory before each run: exit 0 runs (its output follows the prompt), 1 skips, else error (the node needs --allow-checks)"},
 			{"--check-timeout", "DURATION", "auto add: limit of --check, then it is killed with everything it started (default 60s, at most 10m)"},
 			{"--runs", "N", "auto show: newest N runs (default 20, at most 500)"},
+			{"--yes", "", "with a boss role's token: confirm remove, new-conversation, revoke-node and auto rm (without it the command says what it would do and exits 2)"},
 			optJSON,
 		}},
 	{name: "up",
@@ -322,6 +328,22 @@ type UsageError struct{ msg string }
 func (e UsageError) Error() string { return e.msg }
 
 func usagef(format string, a ...any) error { return UsageError{fmt.Sprintf(format, a...)} }
+
+// Known reports whether a command line such as "host restart" or "jobs" is
+// one this CLI takes: the first word a command, the second (when given) a
+// word of its synopsis. The dashboard's CLI pairs test (#399) uses it.
+func Known(line string) bool {
+	words := strings.Fields(line)
+	if len(words) == 0 {
+		return false
+	}
+	c, ok := findCommand(words[0])
+	if !ok || len(words) == 1 {
+		return ok
+	}
+	text := " " + strings.NewReplacer("(", " ", ")", " ", "[", " ", "]", " ", "|", " ", ":", " ").Replace(c.args+" "+c.synopsis) + " "
+	return strings.Contains(text, " "+strings.Join(words[1:], " ")+" ")
+}
 
 func findCommand(name string) (command, bool) {
 	for _, c := range commands {

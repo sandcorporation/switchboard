@@ -52,7 +52,8 @@ type bossSettings struct {
 
 // bossAPI serves GET /api/boss/{view} (#397): the dashboard's read-only
 // views for a boss role's token. A global boss sees everything; a group boss
-// the roles of its groups (identity.BossScope). Writes stay admin-only.
+// the roles of its groups (identity.BossScope). Other methods are the boss
+// role's writes (bossWrite, #399).
 //
 //	messages        all mail, ?open=1 &from= &to= &since=RFC3339 &limit=N
 //	messages/{id}   one message, state untouched, the view recorded
@@ -63,8 +64,8 @@ type bossSettings struct {
 //	nodes           nodes that run a session in view (all for a global boss)
 //	autos           scheduled runs of the sessions in view
 func (s *Server) bossAPI(w http.ResponseWriter, r *http.Request, who identity.Principal, view string) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	if r.Method != http.MethodGet || bossReadThrough(view) {
+		s.bossWrite(w, r, who, view)
 		return
 	}
 	ids := s.ids()
