@@ -151,15 +151,21 @@ func (r *hostedRig) clear(g wire.SlotGrant, dir, sid string) wire.SlotGrant {
 func (r *hostedRig) launchArgs() []string { return launchArgs(r.fake) }
 
 // restart relaunches the session with resume (the Restart button) and
-// waits for the new launch.
+// waits until the host sees the new run running. The node launches before
+// it reports, so the host can still show the previous run as running; the
+// new run then shows as starting until the node's next pass, and the hub
+// follows only running sessions.
 func (r *hostedRig) restart() {
 	r.t.Helper()
-	before := len(r.fake.Launches())
+	before, run := len(r.fake.Launches()), r.runtime().Run
 	if _, err := r.s.hostingHub().Restart(r.id); err != nil {
 		r.t.Fatal(err)
 	}
 	eventually(r.t, "the relaunch", func() bool { return len(r.fake.Launches()) == before+1 })
-	eventually(r.t, "running again", func() bool { return r.runtime().State == "running" })
+	eventually(r.t, "the new run running", func() bool {
+		rt := r.runtime()
+		return rt.Run > run && rt.State == "running"
+	})
 }
 
 func hostedSlotServer(t *testing.T) (*Server, string, *fakeClock) {
