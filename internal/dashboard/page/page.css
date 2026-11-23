@@ -439,7 +439,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--color-accent);outline
 .lp .lp-more{flex-direction:row;flex-wrap:wrap;gap:2px;padding:0 4px}
 .lp-more .nv{flex:0 1 auto;height:24px;margin:0;padding:0 6px;gap:6px;font-size:11.5px}
 .lp-more .nv svg{width:13px;height:13px}
-.lp-foot .ws-idx{display:flex;gap:2px;margin:0 4px 3px;width:auto}
+.lp-more .nv-set{display:none}
 .fr-grip{flex:none;width:5px;margin:0 -2px;position:relative;z-index:4;cursor:col-resize;touch-action:none;background:linear-gradient(var(--color-line),var(--color-line)) center/1px 100% no-repeat}
 .fr-grip:hover,.fr-grip:focus-visible{background:linear-gradient(var(--color-accent),var(--color-accent)) center/2px 100% no-repeat;outline:0}
 .fr-resizing,.fr-resizing *{cursor:col-resize!important;user-select:none}

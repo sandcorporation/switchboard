@@ -35,6 +35,18 @@ function setGroup(box,v,name,rows,each,empty,add){
   if(!rows.length&&empty)lvEmpty(g,empty);
   return g;
 }
+// setViewRow is a 화면 row: 진행·세션 표·터미널 open their own tab (the
+// address stays #progress …); 노드 opens in the detail beside the list.
+function setViewRow(x){
+  if(x[3])return lvRow('settings','view:'+x[0],[x[2]],x[1]);
+  const r=node('div','','ml');r.setAttribute('role','link');r.tabIndex=0;
+  const m=node('div','','ml-meta');m.append(node('span',x[2]));
+  const l2=node('div','','ml-l2');l2.append(node('span',x[1],'ml-nm'));
+  r.append(m,l2);r.dataset.find=(x[1]+' '+x[2]).toLowerCase();
+  const go=()=>{location.hash=x[0]};
+  r.onclick=go;r.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();go()}};
+  return r;
+}
 function setAddButton(title,run){
   const b=node('button','+','fr-ib');b.type='button';b.title=title;b.setAttribute('aria-label',title);b.onclick=run;return b;
 }
@@ -50,6 +62,10 @@ function drawSettings(){
     setGroup(box,'logins','로그인',d.logins,v=>lvRow('settings','login:'+v.name,[v.kind==='builtin'?'내장':'외부',v.perms.length?v.perms.map(p=>permName[p]||p).join(' · '):'권한 없음'],v.name,v.disabled?['꺼짐','danger']:null),'로그인 없음');
     const q=setGroup(box,'qsettings','질문 설정',d.qs,v=>lvRow('settings','qs:'+v.target,[v.can_ask?'질문 가능':'질문 불가',v.discord?'디스코드':'',v.watchers.length?'지켜봄 '+v.watchers.length:''],v.target),'설정 없음',setAddButton('질문 설정 추가',openSetAdd));
     if(q&&Array.isArray(d.ref))q.append(lvRow('settings','refusals:24h',['24시간'],'최근 거절',d.ref.length?[d.ref.length+'건','warning']:null));
+    const views=[['progress','진행','서비스별 세션·지시·남긴 것'],['sessions','세션 표','상태·컨텍스트·기계·판']];
+    if(hostingOn)views.push(['terminals','터미널','호스트된 세션·구독 한도']);
+    if(ws&&ws.nodes)views.push(['nodes','노드','노드 → 세션',true]);
+    setGroup(box,'views','화면',views,setViewRow);
     setGroup(box,'reminders','다시 알림',d.srv&&!d.srv.err?[d.srv]:d.srv,s=>lvRow('settings','server:now',[s.reminders.on?'켬':'끔','판 '+s.version],'다시 알림 · 서버'),'');
   });
   lvFind($('panel-settings'),$('setFind').value);
@@ -307,6 +323,7 @@ async function findSetting(kind,key){
   if(kind==='node'&&hostingOn)return (await api('nodes')).find(x=>x.name===key);
   if(kind==='group'&&hostingOn)return key==='+'?{name:'',fresh:true}:(await api('terminals/work-groups')).find(x=>x.name===key);
   if(kind==='server')return api('settings');
+  if(kind==='view'&&key==='nodes'&&ws&&ws.nodes)return {};
   return undefined;
 }
 const setHeads={
@@ -317,8 +334,9 @@ const setHeads={
   node:v=>({title:v.name,badge:v.revoked_at?['끊김','danger']:null}),
   group:v=>({title:v.fresh?'새 묶음':v.name,badge:null}),
   server:v=>({title:'다시 알림 · 서버',badge:v.reminders.on?['켬','success']:['끔','neutral']}),
+  view:()=>({title:'노드',badge:null}),
 };
-const setDraws={qs:drawQS,refusals:drawRefusals,role:drawRole,login:drawLogin,node:drawNode,group:drawWorkGroup,server:drawServer};
+const setDraws={qs:drawQS,refusals:drawRefusals,role:drawRole,login:drawLogin,node:drawNode,group:drawWorkGroup,server:drawServer,view:(v,box)=>{const n=ws.nodes();box.append(n.el);n.show()}};
 registerDetail('settings',{
   list:'설정',kinds:['settings','terminals'],
   back:id=>setViewHash[setKindView[id.slice(0,id.indexOf(':'))]]||'settings',

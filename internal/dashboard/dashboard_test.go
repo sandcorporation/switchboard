@@ -788,7 +788,7 @@ func TestDashboardWorkspaceLoadsWithHosting(t *testing.T) {
 		"if(m)main.append($('panel-'+m));",
 		"else{const id=p.slice(5),t=terms.get(id);if(t){termStop(t);terms.delete(id)}",
 		"const nodeIdx=wsNodeIndex({openSession(v){",
-		"$('lpFoot').prepend(idx);tabs.after(box);",
+		"return {live:live,show:show,el:box};", "nodes(){return nodeIdx},",
 		"apiSend('POST','node-invites',{name:invName.value.trim()})",
 		"if(!confirm(n.name+' 노드를 끊을까요?",
 		"if(!confirm(g.role+' 역할의 '+n.name+' 허가를 거둘까요?'))return;",
@@ -957,5 +957,37 @@ func TestDashboardFrame(t *testing.T) {
 		if !strings.Contains(css, want) {
 			t.Errorf("frame styles lack %q", want)
 		}
+	}
+}
+
+// The left pane's foot shows only 설정 (#515): 진행·세션 표·터미널 keep
+// their tabs and addresses but open from 설정's 화면 rows, and the 노드
+// index opens in 설정's detail instead of a 메뉴/노드 switch.
+func TestDashboardSettingsHoldsViews(t *testing.T) {
+	w := httptest.NewRecorder()
+	Page(w, httptest.NewRequest("GET", "/", nil))
+	body := w.Body.String()
+	for _, tab := range []string{"progress", "sessions", "terminals"} {
+		b := regexp.MustCompile(`<button[^>]*id="tab-` + tab + `"[^>]*>`).FindString(body)
+		if !strings.Contains(b, `class="nv nv-set"`) {
+			t.Errorf("tab %s button %q is not a 설정 view", tab, b)
+		}
+	}
+	for _, want := range []string{
+		`.lp-more .nv-set{display:none}`,
+		`const setTabs=['progress','sessions','terminals'];`,
+		`setTabs.includes(name)?'settings':name;`,
+		`filter(n=>!$('tab-'+n).hidden&&!setTabs.includes(n))`,
+		`setGroup(box,'views','화면',views,setViewRow);`,
+		`const go=()=>{location.hash=x[0]};`,
+		`if(ws&&ws.nodes)views.push(['nodes','노드','노드 → 세션',true]);`,
+		`view:(v,box)=>{const n=ws.nodes();box.append(n.el);n.show()}`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("page missing %q", want)
+		}
+	}
+	if src := workspaceSource(t); strings.Contains(src, "ws-idx") || strings.Contains(src, "lpFoot") {
+		t.Error("the workspace still adds a 메뉴/노드 switch to the left pane")
 	}
 }

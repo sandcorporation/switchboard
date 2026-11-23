@@ -3,6 +3,8 @@
 // tab's own 「새로 고침」 button reloads it. #33 sets tabLoaders.permissions and
 // #42 sets tabLoaders.questions / tabLoaders.settings (null = nothing to load).
 // The order is the left pane's (#510): the menu rows, then the foot.
+// setTabs open from 설정's 화면 rows; the left pane shows only 설정 (#515).
+const setTabs=['progress','sessions','terminals'];
 const tabNames=['requests','questions','permissions','rules','mail','reports','jobs','metrics','settings','progress','sessions','terminals'];
 const tabLoaders={requests:loadRequests,progress:null,sessions:loadSessions,reports:loadReports,jobs:loadJobs,metrics:null,mail:initMail,permissions:null,questions:null,rules:loadRules,settings:null};
 const tabLoaded=new Set();

@@ -800,6 +800,8 @@ function wsStart(){
     // followRole points the column at a session that is not hosted (its
     // screen is on the centre, #519); '' follows the focused panel again.
     followRole(role){if(role===pageRole)return;pageRole=role;drawSess()},
+    // nodes is the 노드 index, drawn inside 설정 (#515).
+    nodes(){return nodeIdx},
     // shown says whether tab name's section is on screen now.
     shown(name){return page===name||shownPanels().includes('menu:'+name)},
     // termPaneFor stands in a detail body for the terminal screen: it opens

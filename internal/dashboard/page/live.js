@@ -52,8 +52,9 @@ function showTab(name){
   if(name!=='terminals'&&$('termAdd').open)$('termAdd').close();
   if(name!=='settings'&&$('setAdd').open)$('setAdd').close();
   curTab=name;
-  // 권한 요청 and 규칙 sit in 답이 필요함 (#514): that row stays marked.
-  const mark=name==='permissions'||name==='rules'?'questions':name;
+  // 권한 요청 and 규칙 sit in 답이 필요함 (#514), 진행·세션 표·터미널 in 설정
+  // (#515): that row stays marked.
+  const mark=name==='permissions'||name==='rules'?'questions':setTabs.includes(name)?'settings':name;
   for(const n of tabNames){
     const on=n===name,t=$('tab-'+n);
     t.setAttribute('aria-selected',n===mark?'true':'false');
@@ -130,7 +131,7 @@ for(const n of tabNames)$('tab-'+n).onclick=()=>selectTab(n);
 // visibleTabs leaves out 터미널 unless hosting is on.
 function visibleTabs(){return tabNames.filter(n=>n!=='terminals'||hostingOn)}
 for(const tl of [$('tabs'),$('tabsMore')])tl.addEventListener('keydown',e=>{
-  const tabs=visibleTabs().filter(n=>!$('tab-'+n).hidden);
+  const tabs=visibleTabs().filter(n=>!$('tab-'+n).hidden&&!setTabs.includes(n));
   const i=tabs.findIndex(n=>$('tab-'+n)===document.activeElement);
   if(i<0)return;
   let j;
