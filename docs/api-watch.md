@@ -4,7 +4,7 @@ The server GETs an address on a period and mails a role when a rule says so (`in
 
 ## Register a rule
 
-On the dashboard: 설정 › 지켜보기 › `+`.
+On the dashboard: 설정 › 지켜보기 › `+`. A login needs `view` to see the rules and `sessions` to add, change, turn off, remove or test-fetch one (`switchboard admin allow`), as for webhooks.
 
 1. 이름: a name for the rule, unique (it is also the mail's source, `watch:<name>`).
 2. 받는 역할: the role that gets the mail, for example `team/boss`.

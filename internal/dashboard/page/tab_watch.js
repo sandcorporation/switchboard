@@ -116,12 +116,13 @@ function watchForm(v){
     }catch(err){setNote(key,err.message,'err')}
     loadSettingsView();drawDetail();
   };
+  if(!can('sessions')){acts.hidden=true;for(const el of f.elements)el.disabled=true}
   setForms.set(key,{stamp:v.updated_at||'',form:f});
   return f;
 }
 function drawWatch(v,box){
   const id='watch:'+(v.fresh?'+':v.id);
-  if(!v.fresh){
+  if(!v.fresh&&can('sessions')){
     const acts=node('div','','detail-acts');
     acts.append(setButton(v.enabled?'끄기':'켜기','',async()=>{
       try{await apiSend('POST','watches/'+v.id+'/'+(v.enabled?'off':'on'));setForms.delete(id);setNote(id,v.enabled?'껐음':'켰음','ok')}
