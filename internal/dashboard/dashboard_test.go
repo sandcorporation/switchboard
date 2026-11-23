@@ -797,7 +797,7 @@ func TestDashboardWorkspaceSide(t *testing.T) {
 		"$('appMain').append(sideEl);",
 		"const id=S.follow(side.session,st.focus);",
 		"api('questions?status=pending&limit=500'),api('permissions?status=pending')",
-		"if(side.sub==='autos')await termAutos(v,out);\n        else if(side.sub==='settings')termSettings(v,out);\n        else await termHistory(v,out);",
+		"if(side.sub==='autos')await termAutos(v,out);\n        else if(side.sub==='mail')await wsMail(termRole(v),out);\n        else if(side.sub==='settings')termSettings(v,out);\n        else await termHistory(v,out);",
 		"const spec=details[x.tab],seq=++it.seq,out=document.createElement('div');",
 		"return (p.startsWith('term:')&&p.length>5)||!!S.itemOf(p)||!!F.fileOf(p);",
 		"if(side.sub==='files')out.append(fileTree(v.id));",
