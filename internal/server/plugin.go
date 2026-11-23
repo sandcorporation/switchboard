@@ -87,29 +87,7 @@ func PluginStatusCLI(version, dir string, asJSON bool, sync wire.PluginSync, w i
 		return err
 	}
 	for _, st := range states {
-		if !st.Available {
-			fmt.Fprintf(w, "%s: not installed here (wants plugin %s)\n", st.Agent, st.Want)
-			continue
-		}
-		state := "not installed"
-		if st.Installed != "" {
-			state = "installed " + st.Installed + ", disabled"
-			if st.Enabled {
-				state = "installed " + st.Installed + ", enabled"
-			}
-		}
-		fmt.Fprintf(w, "%s: plugin %s, wants %s (%s)\n", st.Agent, state, st.Want, st.Where)
-		for _, l := range st.Legacy {
-			on := "disabled"
-			if l.Enabled {
-				on = "enabled"
-			}
-			where := l.Scope
-			if l.Project != "" {
-				where += " " + l.Project
-			}
-			fmt.Fprintf(w, "  old %s %s (%s): %s\n", l.ID, l.Version, where, on)
-		}
+		printPluginState(w, st.PluginState)
 	}
 	_, err := fmt.Fprintln(w, PluginSyncLine(sync))
 	return err
@@ -136,4 +114,41 @@ func PluginSyncLine(s wire.PluginSync) string {
 		line += ", ok"
 	}
 	return line
+}
+
+// printPluginState is one agent's lines of `plugin status`.
+func printPluginState(w io.Writer, st agent.PluginState) {
+	if !st.Available {
+		fmt.Fprintf(w, "%s: not installed here (wants plugin %s)\n", st.Agent, st.Want)
+		return
+	}
+	state := "not installed"
+	if st.Installed != "" {
+		state = "installed " + st.Installed + ", disabled"
+		if st.Enabled {
+			state = "installed " + st.Installed + ", enabled"
+		}
+	}
+	fmt.Fprintf(w, "%s: plugin %s, wants %s (%s)\n", st.Agent, state, st.Want, st.Where)
+	off := 0
+	for _, l := range st.Legacy {
+		// Switched-off local and project entries (a removed worktree's
+		// leftovers) are one line; --json lists them all (#485).
+		if !l.Enabled && l.Scope != "user" {
+			off++
+			continue
+		}
+		on := "disabled"
+		if l.Enabled {
+			on = "enabled"
+		}
+		where := l.Scope
+		if l.Project != "" {
+			where += " " + l.Project
+		}
+		fmt.Fprintf(w, "  old %s %s (%s): %s\n", l.ID, l.Version, where, on)
+	}
+	if off > 0 {
+		fmt.Fprintf(w, "  %d disabled old entries (local or project scope)\n", off)
+	}
 }
