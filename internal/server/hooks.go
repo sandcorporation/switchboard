@@ -6,10 +6,13 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/sandcorporation/switchboard/internal/adminauth"
 	"github.com/sandcorporation/switchboard/internal/hooks"
 	"github.com/sandcorporation/switchboard/internal/identity"
+	"github.com/sandcorporation/switchboard/internal/mail"
+	"github.com/sandcorporation/switchboard/internal/secrets"
 	"github.com/sandcorporation/switchboard/internal/wire"
 )
 
@@ -35,12 +38,44 @@ func (s *Server) hooks() *hooks.Service {
 	})
 }
 
-// hookSecrets is the secret store the hooks seal their destinations with.
-func (s *Server) hookSecrets() hooks.Secrets { return nil }
+// hookSecrets is the secret store (#525) the hooks keep their original
+// destinations in, under this server's key.
+func (s *Server) hookSecrets() hooks.Secrets { return hookSecretStore{s} }
 
-// hookAlert sends one hook notice as alert mail.
+type hookSecretStore struct{ s *Server }
+
+func (h hookSecretStore) Put(name, value string) error {
+	return h.s.secretsKey().Put(h.s.db, name, value, h.s.now())
+}
+
+func (h hookSecretStore) Open(name string) (string, error) {
+	v, err := h.s.secretsKey().Open(h.s.db, name)
+	if errors.Is(err, secrets.ErrNotFound) {
+		return "", nil
+	}
+	return v, err
+}
+
+// State never carries the stored value's hint: a webhook's destination is
+// not shown again in any form (#527).
+func (h hookSecretStore) State(name string) (hooks.SecretState, error) {
+	info, err := h.s.secretsKey().Info(h.s.db, name)
+	if err != nil {
+		return hooks.SecretState{}, err
+	}
+	st := hooks.SecretState{Set: info.Set, Unreadable: info.Unreadable}
+	if info.SetAt != nil {
+		st.At = info.SetAt.UTC().Format(time.RFC3339Nano)
+	}
+	return st, nil
+}
+
+func (h hookSecretStore) Delete(name string) error { return secrets.Delete(h.s.db, name) }
+
+// hookAlert sends one hook notice as collapsing alert mail (#525).
 func (s *Server) hookAlert(ctx context.Context, a hooks.Alert) error {
-	return errors.New("alert mail is not available")
+	_, err := s.mail().SendAlert(ctx, mail.Alert{To: a.To, Source: a.Source, Subject: a.Subject, Body: a.Body, Urgent: a.Urgent, Window: a.Window})
+	return err
 }
 
 // kickForward sends on the receipts just stored, off the request.

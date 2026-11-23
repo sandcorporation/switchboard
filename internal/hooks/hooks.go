@@ -454,16 +454,26 @@ func (s *Service) List(ctx context.Context) ([]wire.Hook, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	out := []wire.Hook{}
+	// Read every row before asking the secret store: it queries too, and
+	// the database may have one connection.
+	var hs []*hookRow
 	for rows.Next() {
 		h, err := scanHook(rows)
 		if err != nil {
+			rows.Close()
 			return nil, err
 		}
+		hs = append(hs, h)
+	}
+	rows.Close()
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+	out := make([]wire.Hook, 0, len(hs))
+	for _, h := range hs {
 		out = append(out, s.wireHook(h))
 	}
-	return out, rows.Err()
+	return out, nil
 }
 
 // RoleAPI serves GET /api/hooks to any role: names, roles, modes and the
@@ -560,13 +570,13 @@ func (s *Service) AdminAPI(w http.ResponseWriter, r *http.Request, user, rest st
 }
 
 func (s *Service) detail(w http.ResponseWriter, r *http.Request, h *hookRow) {
+	d := wire.HookDetail{Hook: s.wireHook(h), Receipts: []wire.HookReceipt{}}
 	rows, err := s.db.QueryContext(r.Context(), `SELECT at,subject,forward,status,attempts FROM hook_receipts WHERE hook_id=? ORDER BY id DESC LIMIT ?`, h.id, listReceipts)
 	if err != nil {
 		http.Error(w, "query failed", http.StatusInternalServerError)
 		return
 	}
 	defer rows.Close()
-	d := wire.HookDetail{Hook: s.wireHook(h), Receipts: []wire.HookReceipt{}}
 	for rows.Next() {
 		var rc wire.HookReceipt
 		if err = rows.Scan(&rc.At, &rc.Subject, &rc.Forward, &rc.Status, &rc.Attempts); err != nil {
