@@ -204,7 +204,11 @@ func TestUpRunsAHostedSessionInTmuxAcrossRestarts(t *testing.T) {
 		t.Fatalf("host add = %d %s %s", code, out, errOut)
 	}
 	id := strings.TrimSpace(out)
-	r.wait("the session running", func() bool { return r.session(id).Runtime.State == "running" })
+	// "ready" is the agent's conversation saved: a stop before it leaves
+	// nothing to resume, and the node then starts a new conversation.
+	r.wait("the session running", func() bool {
+		return r.session(id).Runtime.State == "running" && strings.Contains(r.tmuxScreen(id), "ready ")
+	})
 	ls, err := r.tmux("ls").CombinedOutput()
 	if err != nil || !strings.Contains(string(ls), "sb-"+id) {
 		t.Fatalf("tmux -L %s ls: %v %s", r.socket, err, ls)
@@ -245,12 +249,16 @@ func TestUpRunsAHostedSessionInTmuxAcrossRestarts(t *testing.T) {
 	if got := adminCall(t, r.base(), "PUT", "/api/admin/terminals/"+id, r.cookie, true, `{"desired":"running"}`); got.code != http.StatusOK {
 		t.Fatalf("start = %d %s", got.code, got.body)
 	}
-	r.wait("running again", func() bool { return r.session(id).Runtime.State == "running" })
-	screen, _ := r.tmux("capture-pane", "-p", "-S", "-", "-t", "=sb-"+id+":").Output()
-	if !strings.Contains(string(screen), "argv --resume") {
+	// Running means tmux started the agent, not that it has printed yet
+	// (#459): wait for the line it prints after argv and env.
+	r.wait("running again", func() bool {
+		return r.session(id).Runtime.State == "running" && strings.Contains(r.tmuxScreen(id), "ready ")
+	})
+	screen := r.tmuxScreen(id)
+	if !strings.Contains(screen, "argv --resume") {
 		t.Errorf("relaunch did not resume:\n%s", screen)
 	}
-	if strings.Contains(string(screen), "SWITCHBOARD_TOKEN") || !strings.Contains(string(screen), "env SWITCHBOARD_PROFILE=team-worker") {
+	if strings.Contains(screen, "SWITCHBOARD_TOKEN") || !strings.Contains(screen, "env SWITCHBOARD_PROFILE=team-worker") {
 		t.Errorf("child environment:\n%s", screen)
 	}
 }
