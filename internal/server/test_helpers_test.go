@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/sandcorporation/switchboard/internal/adminauth"
 	"github.com/sandcorporation/switchboard/internal/cli"
+	"github.com/sandcorporation/switchboard/internal/wire"
 )
 
 func itoa(v int64) string { return strconv.FormatInt(v, 10) }
@@ -62,8 +64,13 @@ func binaryCommands() cli.Commands {
 		PluginInstall: func(version, dir string, quiet bool, w io.Writer) error {
 			return testPluginCall("install", dir, quiet, w)
 		},
-		PluginStatus: func(version, dir string, jsonOut bool, w io.Writer) error {
-			return testPluginCall("status", dir, jsonOut, w)
+		PluginStatus: func(version, dir string, jsonOut bool, sync wire.PluginSync, w io.Writer) error {
+			if err := testPluginCall("status", dir, jsonOut, w); err != nil {
+				return err
+			}
+			b, _ := json.Marshal(sync)
+			_, err := fmt.Fprintf(w, "sync %s\n", b)
+			return err
 		},
 	}
 }

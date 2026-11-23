@@ -138,10 +138,20 @@ export const setup = async (
  * 가짜 서버의 일반 메일(보낸이 team/lead, 제목 s<id>, 본문 기본 빈 글)이 본문째 들어간 턴 글(#203).
  * bodies 로 메일마다 본문을, newTail 로 새 꼬리를(leftTail 이면 남긴 것 꼬리) 고른다.
  */
-export const inlined = (ids: readonly number[], open?: ReadonlyMap<number, number>, o: { bodies?: Readonly<Record<number, string>>; newTail?: boolean; leftTail?: boolean } = {}) =>
+export const inlined = (
+  ids: readonly number[],
+  open?: ReadonlyMap<number, number>,
+  o: { bodies?: Readonly<Record<number, string>>; done?: ReadonlyMap<number, number>; newTail?: boolean; leftTail?: boolean; answerLeftTail?: boolean } = {},
+) =>
   mailTurn(
     ids.map(id => ({ id, sender: 'team/lead', subject: `s${id}`, to: ROLE, body: o.bodies?.[id] ?? '' })),
-    { ...(open === undefined ? {} : { open }), ...(o.newTail === undefined ? {} : { newTail: o.newTail }), ...(o.leftTail === undefined ? {} : { leftTail: o.leftTail }) },
+    {
+      ...(open === undefined ? {} : { open }),
+      ...(o.done === undefined ? {} : { done: o.done }),
+      ...(o.newTail === undefined ? {} : { newTail: o.newTail }),
+      ...(o.leftTail === undefined ? {} : { leftTail: o.leftTail }),
+      ...(o.answerLeftTail === undefined ? {} : { answerLeftTail: o.answerLeftTail }),
+    },
   )
 
 /** 세션이 넣은 턴을 실제처럼 돌렸다 끝낸다. */

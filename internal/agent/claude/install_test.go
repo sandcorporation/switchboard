@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -354,5 +355,26 @@ func TestInstallPluginOnce(t *testing.T) {
 	o.Once, n = false, len(f.calls)
 	if _, err := in.install(context.Background(), o); err != nil || len(f.calls) == n {
 		t.Fatalf("without Once nothing ran: %v", err)
+	}
+}
+
+// Before the first install the plugin folder does not exist: status lists
+// from the current folder and says not installed, no chdir error (#479).
+func TestPluginStatusBeforeTheFirstInstall(t *testing.T) {
+	f := &fakeCLI{markets: map[string]string{}}
+	in := newTest(f)
+	run := in.run
+	in.run = func(ctx context.Context, exe, dir string, env []string, args ...string) ([]byte, error) {
+		if dir != "" {
+			if _, err := os.Stat(dir); err != nil {
+				return nil, fmt.Errorf("chdir %s: %w", dir, err)
+			}
+		}
+		return run(ctx, exe, dir, env, args...)
+	}
+	dir := filepath.Join(t.TempDir(), "plugins", "claude")
+	st, err := in.status(context.Background(), agent.PluginOptions{Version: "v0.53.0", Dir: dir})
+	if err != nil || !st.Available || st.Installed != "" {
+		t.Fatalf("status %+v, %v", st, err)
 	}
 }

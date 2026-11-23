@@ -3,6 +3,7 @@ package mail
 import (
 	"database/sql"
 	"errors"
+	"fmt"
 	"net/http"
 
 	"github.com/sandcorporation/switchboard/internal/identity"
@@ -47,7 +48,7 @@ func (s *Service) Close(w http.ResponseWriter, r *http.Request, role string, id 
 			return false, false
 		}
 		if len(claim.items) > 0 && !ending {
-			http.Error(w, "--left goes with the close that ends a directive; this one has ended (left add N adds to a directive you ended)", http.StatusBadRequest)
+			http.Error(w, fmt.Sprintf(`--left goes with the close that ends a directive; #%d has ended, so use left add %d "ITEM" (repeatable)`, d, d), http.StatusBadRequest)
 			return false, false
 		}
 		return ending, true

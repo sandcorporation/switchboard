@@ -461,7 +461,8 @@ type NodeStatusLineFunc func(adapter, out string)
 type PluginInstallFunc func(version, dir string, quiet bool, w io.Writer) error
 
 // PluginStatusFunc prints the carried plugins' state in the agents' settings.
-type PluginStatusFunc func(version, dir string, jsonOut bool, w io.Writer) error
+// sync is the CLI's own record of keeping the plugin at its version (#483).
+type PluginStatusFunc func(version, dir string, jsonOut bool, sync wire.PluginSync, w io.Writer) error
 
 // Commands are the commands the binary supplies because they run the server
 // or open its database.
@@ -1178,7 +1179,7 @@ func cliRegister(p parsedArgs) (int, error) {
 	defer resp.Body.Close()
 	b, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode >= 300 {
-		return 0, fmt.Errorf("server returned %s: %s", resp.Status, string(b))
+		return 0, fmt.Errorf("server returned %s: %s", resp.Status, strings.TrimSpace(string(b)))
 	}
 	fmt.Print(string(b))
 	return ExitOK, nil
@@ -1218,7 +1219,7 @@ func cliReply(c Config, req *http.Request, id string, jsonMode bool) (int, error
 		return code, nil
 	}
 	if resp.StatusCode >= 300 {
-		return 0, fmt.Errorf("server returned %s: %s", resp.Status, string(b))
+		return 0, fmt.Errorf("server returned %s: %s", resp.Status, strings.TrimSpace(string(b)))
 	}
 	var out wire.Message
 	if json.Unmarshal(b, &out) == nil {
@@ -1474,7 +1475,7 @@ func doRequestWith(c Config, req *http.Request, jsonMode bool, after func([]byte
 		return code, nil
 	}
 	if resp.StatusCode >= 300 {
-		return 0, fmt.Errorf("server returned %s: %s", resp.Status, string(b))
+		return 0, fmt.Errorf("server returned %s: %s", resp.Status, strings.TrimSpace(string(b)))
 	}
 	if after != nil {
 		after(b)

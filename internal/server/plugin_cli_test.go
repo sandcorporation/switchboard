@@ -1,10 +1,14 @@
 package server
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/sandcorporation/switchboard/internal/wire"
 )
 
 // pluginLog is a fresh SWITCHBOARD_TEST_PLUGIN_LOG and a reader of its lines.
@@ -76,14 +80,80 @@ func TestCLIPluginLineIsStderrAndAFailureRunsTheCommand(t *testing.T) {
 		t.Fatal(err)
 	}
 	r = h.run([]string{"SWITCHBOARD_TEST_PLUGIN_LOG=" + log, "SWITCHBOARD_TEST_PLUGIN_RESULT=fail"}, "inbox")
-	if r.code != 0 || !strings.Contains(r.stderr, "install failed: boom") || !strings.Contains(r.stderr, "plugin install' to retry") {
+	if r.code != 0 || !strings.Contains(r.stderr, "install failed: boom") || !strings.Contains(r.stderr, "plugin install' retries now") {
 		t.Fatalf("failed install: %+v", r)
-	}
-	if _, err := os.Stat(filepath.Join(h.dir, "plugin-version")); err != nil {
-		t.Fatalf("a failed install is not marked, so every command would retry it: %v", err)
 	}
 	if got := lines(); len(got) != 2 {
 		t.Fatalf("calls %q", got)
+	}
+}
+
+// A failed install is not marked (#483): the runs in the next 10 minutes
+// leave it, the first one after tries again, and a success marks it.
+// `plugin status` shows the marker and the last attempt.
+func TestCLIPluginFailureIsTriedAgain(t *testing.T) {
+	t.Parallel()
+	h := newCLIHarness(t)
+	h.configure(nil, "a")
+	log, lines := pluginLog(t)
+	marker := filepath.Join(h.dir, "plugin-version")
+	if err := os.Remove(marker); err != nil {
+		t.Fatal(err)
+	}
+	fail := []string{"SWITCHBOARD_TEST_PLUGIN_LOG=" + log, "SWITCHBOARD_TEST_PLUGIN_RESULT=fail"}
+	h.mustRun(fail, "inbox")
+	if _, err := os.Stat(marker); !os.IsNotExist(err) {
+		t.Fatalf("a failed install was marked: %v", err)
+	}
+	attempt := filepath.Join(h.dir, "plugin-attempt")
+	var a wire.PluginAttempt
+	b, err := os.ReadFile(attempt)
+	if err != nil || json.Unmarshal(b, &a) != nil || a.OK || !strings.Contains(a.Reason, "boom") || a.Version == "" {
+		t.Fatalf("attempt %s, %v", b, err)
+	}
+	status := h.mustRun([]string{"SWITCHBOARD_TEST_PLUGIN_LOG=" + log}, "plugin", "status", "--json")
+	if !strings.Contains(status, `"last_attempt":{"version":"`+a.Version+`"`) || !strings.Contains(status, `"ok":false`) || strings.Contains(status, `"marked"`) {
+		t.Fatalf("status after the failure: %s", status)
+	}
+	// Within 10 minutes: not again.
+	h.mustRun(fail, "inbox")
+	if got := lines(); len(got) != 2 || got[1] != "status profiles=1 flag=true" {
+		t.Fatalf("retried within 10 minutes: %q", got)
+	}
+	// 11 minutes later: again, and the success marks it.
+	a.At = time.Now().Add(-11 * time.Minute).UTC().Format(time.RFC3339)
+	b, _ = json.Marshal(a)
+	if err := os.WriteFile(attempt, b, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	h.mustRun([]string{"SWITCHBOARD_TEST_PLUGIN_LOG=" + log, "SWITCHBOARD_TEST_PLUGIN_RESULT=changed"}, "inbox")
+	if got := lines(); len(got) != 3 || got[2] != "install profiles=1 flag=true" {
+		t.Fatalf("not tried again after 10 minutes: %q", got)
+	}
+	if m, err := os.ReadFile(marker); err != nil || strings.TrimSpace(string(m)) != a.Version {
+		t.Fatalf("marker after the success %q, %v", m, err)
+	}
+	status = h.mustRun([]string{"SWITCHBOARD_TEST_PLUGIN_LOG=" + log}, "plugin", "status", "--json")
+	if !strings.Contains(status, `"marked":"`+a.Version+`"`) || !strings.Contains(status, `"ok":true,"reason":"plugin: fake: installed fake 1.0.0`) {
+		t.Fatalf("status after the success: %s", status)
+	}
+}
+
+// The commands the plugin's hooks run under a short limit (version, job
+// ping) never install (#483): a killed install left its lock behind.
+func TestCLIPluginHookCommandsDoNotInstall(t *testing.T) {
+	t.Parallel()
+	h := newCLIHarness(t)
+	h.configure(nil, "a")
+	log, lines := pluginLog(t)
+	if err := os.Remove(filepath.Join(h.dir, "plugin-version")); err != nil {
+		t.Fatal(err)
+	}
+	env := []string{"SWITCHBOARD_TEST_PLUGIN_LOG=" + log}
+	h.run(env, "job", "ping")
+	h.run(env, "version")
+	if got := lines(); got != nil {
+		t.Fatalf("installed: %q", got)
 	}
 }
 
