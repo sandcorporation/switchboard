@@ -442,7 +442,12 @@ func TestUpHostedSessionHoldsItsSlotAndFollowsClear(t *testing.T) {
 	if err := r.tmux("send-keys", "-t", "=sb-"+id+":", "exit 1", "Enter").Run(); err != nil {
 		t.Fatal(err)
 	}
-	r.wait("relaunched", func() bool { return r.session(id).Runtime.Run >= 2 && r.session(id).Runtime.State == "running" })
+	// online(next) still holds from before the crash, and running is set
+	// before the new agent prints: wait for the relaunched agent's own
+	// register line (#429).
+	r.wait("relaunched", func() bool {
+		return r.session(id).Runtime.Run >= 2 && r.session(id).Runtime.State == "running" && strings.Contains(r.tmuxScreen(id), "slot team/worker-1")
+	})
 	r.wait("team/worker-1 online again", online(next))
 	if screen := r.tmuxScreen(id); !strings.Contains(screen, "argv --resume "+next) {
 		t.Fatalf("relaunch did not resume %s:\n%s", next, screen)
