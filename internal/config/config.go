@@ -169,6 +169,11 @@ func EnvFrom(getenv func(string) string, name string) (value, from string) {
 	return getenv(EnvPrefix + name), EnvPrefix + name
 }
 
+// SecretsKeyName is SWITCHBOARD_SECRETS_KEY without the prefix (#525): the
+// key that seals secret values in the database, 32 bytes in base64. Unset,
+// the server keeps a generated key in a file next to the database.
+const SecretsKeyName = "SECRETS_KEY"
+
 // HostingAllowChecksName is SWITCHBOARD_HOSTING_ALLOW_CHECKS: "on" lets a
 // node run scheduled runs' prechecks (#334), like `node --allow-checks`;
 // `up`'s own node reads it. Off by default.

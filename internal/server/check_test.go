@@ -37,6 +37,7 @@ var refusedSettings = []struct {
 	}, []string{"SWITCHBOARD_ADMIN_AUTH=oidc needs SWITCHBOARD_OIDC_ISSUER"}},
 	{"unknown admin auth", map[string]string{"SWITCHBOARD_ADMIN_AUTH": "proxy"}, []string{"SWITCHBOARD_ADMIN_AUTH must be builtin or oidc"}},
 	{"listen address without port", map[string]string{"LISTEN_ADDR": "8080"}, []string{"LISTEN_ADDR must be host:port"}},
+	{"secrets key not a key", map[string]string{"SWITCHBOARD_SECRETS_KEY": checkSecret}, []string{"SWITCHBOARD_SECRETS_KEY must be 32 bytes in base64"}},
 	{"hosting remote listener not ip:port", map[string]string{
 		"SWITCHBOARD_HOSTING":               "on",
 		"SWITCHBOARD_HOSTING_REMOTE_LISTEN": "nowhere",
@@ -73,6 +74,7 @@ func TestCheckPassesGoodSettings(t *testing.T) {
 	for _, env := range []map[string]string{
 		{},
 		{"SWITCHBOARD_TOKENS": checkToken, "SWITCHBOARD_ADMIN_AUTH": "builtin", "LISTEN_ADDR": "127.0.0.1:8080"},
+		{"SWITCHBOARD_SECRETS_KEY": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8="},
 		{"SWITCHBOARD_ADMIN_AUTH": "oidc", "SWITCHBOARD_OIDC_ISSUER": "https://id.mail.example", "SWITCHBOARD_OIDC_CLIENT_ID": "switchboard",
 			"SWITCHBOARD_OIDC_CLIENT_SECRET": checkSecret, "SWITCHBOARD_OIDC_ADMINS": "boss@mail.example"},
 	} {
