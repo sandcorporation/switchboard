@@ -144,6 +144,8 @@ type sweepResult struct {
 	CLIBehind int
 	// Autos counts the scheduled runs of hosted sessions handled (#333).
 	Autos int
+	// Forwarded counts the webhook notices sent on or given up (#527).
+	Forwarded int
 }
 
 // sweep sends every due stall notice and metrics alert once and prunes old
@@ -188,6 +190,9 @@ func (s *Server) sweep(ctx context.Context) (sweepResult, error) {
 			return out, err
 		}
 	}
+	if out.Forwarded, err = s.hooks().ForwardDue(ctx); err != nil {
+		return out, err
+	}
 	if _, err = s.asks().PrunePermissions(ctx); err != nil {
 		return out, err
 	}
@@ -224,6 +229,9 @@ func (s *Server) publishSweep(res sweepResult) {
 	}
 	if res.Autos > 0 {
 		kinds = append(kinds, "terminals", "mail")
+	}
+	if res.Forwarded > 0 {
+		kinds = append(kinds, "settings", "mail")
 	}
 	s.live.Publish(kinds...)
 }

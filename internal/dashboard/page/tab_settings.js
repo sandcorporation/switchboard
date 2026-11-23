@@ -3,8 +3,8 @@
 // 질문 설정 (with 최근 거절) and 다시 알림 — beside the open item's detail,
 // #settings/<kind>:<id>/<sub>. The old view links (#settings-roles …) still
 // work: they unfold that group and bring it into view.
-const setViewHash={qsettings:'settings',roles:'settings-roles',nodes:'settings-nodes',groups:'settings-groups',logins:'settings-logins',watches:'settings-watches',reminders:'settings-reminders'};
-const setKindView={qs:'qsettings',refusals:'qsettings',role:'roles',node:'nodes',group:'groups',login:'logins',watch:'watches',server:'reminders'};
+const setViewHash={qsettings:'settings',roles:'settings-roles',nodes:'settings-nodes',groups:'settings-groups',logins:'settings-logins',watches:'settings-watches',hooks:'settings-hooks',reminders:'settings-reminders'};
+const setKindView={qs:'qsettings',refusals:'qsettings',role:'roles',node:'nodes',group:'groups',login:'logins',watch:'watches',hook:'hooks',server:'reminders'};
 let setView='qsettings',setJump=false,setData=null;
 const setNotes=new Map(),setForms=new Map();
 function showSettingsView(v){
@@ -18,9 +18,9 @@ function settingsViewOfHash(h){for(const [v,x] of Object.entries(setViewHash))if
 async function loadSettingsView(){
   if(!setData)$('settingsNote').textContent='불러오는 중…';
   const host=hostingOn,get=p=>p.catch(e=>({err:e.message}));
-  const [qs,ref,roles,logins,nodes,groups,srv,watches]=await Promise.all([get(api('question-settings')),get(api('question-refusals')),get(api('roles')),get(api('logins')),host?get(api('nodes')):null,host?get(api('terminals/work-groups')):null,get(api('settings')),get(api('watches'))]);
+  const [qs,ref,roles,logins,nodes,groups,srv,watches,hooks]=await Promise.all([get(api('question-settings')),get(api('question-refusals')),get(api('roles')),get(api('logins')),host?get(api('nodes')):null,host?get(api('terminals/work-groups')):null,get(api('settings')),get(api('watches')),get(api('hooks'))]);
   if(host!==hostingOn)return loadSettingsView();
-  setData={qs:qs,ref:ref,roles:roles,logins:logins,nodes:nodes,groups:groups,srv:srv,watches:watches};
+  setData={qs:qs,ref:ref,roles:roles,logins:logins,nodes:nodes,groups:groups,srv:srv,watches:watches,hooks:hooks};
   $('settingsNote').textContent='';
   drawSettings();
 }
@@ -71,6 +71,7 @@ function drawSettings(){
   setGroup(items,'logins','로그인',d.logins,v=>setRow('login:'+v.name,[v.kind==='builtin'?'내장':'외부',v.perms.length?v.perms.map(p=>permName[p]||p).join(' · '):'권한 없음'],v.name,v.disabled?['꺼짐','danger']:null),'로그인 없음');
   setGroup(items,'qsettings','질문 설정',d.qs,v=>setRow('qs:'+v.target,[v.can_ask?'질문 가능':'질문 불가',v.discord?'디스코드':'',v.watchers.length?'지켜봄 '+v.watchers.length:''],v.target),'설정 없음',setAddButton('질문 설정 추가',openSetAdd),Array.isArray(d.ref)?[setRow('refusals:24h',['24시간'],'최근 거절',d.ref.length?[d.ref.length+'건','warning']:null)]:[]);
   setGroup(items,'watches','지켜보기',d.watches,watchRow,'규칙 없음',setAddButton('지켜보기 추가',()=>openDetail('settings','watch:+','edit')));
+  setGroup(items,'hooks','웹훅',d.hooks,hookRow,'웹훅 없음',setAddButton('웹훅 추가',()=>openDetail('settings','hook:+','edit')));
   const views=[['progress','진행','서비스별 세션·지시·남긴 것'],['sessions','세션 표','상태·컨텍스트·기계·판']];
   if(hostingOn)views.push(['terminals','터미널','호스트된 세션·구독 한도']);
   if(ws&&ws.nodes)views.push(['nodes','노드','노드 → 세션',true]);
@@ -323,6 +324,117 @@ function drawServer(s,box){
   st.append(badge(r.on?'켬':'끔',r.on?'success':'neutral'));
   box.append(dl([['다시 알림',st],['첫 알림',r.after],['최대 횟수',String(r.max)],['멈춤 문턱',r.idle==='off'?'끔':r.idle],['멈춤 알림',r.idle==='off'?'-':String(r.idle_max||1)+'번'],['켠 때',r.since?when(r.since):r.on?'첫 점검 전':'-'],['서버 판',s.version],['터미널 호스팅',s.hosting?'켬':'끔'],['답 규칙 판',String(s.answered_rule.version)],['마지막 이주',ruleLast(s.answered_rule.last)]]));
 }
+// 웹훅 (#527): incoming webhooks, as hook:<id> (hook:+ a new one). The
+// address shows once, after adding or making it again, until the detail is
+// left; the original destination shows only as 있음/없음 with 바꾸기.
+const hookModeName={mail:'메일만',forward:'다시 보내기'};
+const hookModeTip={mail:'바깥 도구가 원래 목적지에 직접 보내고 switchboard에도 보냄',forward:'switchboard가 받아 원래 목적지로 다시 보냄'};
+let hookAddr=null;
+addEventListener('hashchange',()=>{if(hookAddr&&!decodeURIComponent(location.hash).includes('hook:'+hookAddr.id))hookAddr=null});
+function hookDestText(v){return v.dest==='set'?'있음':v.dest==='unreadable'?'다시 등록 필요':'없음'}
+function hookRow(v){
+  const st=v.dest==='unreadable'?['다시 등록 필요','danger']:v.urgent?['긴급','warning']:null;
+  return setRow('hook:'+v.id,[hookModeName[v.mode]||v.mode,v.role,v.last_at?'최근 '+shortWhen(v.last_at):''],v.name,st);
+}
+function hookForm(v){
+  const key='hook:'+(v.fresh?'+':v.id),kept=setForms.get(key);
+  if(kept&&kept.stamp===(v.updated_at||''))return kept.form;
+  const f=node('form','','fld');
+  const inp=(val,label,title)=>{const i=document.createElement('input');i.value=val;i.autocomplete='off';i.spellcheck=false;i.setAttribute('autocapitalize','off');i.setAttribute('aria-label',label);i.title=title;return i};
+  const name=inp(v.name,'이름','웹훅 이름 (64자까지)');name.required=true;name.maxLength=64;
+  const role=inp(v.role,'받는 역할','알림 메일을 받을 역할');role.required=true;role.placeholder='team/boss';role.className='mono';
+  const mode=document.createElement('select');mode.setAttribute('aria-label','꼴');
+  for(const m of ['mail','forward']){const o=node('option',hookModeName[m]);o.value=m;o.title=hookModeTip[m];mode.append(o)}
+  mode.value=v.mode||'mail';mode.title=hookModeTip[mode.value];
+  const urgent=document.createElement('input');urgent.type='checkbox';urgent.checked=!!v.urgent;urgent.title='긴급 메일로 보냄';urgent.setAttribute('aria-label','긴급');
+  const win=document.createElement('input');win.type='number';win.min='1';win.max='1440';win.step='1';win.inputMode='numeric';win.value=String(v.window_min||10);
+  win.title='같은 제목의 알림을 이 시간(분) 안에서 메일 하나로 묶음';win.setAttribute('aria-label','묶는 시간(분)');
+  const dest=inp('','원래 목적지','원래 목적지 주소 — 저장 뒤 다시 볼 수 없음');dest.type='password';dest.className='mono';dest.placeholder='https://';
+  let clear=false;
+  const destCell=node('div','','row');
+  const showDest=()=>{destCell.replaceChildren(dest);dest.focus()};
+  if(v.fresh)destCell.append(dest);
+  else{
+    destCell.append(node('span',hookDestText(v)),setButton('바꾸기','',showDest,'원래 목적지를 새로 넣음'));
+    if(v.dest!=='none'){
+      const rm=setButton('없애기','',()=>{clear=true;destCell.replaceChildren(node('span','저장하면 없앰'))},'원래 목적지를 지움');
+      destCell.append(rm);
+    }
+  }
+  mode.onchange=()=>{mode.title=hookModeTip[mode.value]};
+  const save=node('button',v.fresh?'추가':'저장');save.type='submit';save.title=v.fresh?'웹훅 추가':'저장';
+  f.append(node('label','이름'),name,node('label','받는 역할'),role,node('label','꼴'),mode,node('label','긴급'),urgent,node('label','묶는 시간(분)'),win,node('label','원래 목적지'),destCell,node('span'),save);
+  f.onsubmit=async e=>{
+    e.preventDefault();
+    const body={name:name.value.trim(),role:role.value.trim(),mode:mode.value,urgent:urgent.checked,window_min:Number(win.value)||10};
+    if(dest.value.trim())body.dest=dest.value.trim();else if(clear)body.clear_dest=true;
+    try{
+      if(v.fresh){
+        const r=await apiSend('POST','hooks',body);
+        setForms.delete(key);hookAddr={id:r.id,token:r.token};setNote('hook:'+r.id,r.name+' 웹훅 추가','ok');
+        loadSettingsView();openDetail('settings','hook:'+r.id,'edit');return;
+      }
+      await apiSend('PUT','hooks/'+v.id,body);
+      setForms.delete(key);setNote(key,body.name+' 저장','ok');
+    }catch(err){setNote(key,err.message,'err')}
+    loadSettingsView();drawDetail();
+  };
+  setForms.set(key,{stamp:v.updated_at||'',form:f});
+  return f;
+}
+function drawHookAddr(box,t){
+  const url=location.origin+'/hook/'+t.token;
+  const row=node('div','','detail-acts'),field=document.createElement('input');
+  field.type='text';field.readOnly=true;field.value=url;field.className='mono';field.setAttribute('aria-label','받는 주소');field.title='받는 주소 — 이 화면을 떠나면 다시 볼 수 없음';
+  field.style.cssText='flex:1 1 16em;min-width:0';
+  const copy=setButton('복사','',async()=>{
+    try{await navigator.clipboard.writeText(url)}
+    catch(e){field.select();document.execCommand('copy')}
+    copy.textContent='복사됨';
+  },'받는 주소 복사');
+  row.append(field,copy);box.append(row);
+}
+const hookCols=['시각','제목','전송'];
+function hookForward(x){
+  if(x.forward==='sent')return ['보냄'+(x.status?' '+x.status:''),'success'];
+  if(x.forward==='failed')return ['실패'+(x.status?' '+x.status:'')+(x.attempts?' · '+x.attempts+'번':''),'danger'];
+  if(x.forward==='pending')return [x.attempts?'다시 시도 중 · '+x.attempts+'번':'보내는 중','warning'];
+  return null;
+}
+function drawHook(v,box){
+  const id='hook:'+(v.fresh?'+':v.id);
+  if(!v.fresh){
+    const acts=node('div','','detail-acts');
+    acts.append(setButton('주소 다시 만들기','',async()=>{
+      if(!confirm(v.name+' 주소를 다시 만들까요? 지금 주소는 바로 못 쓰게 됩니다.'))return;
+      try{const r=await apiSend('POST','hooks/'+v.id+'/address');hookAddr={id:v.id,token:r.token};setNote(id,'새 주소를 만들었습니다.','ok')}
+      catch(e){setNote(id,e.message,'err')}
+      loadSettingsView();drawDetail();
+    },'새 받는 주소를 만들고 지금 주소를 끊음'));
+    acts.append(setButton('지우기','',async()=>{
+      if(!confirm(v.name+' 웹훅을 지울까요? 이 주소로 오는 알림은 더 받지 않습니다.'))return;
+      try{await apiSend('DELETE','hooks/'+v.id);setForms.delete(id);setMsg($('settingsMsg'),v.name+' 웹훅을 지웠습니다.','ok');closeDetail()}
+      catch(e){setNote(id,e.message,'err');drawDetail()}
+      loadSettingsView();
+    },'이 웹훅을 지움'));
+    box.append(acts);
+    if(hookAddr&&hookAddr.id===v.id)drawHookAddr(box,hookAddr);
+  }
+  drawSetNote(box,id);
+  box.append(hookForm(v));
+  if(v.fresh)return;
+  const t=node('table','','stack list cards'),head=node('tr'),th=document.createElement('thead'),body=document.createElement('tbody');
+  for(const c of hookCols)head.append(node('th',c));
+  th.append(head);t.append(th,body);
+  for(const x of v.receipts||[]){
+    const tr=node('tr',''),at=cell(shortWhen(x.at),hookCols[0],'nowrap');at.title=when(x.at);
+    const fw=hookForward(x),fc=cell('',hookCols[2],'nowrap');
+    if(fw)fc.append(badge(fw[0],fw[1]));else fc.textContent='-';
+    tr.append(at,cell(x.subject,hookCols[1]),fc);body.append(tr);
+  }
+  if(!(v.receipts||[]).length)emptyRow(body,hookCols.length,'받은 알림 없음');
+  box.append(node('h3','최근 받은 알림','dsec'),t);
+}
 async function findSetting(kind,key){
   if(kind==='qs')return (await api('question-settings')).find(x=>x.target===key);
   if(kind==='refusals')return {rows:await api('question-refusals')};
@@ -331,6 +443,7 @@ async function findSetting(kind,key){
   if(kind==='node'&&hostingOn)return (await api('nodes')).find(x=>x.name===key);
   if(kind==='group'&&hostingOn)return key==='+'?{name:'',fresh:true}:(await api('terminals/work-groups')).find(x=>x.name===key);
   if(kind==='watch')return findWatch(key);
+  if(kind==='hook')return key==='+'?{fresh:true,name:'',role:'',mode:'mail',urgent:false,window_min:10,dest:'none'}:api('hooks/'+encodeURIComponent(key)).catch(()=>undefined);
   if(kind==='server')return api('settings');
   if(kind==='view'&&key==='nodes'&&ws&&ws.nodes)return {};
   return undefined;
@@ -342,10 +455,11 @@ const setHeads={
   login:v=>({title:v.name,badge:v.disabled?['꺼짐','danger']:[v.kind==='builtin'?'내장':'외부','neutral']}),
   node:v=>({title:v.name,badge:v.revoked_at?['끊김','danger']:null}),
   group:v=>({title:v.fresh?'새 묶음':v.name,badge:null}),
+  hook:v=>({title:v.fresh?'새 웹훅':v.name,badge:v.fresh?null:v.dest==='unreadable'?['다시 등록 필요','danger']:[hookModeName[v.mode]||v.mode,'neutral']}),
   server:v=>({title:'다시 알림 · 서버',badge:v.reminders.on?['켬','success']:['끔','neutral']}),
   view:()=>({title:'노드',badge:null}),
 };
-const setDraws={qs:drawQS,refusals:drawRefusals,role:drawRole,login:drawLogin,node:drawNode,group:drawWorkGroup,server:drawServer,view:(v,box)=>{const n=ws.nodes();box.append(n.el);n.show()}};
+const setDraws={qs:drawQS,refusals:drawRefusals,role:drawRole,login:drawLogin,node:drawNode,group:drawWorkGroup,hook:drawHook,server:drawServer,view:(v,box)=>{const n=ws.nodes();box.append(n.el);n.show()}};
 registerDetail('settings',{
   list:'설정',kinds:['settings','terminals'],
   back:id=>setViewHash[setKindView[id.slice(0,id.indexOf(':'))]]||'settings',
@@ -354,6 +468,6 @@ registerDetail('settings',{
     return v?{k:k,v:v}:null;
   },
   head:x=>setHeads[x.k](x.v),
-  subs:x=>x.k==='qs'||x.k==='group'||x.k==='watch'?[['edit','설정']]:[['info','정보']],
+  subs:x=>x.k==='qs'||x.k==='group'||x.k==='watch'||x.k==='hook'?[['edit','설정']]:[['info','정보']],
   draw:(x,sub,box)=>setDraws[x.k](x.v,box)
 });
