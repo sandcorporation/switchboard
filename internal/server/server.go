@@ -31,6 +31,7 @@ import (
 	"github.com/sandcorporation/switchboard/internal/mail"
 	"github.com/sandcorporation/switchboard/internal/presence"
 	"github.com/sandcorporation/switchboard/internal/rules"
+	"github.com/sandcorporation/switchboard/internal/secrets"
 	"github.com/sandcorporation/switchboard/internal/store"
 	"github.com/sandcorporation/switchboard/internal/wire"
 )
@@ -64,6 +65,9 @@ type Server struct {
 	hubOnce        sync.Once
 	nodeHub        *hosting.Hub  // the node channel (hosting.go), built on first use
 	termLimits     hosting.Admin // browser terminal recheck and queue; tests shorten them (zero: the defaults)
+	secretsRaw     []byte        // SWITCHBOARD_SECRETS_KEY parsed; nil: the key file (secrets.go)
+	secretsOnce    sync.Once
+	secrets        *secrets.Key // seals secret values (#525); run loads it, secretsKey reads it
 }
 
 // version is the build version /health reports (set by Run).
@@ -98,6 +102,9 @@ func run(v string, ln net.Listener, setupDir string, attach attachFunc) {
 		fatal(e)
 	}
 	s.db = db
+	if e = s.loadSecrets(filepath.Dir(config.Env("DB_PATH", "/data/mail.db")), log.Printf); e != nil {
+		fatalf("secrets key: %v", e)
+	}
 	if e = s.logRemindStart(); e != nil {
 		fatal(e)
 	}

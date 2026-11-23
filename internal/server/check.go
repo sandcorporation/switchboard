@@ -19,6 +19,7 @@ import (
 	"github.com/sandcorporation/switchboard/internal/config"
 	"github.com/sandcorporation/switchboard/internal/insight"
 	"github.com/sandcorporation/switchboard/internal/presence"
+	"github.com/sandcorporation/switchboard/internal/secrets"
 	"github.com/sandcorporation/switchboard/internal/wire"
 )
 
@@ -71,6 +72,8 @@ func startSettings(s *Server, getenv func(string) string, serverVersion string) 
 	s.terminal, err = terminalSettings(getenv)
 	add(err)
 	add(checkListenAddr(listenAddr(getenv)))
+	s.secretsRaw, err = secrets.CheckSetting(getenv)
+	add(err)
 	return errors.Join(errs...)
 }
 

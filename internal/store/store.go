@@ -203,7 +203,43 @@ func Init(db *sql.DB) error {
 	if e = migrateRequests(db); e != nil {
 		return e
 	}
+	if e = migrateAlertMail(db); e != nil {
+		return e
+	}
+	if e = migrateSecrets(db); e != nil {
+		return e
+	}
 	return migrateHourlyIndexes(db)
+}
+
+// migrateAlertMail adds the collapsing alert mail's columns (#525):
+// messages.alert_source (hook:<name>, watch:<name>; null for other mail),
+// alert_repeats (how many more times the same alert came inside its window)
+// and alert_last_at (the last of them, RFC 3339).
+func migrateAlertMail(db *sql.DB) error {
+	if err := addColumns(db, []columnAdd{
+		{"messages", "alert_source", `TEXT`},
+		{"messages", "alert_repeats", `INTEGER NOT NULL DEFAULT 0`},
+		{"messages", "alert_last_at", `TEXT`},
+	}); err != nil {
+		return err
+	}
+	_, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_messages_alert ON messages(recipient, alert_source, subject, id) WHERE alert_source IS NOT NULL`)
+	return err
+}
+
+// migrateSecrets creates the sealed secret values (#525): each row's value
+// is AEAD-sealed under the server's secrets key with its own nonce and its
+// name as associated data (internal/secrets). hint is a short trace of the
+// value for display, possibly empty.
+func migrateSecrets(db *sql.DB) error {
+	_, err := db.Exec(`CREATE TABLE IF NOT EXISTS secrets(
+		name TEXT PRIMARY KEY,
+		nonce BLOB NOT NULL,
+		sealed BLOB NOT NULL,
+		hint TEXT NOT NULL DEFAULT '',
+		set_at TEXT NOT NULL)`)
+	return err
 }
 
 // migrateHourlyIndexes adds the created_at indexes the hourly counts read
