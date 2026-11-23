@@ -156,7 +156,7 @@ var commands = []command{
 			{"--expires", "DURATION", "start: how long it may run, e.g. 90m, 24h, 7d (default 7d; moves forward while a session of this role is attached)"},
 			{"--batch", "DURATION", "start: batch window, lines within it make one mail (default 30s)"},
 			{"--cwd", "DIR", "start: working directory (default the current one)"},
-			{"--label", "TEXT", "start: label (default the first 60 characters of the command)"},
+			{"--label", "TEXT", "start: label (default 명령 #ID)"},
 			{"--no-extend", "", "start: the expiry is fixed; it does not move forward while a session is attached"},
 			{"--idem", "KEY", "start: retry-safe key; starting again with the same key returns the first watch"},
 			optJSON, optProfile,

@@ -79,7 +79,7 @@ func TestDashboardProgressTab(t *testing.T) {
 		`id="panel-sessions" role="tabpanel" aria-labelledby="tab-sessions" tabindex="0" class="card" hidden>`,
 		"tabLoaders.progress=loadProgress", "api('progress')", `id="reloadProgress"`, `id="progress"`,
 		"showTab(visibleTabs().includes(h)?h:'progress')",
-		"function openMessage(id)", `id="task"`, "task:task,id:id",
+		"function openMessage(id)", `id="task"`, "id:mailID",
 		"setTabCount('progress',", "d.over_threshold", "'세션 없음'",
 	} {
 		if !strings.Contains(body, want) {

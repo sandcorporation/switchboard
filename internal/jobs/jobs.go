@@ -148,6 +148,10 @@ func (s *Service) create(w http.ResponseWriter, r *http.Request, p identity.Prin
 		return
 	}
 	id, _ := res.LastInsertId()
+	if q.Label == "" {
+		// No label given: name it by kind and number, never by its command (#410).
+		_, _ = s.db.Exec(`UPDATE jobs SET label=? WHERE id=?`, fmt.Sprintf("명령 #%d", id), id)
+	}
 	j, err := s.Get(id)
 	if err != nil {
 		http.Error(w, "query failed", http.StatusInternalServerError)

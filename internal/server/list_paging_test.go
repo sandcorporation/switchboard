@@ -48,3 +48,42 @@ func TestListPaging(t *testing.T) {
 		}
 	}
 }
+
+// GET /api/admin/messages pages the same way (#8): without a limit it still
+// answers the newest 500, and `before` continues below the oldest ID shown.
+func TestAdminListPaging(t *testing.T) {
+	t.Parallel()
+	s, clock := slotsWithRoles(t)
+	var ids []int64
+	for i := 0; i < 5; i++ {
+		ids = append(ids, apiMail(t, s, clock, "hq/boss", "/api/messages", map[string]any{"recipient": "team/worker", "subject": fmt.Sprintf("m%d", i)}).ID)
+	}
+	s.admin.ProxyToken = "proxy-secret"
+	list := func(query string) ([]wire.Message, int) {
+		w := adminRequest(s, "GET", "/api/admin/messages?"+query, "", nil)
+		var ms []wire.Message
+		if w.Code == 200 {
+			if err := json.Unmarshal(w.Body.Bytes(), &ms); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return ms, w.Code
+	}
+	if ms, code := list(""); len(ms) != 5 {
+		t.Fatalf("default: %d messages, code %d", len(ms), code)
+	}
+	page1, _ := list("limit=2")
+	page2, _ := list(fmt.Sprintf("limit=2&before=%d", page1[1].ID))
+	page3, _ := list(fmt.Sprintf("limit=2&before=%d", page2[1].ID))
+	if len(page1) != 2 || page1[0].ID != ids[4] || len(page2) != 2 || page2[0].ID != ids[2] || len(page3) != 1 || page3[0].ID != ids[0] {
+		t.Fatalf("pages: %+v %+v %+v", page1, page2, page3)
+	}
+	if rest, _ := list(fmt.Sprintf("limit=2&before=%d", ids[0])); len(rest) != 0 {
+		t.Fatalf("below the oldest: %+v", rest)
+	}
+	for _, q := range []string{"limit=0", "limit=501", "limit=x", "before=0", "before=x"} {
+		if _, code := list(q); code != 400 {
+			t.Fatalf("%s: %d, want 400", q, code)
+		}
+	}
+}
