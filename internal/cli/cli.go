@@ -368,7 +368,7 @@ var commands = []command{
 			{"--restart-sessions", "", "stop every hosted session on this machine at start and relaunch each with resume"},
 			{"--allow-checks", "", "run the prechecks of scheduled runs (host auto add --check) on this machine (default: refuse them; up's own node: SWITCHBOARD_HOSTING_ALLOW_CHECKS=on)"},
 		}},
-	{name: "admin", args: "ACTION NAME", nargs: 2, synopsis: "(ACTION: create | passwd | totp-reset | disable) NAME",
+	{name: "admin", args: "ACTION [NAME]", nargs: 2, optArgs: true, synopsis: "(ACTION: create | passwd | totp-reset | disable | enable) NAME | list",
 		summary: "Manage built-in dashboard admins in the server database (DB_PATH; run inside the server container); create and passwd read the password from the terminal or the first line of stdin",
 		options: []option{optJSON}},
 	{name: "version", summary: "Show build version; --check compares it with the server's minimum (exit 3 when behind)",
@@ -628,7 +628,14 @@ func dispatch(args []string) (int, error) {
 	case "register":
 		return cliRegister(p)
 	case "admin":
-		return admin(p.pos[0], p.pos[1], p.bool("--json"), os.Stdin, os.Stdout, os.Stderr)
+		if len(p.pos) == 0 {
+			return 0, usagef("admin: ACTION needed (create, passwd, totp-reset, disable, enable, list)")
+		}
+		name := ""
+		if len(p.pos) > 1 {
+			name = p.pos[1]
+		}
+		return admin(p.pos[0], name, p.bool("--json"), os.Stdin, os.Stdout, os.Stderr)
 	case "serve":
 		if binary.Serve == nil {
 			return 0, usagef("serve is not available in this build")
