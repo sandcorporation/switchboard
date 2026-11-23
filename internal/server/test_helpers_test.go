@@ -108,5 +108,9 @@ func runMain() {
 		Run(version)
 		return
 	}
-	os.Exit(cli.Run(args, version, binaryCommands()))
+	v := version
+	if os.Getenv("SWITCHBOARD_TEST_PLUGIN_LOG") != "" {
+		v = "v1.2.3" // a release build: only those sync the plugin (#498)
+	}
+	os.Exit(cli.Run(args, v, binaryCommands()))
 }

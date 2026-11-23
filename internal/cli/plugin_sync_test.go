@@ -28,8 +28,9 @@ func TestEveryCommandOutsideNoAutoPluginSyncsThePlugin(t *testing.T) {
 			t.Setenv("SWITCHBOARD_CONFIG_DIR", t.TempDir())
 			t.Setenv("DB_PATH", t.TempDir()+"/none.db")
 			installs := 0
-			saved, savedFlag := binary, noPluginFlag
-			t.Cleanup(func() { binary, noPluginFlag = saved, savedFlag })
+			saved, savedFlag, savedVersion := binary, noPluginFlag, version
+			t.Cleanup(func() { binary, noPluginFlag, version = saved, savedFlag, savedVersion })
+			version = "v1.2.3"
 			noPluginFlag = false
 			binary.PluginInstall = func(version, dir string, quiet bool, w io.Writer) error {
 				installs++
@@ -52,8 +53,9 @@ func TestHostSyncHonoursNoPlugin(t *testing.T) {
 	t.Setenv("SWITCHBOARD_CONFIG_DIR", t.TempDir())
 	t.Setenv("DB_PATH", t.TempDir()+"/none.db")
 	installs := 0
-	saved, savedFlag := binary, noPluginFlag
-	t.Cleanup(func() { binary, noPluginFlag = saved, savedFlag })
+	saved, savedFlag, savedVersion := binary, noPluginFlag, version
+	t.Cleanup(func() { binary, noPluginFlag, version = saved, savedFlag, savedVersion })
+	version = "v1.2.3"
 	noPluginFlag = false
 	binary.PluginInstall = func(version, dir string, quiet bool, w io.Writer) error {
 		installs++
@@ -68,5 +70,34 @@ func TestHostSyncHonoursNoPlugin(t *testing.T) {
 	dispatchIgnoringFailure([]string{"host", "list"})
 	if installs != 0 {
 		t.Fatalf("installed %d times with the plugin off", installs)
+	}
+}
+
+// A development build does not sync on its own; a release build does (#498).
+func TestDevBuildDoesNotAutoInstallThePlugin(t *testing.T) {
+	for _, tc := range []struct {
+		version string
+		want    int
+	}{{"dev", 0}, {"", 0}, {"0.0.0-dev.cc80a3cf", 0}, {"v1.2.3", 1}, {"1.2.3", 1}} {
+		t.Run(tc.version, func(t *testing.T) {
+			t.Setenv("SWITCHBOARD_CONFIG_DIR", t.TempDir())
+			installs := 0
+			saved, savedFlag, savedVersion := binary, noPluginFlag, version
+			t.Cleanup(func() { binary, noPluginFlag, version = saved, savedFlag, savedVersion })
+			noPluginFlag, version = false, tc.version
+			binary.PluginInstall = func(version, dir string, quiet bool, w io.Writer) error {
+				installs++
+				return nil
+			}
+			syncPluginOnce(io.Discard)
+			installPluginAfterJoin(io.Discard)
+			if tc.want == 1 {
+				if installs == 0 {
+					t.Fatal("release build did not install")
+				}
+			} else if installs != 0 {
+				t.Fatalf("version %q installed %d times", tc.version, installs)
+			}
+		})
 	}
 }
