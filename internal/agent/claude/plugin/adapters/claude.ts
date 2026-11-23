@@ -15,6 +15,7 @@
 import type { Hook, On } from 'claude-code'
 
 import type { AgentHost, HostEvent, Http, HttpReply } from '../core/host'
+import { versionAtLeast } from '../core/handoff'
 import { pickEnv, profileLocation } from '../core/profile'
 import type { ProfileEnv, ProfilePlatform } from '../core/profile'
 
@@ -67,6 +68,12 @@ export const createMidTurnBox = () => {
 }
 
 export type MidTurnBox = ReturnType<typeof createMidTurnBox>
+
+/**
+ * 플러그인의 턴 끊기가 돌던 Bash 를 백그라운드로 옮기는 것을 확인한 Claude Code 판(#526, tmux 실세션). 이보다 낮거나
+ * 판을 모르면 끊지 않는다: 끊기가 명령을 죽일 수 있다.
+ */
+export const BACKGROUND_ON_ABORT_MIN_VERSION = '2.1.330'
 
 /** 백그라운드로 넘길 수 있는 도구(#526). 플러그인의 턴 끊기가 백그라운드로 넘기는 것은 Bash 뿐이다(그 밖의 도구는 멈춘다). */
 export const BACKGROUND_TOOLS: ReadonlySet<string> = new Set(['Bash'])
@@ -432,12 +439,18 @@ export async function readCliVersion($: Self): Promise<string | undefined> {
 
 /**
  * 앞에서 오래 도는 Bash 를 백그라운드로 넘긴다(#526): 턴을 끊으면 엔진이 돌던 Bash 를 백그라운드로 옮긴다.
- * 백그라운드 작업이 꺼진 세션(CLAUDE_CODE_DISABLE_BACKGROUND_TASKS)에서는 끊으면 명령이 죽으므로 넘기지 않는다.
+ * 백그라운드 작업이 꺼진 세션(CLAUDE_CODE_DISABLE_BACKGROUND_TASKS)과 판이 낮거나 모르는 세션에서는 끊으면 명령이 죽을 수 있어
+ * 넘기지 않는다.
  * 끊은 뒤 걸린 끼워 넣기는 버린다(false): 코어가 새 턴으로 넣는다.
  */
 async function moveShellToBackground($: Self, box: MidTurnBox, watch: TurnWatch, minRunMs: number): Promise<boolean> {
   const turnId = watch.movable(minRunMs)
   if (turnId === null) return false
+  const version = await $.session
+    .version()
+    .then(r => r.version)
+    .catch(() => '')
+  if (!versionAtLeast(version, BACKGROUND_ON_ABORT_MIN_VERSION)) return false
   const off = ((await $.env.get('CLAUDE_CODE_DISABLE_BACKGROUND_TASKS')) ?? '').trim().toLowerCase()
   if (off !== '' && off !== '0' && off !== 'false') return false
   watch.hold()

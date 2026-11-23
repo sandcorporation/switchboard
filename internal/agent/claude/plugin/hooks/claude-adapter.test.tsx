@@ -152,9 +152,16 @@ test('Claude 어댑터(#130): 프로필은 새 이름 우선, 옛 이름만 있�
 })
 
 /** 셸 넘기기(#526) 시험용 가짜 $: 시계·환경·턴 끊기만. */
-const bgSelf = (o: { env?: Record<string, string>; abortFails?: boolean }) => {
+const bgSelf = (o: { env?: Record<string, string>; abortFails?: boolean; version?: string | null }) => {
   const aborted: string[] = []
   const self = asSelf({
+    session: {
+      version: async () => {
+        if (o.version === null) throw new Error('unknown')
+
+        return { version: o.version ?? '2.1.330' }
+      },
+    },
     env: { get: async (k: string) => o.env?.[k] },
     turn: {
       abort: async ({ turnId }: { turnId: string }) => {
@@ -185,10 +192,21 @@ test('Claude 어댑터(#526): 본 세션의 Bash 가 문턱 넘게 돌면 턴을
   expect(watch.isHeld()).toBe(false)
 })
 
-test('Claude 어댑터(#526): 문턱 전·Bash 아닌 도구·턴 없음·백그라운드 꺼짐·끊기 실패면 넘기지 않는다', async () => {
-  const cases: { name: string; tools: [string, number][]; now: number; turn?: boolean; env?: Record<string, string>; abortFails?: boolean }[] = [
+test('Claude 어댑터(#526): 문턱 전·병렬 Bash 아닌 도구·낮은/모르는 판·턴 없음·백그라운드 꺼짐·끊기 실패면 넘기지 않는다', async () => {
+  const cases: {
+    name: string
+    tools: [string, number][]
+    now: number
+    turn?: boolean
+    env?: Record<string, string>
+    abortFails?: boolean
+    version?: string | null
+  }[] = [
     { name: '문턱 전', tools: [['Bash', 1_000]], now: 30_999 },
-    { name: 'Bash 아닌 도구', tools: [['Bash', 1_000], ['Agent', 1_000]], now: 60_000 },
+    { name: 'Bash 와 병렬로 도는 Bash 아닌 도구', tools: [['Bash', 1_000], ['Agent', 1_000]], now: 60_000 },
+    { name: 'Bash 둘과 병렬 Read 하나', tools: [['Bash', 1_000], ['Bash', 2_000], ['Read', 50_000]], now: 60_000 },
+    { name: '턴 끊기 넘기기 전 판', tools: [['Bash', 1_000]], now: 60_000, version: '2.1.329' },
+    { name: '판을 모름', tools: [['Bash', 1_000]], now: 60_000, version: null },
     { name: '도는 도구 없음', tools: [], now: 60_000 },
     { name: '턴 없음', tools: [['Bash', 1_000]], now: 60_000, turn: false },
     { name: '백그라운드 꺼짐', tools: [['Bash', 1_000]], now: 60_000, env: { CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: '1' } },
@@ -204,7 +222,7 @@ test('Claude 어댑터(#526): 문턱 전·Bash 아닌 도구·턴 없음·백그
       watch.begin(tool)
     }
     now = c.now
-    const { self, aborted } = bgSelf({ env: c.env, abortFails: c.abortFails })
+    const { self, aborted } = bgSelf({ env: c.env, abortFails: c.abortFails, version: c.version })
     const host = claudeHost(self, createEmitter(), box, watch)
     expect([c.name, await host.moveShellToBackground?.(30_000)]).toEqual([c.name, false])
     expect([c.name, aborted]).toEqual([c.name, []])
