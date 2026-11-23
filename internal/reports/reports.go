@@ -17,6 +17,7 @@ import (
 
 	"github.com/sandcorporation/switchboard/internal/identity"
 	"github.com/sandcorporation/switchboard/internal/mail"
+	"github.com/sandcorporation/switchboard/internal/requests"
 	"github.com/sandcorporation/switchboard/internal/store"
 	"github.com/sandcorporation/switchboard/internal/wire"
 )
@@ -75,6 +76,12 @@ func (s *Service) API(w http.ResponseWriter, r *http.Request, p identity.Princip
 			return
 		}
 	}
+	if q.RequestID != 0 {
+		if err := requests.Linkable(s.db, s.ids, p, q.RequestID); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+	}
 	roots, received, bad, err := s.resolve(p, q.Mail)
 	if err != nil {
 		http.Error(w, "query failed", http.StatusInternalServerError)
@@ -87,8 +94,8 @@ func (s *Service) API(w http.ResponseWriter, r *http.Request, p identity.Princip
 	var id int64
 	now := s.now().UTC().Format(time.RFC3339Nano)
 	err = store.InTx(r.Context(), s.db, func(tx *sql.Tx) error {
-		res, err := tx.Exec(`INSERT INTO reports(author,title,request,body,created_at,idem) VALUES(?,?,?,?,?,?)`,
-			p.Role, q.Title, q.Request, q.Body, now, nullable(key))
+		res, err := tx.Exec(`INSERT INTO reports(author,title,request,body,created_at,idem,request_id) VALUES(?,?,?,?,?,?,?)`,
+			p.Role, q.Title, q.Request, q.Body, now, nullable(key), nullInt(q.RequestID))
 		if err != nil {
 			return err
 		}
@@ -122,6 +129,13 @@ func (s *Service) API(w http.ResponseWriter, r *http.Request, p identity.Princip
 
 func nullable(v string) any {
 	if v == "" {
+		return nil
+	}
+	return v
+}
+
+func nullInt(v int64) any {
+	if v == 0 {
 		return nil
 	}
 	return v
@@ -243,14 +257,14 @@ func (s *Service) List() (wire.ReportList, error) {
 // status "open" or "done" keeps only those.
 func (s *Service) list(visible func(author string) bool, status string) (wire.ReportList, error) {
 	out := wire.ReportList{Reports: []wire.Report{}}
-	rows, err := s.db.Query(`SELECT id,author,title,request,created_at FROM reports ORDER BY id DESC`)
+	rows, err := s.db.Query(`SELECT id,author,title,request,created_at,COALESCE(request_id,0) FROM reports ORDER BY id DESC`)
 	if err != nil {
 		return out, err
 	}
 	for rows.Next() {
 		var rp wire.Report
 		var created string
-		if err = rows.Scan(&rp.ID, &rp.Author, &rp.Title, &rp.Request, &created); err != nil {
+		if err = rows.Scan(&rp.ID, &rp.Author, &rp.Title, &rp.Request, &created, &rp.RequestID); err != nil {
 			rows.Close()
 			return out, err
 		}
@@ -297,7 +311,7 @@ func (s *Service) list(visible func(author string) bool, status string) (wire.Re
 func (s *Service) Detail(id int64) (wire.ReportDetail, error) {
 	var d wire.ReportDetail
 	var created string
-	err := s.db.QueryRow(`SELECT id,author,title,request,body,created_at FROM reports WHERE id=?`, id).Scan(&d.ID, &d.Author, &d.Title, &d.Request, &d.Body, &created)
+	err := s.db.QueryRow(`SELECT id,author,title,request,body,created_at,COALESCE(request_id,0) FROM reports WHERE id=?`, id).Scan(&d.ID, &d.Author, &d.Title, &d.Request, &d.Body, &created, &d.RequestID)
 	if err != nil {
 		return d, err
 	}

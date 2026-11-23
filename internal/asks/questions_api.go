@@ -17,6 +17,7 @@ import (
 
 	"github.com/sandcorporation/switchboard/internal/identity"
 	"github.com/sandcorporation/switchboard/internal/mail"
+	"github.com/sandcorporation/switchboard/internal/requests"
 	"github.com/sandcorporation/switchboard/internal/wire"
 )
 
@@ -424,6 +425,7 @@ func (s *Service) askQuestion(w http.ResponseWriter, r *http.Request, p identity
 	var req struct {
 		Questions []wire.QuestionItem `json:"questions"`
 		RelayTo   []string            `json:"relay_to"`
+		RequestID int64               `json:"request_id"` // the owner's request it belongs to (#501); 0 for none
 	}
 	if json.NewDecoder(http.MaxBytesReader(w, r.Body, maxQuestionBody)).Decode(&req) != nil {
 		http.Error(w, fmt.Sprintf("invalid JSON (at most %d bytes)", maxQuestionBody), 400)
@@ -437,6 +439,12 @@ func (s *Service) askQuestion(w http.ResponseWriter, r *http.Request, p identity
 	if err != nil {
 		questionError(w, err)
 		return
+	}
+	if req.RequestID != 0 {
+		if err = requests.Linkable(s.db, s.ids, p, req.RequestID); err != nil {
+			http.Error(w, err.Error(), 400)
+			return
+		}
 	}
 	id, err := newQuestionID()
 	if err != nil {
@@ -467,8 +475,8 @@ func (s *Service) askQuestion(w http.ResponseWriter, r *http.Request, p identity
 		if e != nil {
 			return e
 		}
-		if _, e = tx.Exec(`INSERT INTO questions(id,asker,asker_base,questions,created_at,seq,answerer,asker_machine,asker_directory,asker_label,relay_to) VALUES(?,?,?,?,?,?,?,?,?,?,?)`,
-			id, p.Role, p.Base, string(encoded), ms(now), seq, answerer, asking.Machine, asking.Directory, asking.Label, relay); e != nil {
+		if _, e = tx.Exec(`INSERT INTO questions(id,asker,asker_base,questions,created_at,seq,answerer,asker_machine,asker_directory,asker_label,relay_to,request_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,
+			id, p.Role, p.Base, string(encoded), ms(now), seq, answerer, asking.Machine, asking.Directory, asking.Label, relay, requestRef(req.RequestID)); e != nil {
 			return e
 		}
 		if v, e = loadQuestion(tx, id); e != nil {
@@ -786,4 +794,12 @@ func (s *Service) pollQuestions(w http.ResponseWriter, r *http.Request, p identi
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	writeJSON(w, QuestionPoll{Questions: out, Cursor: cursor})
+}
+
+// requestRef is a question's request_id column: NULL for none.
+func requestRef(id int64) *int64 {
+	if id == 0 {
+		return nil
+	}
+	return &id
 }

@@ -17,6 +17,7 @@ import (
 	"github.com/sandcorporation/switchboard/internal/mail"
 	"github.com/sandcorporation/switchboard/internal/presence"
 	"github.com/sandcorporation/switchboard/internal/reports"
+	"github.com/sandcorporation/switchboard/internal/requests"
 	"github.com/sandcorporation/switchboard/internal/rules"
 	"github.com/sandcorporation/switchboard/internal/store"
 	"github.com/sandcorporation/switchboard/internal/wire"
@@ -114,6 +115,12 @@ func (s *Server) insight() *insight.Service {
 // identity rules, with the base resolver the answered rule compares.
 func (s *Server) reports() *reports.Service {
 	return reports.New(s.db, s.now, s.ids(), insight.NewBaseResolver(s.db).Of)
+}
+
+// requests is the owner's requests (#501) over this server's database,
+// clock and identity rules.
+func (s *Server) requests() *requests.Service {
+	return requests.New(s.db, s.now, s.ids())
 }
 
 // rules is the rules ledger over this server's database and clock, with

@@ -35,6 +35,9 @@ func cliQuestion(c Config, p parsedArgs) (int, error) {
 		if e != nil {
 			return 0, e
 		}
+		if body, e = withRequestIDRaw(p, body); e != nil {
+			return 0, e
+		}
 		b, err = slotCall(c, "POST", "/api/questions", body)
 	case "show":
 		b, err = slotCall(c, "GET", "/api/questions/"+url.PathEscape(p.pos[1]), nil)

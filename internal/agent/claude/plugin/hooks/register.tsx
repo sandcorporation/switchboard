@@ -41,7 +41,7 @@ import { singleRolesConfig } from '../core/slot'
 import type { Switchboard } from '../core/switchboard'
 import type { RemoteSink } from '../core/remote-inbox'
 import type { AskRefusal } from '../core/remote-ask'
-import { askRefusedText, isRemoteId, localFallbackLine, normalizeRelayTo, relayNotDeliveredLine, remoteAskText, withdrawText } from '../core/remote-ask'
+import { askRefusedText, isRemoteId, localFallbackLine, normalizeRelayTo, normalizeRequestId, relayNotDeliveredLine, remoteAskText, withdrawText } from '../core/remote-ask'
 import { toolCallOf } from '../core/rules'
 import type { QuestionPanelBatch } from '../types'
 
@@ -524,10 +524,11 @@ export const register: Register = on => {
     if (typeof questions === 'string') return { deny: `switchboard: ${questions}` }
     const mode = panelMode(await $.session.surfaces())
     const relayTo = normalizeRelayTo(e.relay_to)
+    const requestId = normalizeRequestId(e.request_id)
 
     // 원격 질문(#111): 프로필이 있으면 먼저 서버 질문으로 올린다. 서버 질문은 이 세션의 패널에 올리지 않는다
     // (묻는 쪽이 스스로 답하지 않게 — remote-ask.ts 머리말). 못 올리면 까닭을 결과 글에 적고 로컬 패널로.
-    const remote = board === undefined ? { kind: 'local' as const, reason: null } : await board.askRemote(questions, { http: hookHttp($) }, relayTo)
+    const remote = board === undefined ? { kind: 'local' as const, reason: null } : await board.askRemote(questions, { http: hookHttp($) }, relayTo, requestId)
     if (remote.kind === 'remote') {
       lastRefusal = null
       const text = remoteAskText(remote.id, remote.asker, RESOLVE_TOOL, remote.here)

@@ -3,8 +3,8 @@
 // and {type:'change',seq,kinds}; kinds are tab names. The shown tab reloads
 // (not while a field in it has focus), the others reload when next shown.
 // Reconnects back off exponentially (1s to 30s) and resume with boot+after.
-const liveReload={progress:loadProgress,sessions:loadSessions,reports:loadReports,jobs:loadJobs,metrics:loadMetrics,mail:load,permissions:loadPermissions,rules:loadRules,questions:loadQuestions,settings:loadSettingsView,terminals:loadTerminals};
-const liveCounts={reports:refreshReportCount,questions:refreshQuestionCount,permissions:refreshPermissionCount,metrics:refreshMetricsCount};
+const liveReload={requests:loadRequests,progress:loadProgress,sessions:loadSessions,reports:loadReports,jobs:loadJobs,metrics:loadMetrics,mail:load,permissions:loadPermissions,rules:loadRules,questions:loadQuestions,settings:loadSettingsView,terminals:loadTerminals};
+const liveCounts={requests:refreshRequestCount,reports:refreshReportCount,questions:refreshQuestionCount,permissions:refreshPermissionCount,metrics:refreshMetricsCount};
 let liveBoot='',liveSeq=0,liveDelay=1000,liveDirty=new Set(),liveStale=new Set(),liveTimer=0,liveDetail=false;
 function liveMark(kinds){
   if(ws)ws.live(kinds);
@@ -73,7 +73,7 @@ function tabShown(k){return k===curTab||!!(ws&&ws.shown(k))}
 // #settings-nodes #settings-reminders (설정 tab views), #decisions (질문 tab,
 // 결정 view), #q=<id> (rewritten to #questions/<id>/answer), #terminal=<id> (an older link: it becomes
 // #terminals/<id>/screen), and #<tab>/<id>/<sub> for a tab with a detail panel
-// (registerDetail). No hash or an unknown one shows 진행.
+// (registerDetail). No hash or an unknown one shows 지시 (#501).
 function route(){
   const h=location.hash.slice(1);
   const parts=h.split('/');
@@ -101,7 +101,7 @@ function route(){
     route();
     return;
   }
-  showTab(visibleTabs().includes(h)?h:'progress');
+  showTab(visibleTabs().includes(h)?h:'requests');
 }
 // selectTab(name) also takes 'decisions' (the 결정 view of the 질문 tab).
 function selectTab(name){
@@ -134,6 +134,7 @@ $('reloadMetrics').onclick=loadMetrics;
 $('metDays7').onclick=()=>setMetricsDays(7);
 $('metDays30').onclick=()=>setMetricsDays(30);
 $('reloadReports').onclick=()=>loadReports();
+$('reloadRequests').onclick=()=>loadRequests();
 $('reloadRules').onclick=()=>loadRules();
 $('ruleService').onchange=()=>loadRules();
 $('ruleTopic').onchange=()=>loadRules();
@@ -156,6 +157,7 @@ loadMe();
 route();
 if(!tabLoaded.has('questions'))refreshQuestionCount();
 if(!tabLoaded.has('reports'))refreshReportCount();
+if(!tabLoaded.has('requests'))refreshRequestCount();
 if(!tabLoaded.has('metrics'))refreshMetricsCount();
 if(!tabLoaded.has('permissions'))refreshPermissionCount();
 liveConnect();

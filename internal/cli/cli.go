@@ -57,6 +57,8 @@ type command struct {
 
 var (
 	optJSON = option{"--json", "", "print the server's JSON response"}
+	// optRequestID links a write to the owner's request (#501).
+	optRequestID = option{"--request-id", "N", "the owner's request this belongs to (see `request list`)"}
 	// optNoPlugin is also a global option, before the command (#477).
 	optNoPlugin = option{"--no-plugin", "", "do not install the agent plugin this binary carries (also SWITCHBOARD_PLUGIN=off)"}
 	optProfile  = option{"--profile", "NAME", "use the named credential profile (same as SWITCHBOARD_PROFILE)"}
@@ -116,7 +118,7 @@ var commands = []command{
 			{"--complete", "ID[,ID...]", "mail you received to mark complete with this send (repeatable; one transaction, refused unless every ID is yours)"},
 			optLeft, optLeftNone,
 			{"--idempotency-key", "KEY", "retry-safe key; resending with the same key returns the first message and marks nothing twice"},
-			optJSON, optProfile,
+			optRequestID, optJSON, optProfile,
 		}},
 	{name: "inbox", summary: "List messages for the active role (newest 100; --limit and --before page)",
 		options: []option{
@@ -173,6 +175,7 @@ var commands = []command{
 			optNoReply,
 			optLeft, optLeftNone,
 			{"--idempotency-key", "KEY", "retry-safe key; resending with the same key returns the first reply and marks nothing twice"},
+			optRequestID,
 			optJSON, optProfile,
 		}},
 	{name: "ack", args: "ID", nargs: 1, summary: "Acknowledge a message", options: []option{optJSON, optProfile}},
@@ -224,15 +227,16 @@ var commands = []command{
 			{"--body", "TEXT", "report body (Markdown)"},
 			{"--body-file", "PATH", "read the report body from a file (stdin is used when neither is given)"},
 			{"--idem", "KEY", "retry-safe key; posting again with the same key returns the first report"},
+			optRequestID,
 			{"--json", "", "print the stored report as JSON"},
 			optProfile,
 		}},
 	{name: "search", args: "PATTERN", nargs: 1,
-		summary: "Find text in mail (subject, body), reports (title, body), panel questions (question, options, chosen answer) and left items, newest first, 50 at a time; each result is a line naming the record and the command that opens it, then the matched line. PATTERN is a substring, or with --regex a Go regular expression (RE2 syntax: https://github.com/google/re2/wiki/Syntax; no backreferences or lookaround); both ignore case unless --case. A role in a group sees its own group only",
+		summary: "Find text in mail (subject, body), reports (title, body), panel questions (question, options, chosen answer), left items and the owner's requests (title, text, notes), newest first, 50 at a time; each result is a line naming the record and the command that opens it, then the matched line. PATTERN is a substring, or with --regex a Go regular expression (RE2 syntax: https://github.com/google/re2/wiki/Syntax; no backreferences or lookaround); both ignore case unless --case. A role in a group sees its own group only",
 		options: []option{
 			{"--regex", "", "PATTERN is a regular expression (RE2)"},
 			{"--case", "", "match case (the default ignores it)"},
-			{"--kind", "mail|report|question|left", "only this kind (repeatable)"},
+			{"--kind", "mail|report|question|left|request", "only this kind (repeatable)"},
 			{"--role", "ROLE", "a sender or recipient, report author, asker or left item's recorder (a slot or label counts for its base)"},
 			{"--thread", "N", "mail of thread N, the reports linking it and its left items"},
 			{"--since", "DATE|TIME", "on or after this UTC date (YYYY-MM-DD) or RFC 3339 time"},
@@ -323,6 +327,19 @@ var commands = []command{
 		options: []option{
 			{"--file", "PATH", "ask: JSON with the questions ({\"questions\":[...]} or the bare list); answer: JSON with the answers ({\"answers\":[...]} or the bare list)"},
 			{"--status", "STATUS", "list: only pending, answered or withdrawn questions"},
+			{"--request-id", "N", "ask: the owner's request the questions belong to (see `request list`)"},
+			optJSON, optProfile,
+		}},
+	{name: "request", args: "ACTION [ID]", nargs: 2, optArgs: true, synopsis: "(ACTION: add | note ID | done ID | list | show ID)",
+		summary: "The owner's requests (#501, 「지시」 on the dashboard; boss roles only): add registers one with the owner's words as given and a short title and prints its number; note ID adds the owner's later words; done ID marks it done with a one-line result; list shows the open ones (not checked on the dashboard); show ID one request with its notes and the reports, panel questions and mail linked by --request-id. The dashboard checks a done request; the CLI cannot",
+		options: []option{
+			{"--title", "TEXT", "add: a short name (one line)"},
+			{"--text", "TEXT", "add, note: the owner's words as given"},
+			{"--text-file", "PATH", "add, note: read the words from a file (stdin is used when neither is given)"},
+			{"--result", "TEXT", "done: the result (one line)"},
+			{"--status", "STATUS", "list: only open (the default), waiting, done, progress or checked"},
+			{"--all", "", "list: every request, checked ones too"},
+			{"--idem", "KEY", "add: retry-safe key; adding again with the same key returns the first request"},
 			optJSON, optProfile,
 		}},
 	{name: "host", args: "ACTION [ID]", nargs: 3, optArgs: true, extra: true, synopsis: "(ACTION: add | list | nodes | set ID | start ID | stop ID | restart ID | new-conversation ID | remove ID | events ID | log ID | revoke-node NAME | limit [on|off|NODE/ADAPTER[/ACCOUNT] --remaining N|none] | grant ROLE | grant list | revoke-grant ROLE | group add NAME | group set NAME | group rm NAME | group list | auto add ID | auto list | auto show AUTO-ID | auto run AUTO-ID | auto pause AUTO-ID | auto resume AUTO-ID | auto rm AUTO-ID) [-- AGENT ARGS...]",
@@ -670,7 +687,7 @@ func dispatch(args []string) (int, error) {
 		}
 		return cliConfig(p)
 	}
-	if s := p.values["--status"]; s != "" && !validStatuses[s] {
+	if s := p.values["--status"]; s != "" && name != "request" && !validStatuses[s] { // request list checks its own (the server)
 		return 0, usagef("%s: unknown status %q (pending, read, acknowledged, complete)", name, s)
 	}
 	if cmd.args == "ID" {
@@ -718,6 +735,8 @@ func dispatch(args []string) (int, error) {
 		return cliProgress(c, p)
 	case "report":
 		return cliReport(c, p, os.Stdout)
+	case "request":
+		return cliRequest(c, p, os.Stdout)
 	case "rules":
 		return cliRules(c, p, os.Stdout)
 	case "job":
@@ -833,6 +852,9 @@ func dispatch(args []string) (int, error) {
 			msg["done"] = true
 		}
 		if e := withLeft(p, msg); e != nil {
+			return 0, e
+		}
+		if e := withRequestID(p, msg); e != nil {
 			return 0, e
 		}
 		b, _ := json.Marshal(msg)
@@ -1363,6 +1385,9 @@ func cliSend(c Config, p parsedArgs) (int, error) {
 		msg["complete"] = ids
 	}
 	if e := withLeft(p, msg); e != nil {
+		return 0, e
+	}
+	if e := withRequestID(p, msg); e != nil {
 		return 0, e
 	}
 	b, _ := json.Marshal(msg)

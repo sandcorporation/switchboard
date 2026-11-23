@@ -16,10 +16,10 @@ func TestDashboardTabsSkeleton(t *testing.T) {
 	if !strings.Contains(body, `role="tablist"`) {
 		t.Fatal("dashboard has no tablist")
 	}
-	// Tab order matters: 운영 (진행, 세션, 메일, 보고, 작업), 응답 (질문, 권한 요청, 규칙),
+	// Tab order matters: 운영 (지시, 진행, 세션, 메일, 보고, 작업), 응답 (질문, 권한 요청, 규칙),
 	// 관리 (지표, 터미널, 설정).
 	last := -1
-	for _, name := range []string{"progress", "sessions", "mail", "reports", "jobs", "questions", "permissions", "rules", "metrics", "terminals", "settings"} {
+	for _, name := range []string{"requests", "progress", "sessions", "mail", "reports", "jobs", "questions", "permissions", "rules", "metrics", "terminals", "settings"} {
 		tab := `id="tab-` + name + `" data-tab="` + name + `" aria-controls="panel-` + name + `"`
 		i := strings.Index(body, tab)
 		if i < 0 {
@@ -74,11 +74,11 @@ func TestDashboardProgressTab(t *testing.T) {
 	body := w.Body.String()
 	for _, want := range []string{
 		`<span class="tab-name sc-sidenav-label">진행</span>`,
-		`id="tab-progress" data-tab="progress" aria-controls="panel-progress" aria-selected="true"`,
-		`id="panel-progress" role="tabpanel" aria-labelledby="tab-progress" tabindex="0" class="card">`,
+		`id="tab-progress" data-tab="progress" aria-controls="panel-progress" aria-selected="false"`,
+		`id="panel-progress" role="tabpanel" aria-labelledby="tab-progress" tabindex="0" class="card" hidden>`,
 		`id="panel-sessions" role="tabpanel" aria-labelledby="tab-sessions" tabindex="0" class="card" hidden>`,
 		"tabLoaders.progress=loadProgress", "api('progress')", `id="reloadProgress"`, `id="progress"`,
-		"showTab(visibleTabs().includes(h)?h:'progress')",
+		"showTab(visibleTabs().includes(h)?h:'requests')",
 		"function openMessage(id)", `id="task"`, "id:mailID",
 		"setTabCount('progress',", "d.over_threshold", "'세션 없음'",
 	} {
@@ -172,7 +172,7 @@ func TestDashboardLiveUpdates(t *testing.T) {
 		}
 	}
 	// Every tab has a live reload.
-	for _, name := range []string{"progress", "sessions", "metrics", "mail", "permissions", "questions", "rules", "settings"} {
+	for _, name := range []string{"requests", "progress", "sessions", "metrics", "mail", "permissions", "questions", "rules", "settings"} {
 		if !regexp.MustCompile(`liveReload=\{[^}]*\b` + name + `:`).MatchString(body) {
 			t.Fatalf("no live reload for %s", name)
 		}
@@ -207,7 +207,7 @@ func TestDashboardTerminalsTabOnlyWithHosting(t *testing.T) {
 	for _, want := range []string{
 		`$('tab-terminals').hidden=!hostingOn;`,
 		`function visibleTabs(){return tabNames.filter(n=>n!=='terminals'||hostingOn)}`,
-		`showTab(visibleTabs().includes(h)?h:'progress');`,
+		`showTab(visibleTabs().includes(h)?h:'requests');`,
 		`terminals:loadTerminals}`,
 		`tabLoaders.terminals=loadTerminals;`,
 		`api('terminals')`,
@@ -303,7 +303,7 @@ func TestDashboardDesignFrame(t *testing.T) {
 		`>운영</div>`, `id="tab-progress"`, `id="tab-sessions"`, `id="tab-mail"`, `id="tab-reports"`, `id="tab-jobs"`,
 		`>응답</div>`, `id="tab-questions"`, `id="tab-permissions"`,
 		`>관리</div>`, `id="tab-metrics"`, `id="tab-terminals"`, `id="tab-settings"`,
-		`<div class="sc-app-main" id="appMain">`, `<header class="sc-topbar">`, `<li id="crumbTab" aria-current="page">진행</li>`,
+		`<div class="sc-app-main" id="appMain">`, `<header class="sc-topbar">`, `<li id="crumbTab" aria-current="page">지시</li>`,
 		`id="live"`, `id="whoName"`, `id="logout"`, `<main class="sc-app-page">`, `id="panel-progress"`, `</main>`, `<script>`,
 	}
 	last := -1
@@ -743,7 +743,7 @@ func TestDashboardWorkspaceLoadsWithHosting(t *testing.T) {
 	for _, want := range []string{
 		"main.before(box);main.hidden=true;",
 		"try{const s=L.parse(localStorage.getItem(KEY)||'',valid);if(s)return s}catch(e){}",
-		"return L.initial('menu:'+(curTab||'progress'));",
+		"return L.initial('menu:'+(curTab||'requests'));",
 		"window.matchMedia('(max-width:600px)')",
 		"if(m)main.append($('panel-'+m));",
 		"else{const id=p.slice(5),t=terms.get(id);if(t){termStop(t);terms.delete(id)}",
@@ -849,5 +849,36 @@ func TestDashboardSearchBox(t *testing.T) {
 	}
 	if strings.Contains(dashboardHTML, `id="panel-search"`) {
 		t.Error("search has no tab of its own")
+	}
+}
+
+// The 지시 tab (#501) is the first tab and the one shown without a hash; its
+// groups come in the order the owner reads them, 확인함 folded, and a done
+// request carries the check that a signed-in login makes.
+func TestDashboardRequestsTab(t *testing.T) {
+	w := httptest.NewRecorder()
+	Page(w, httptest.NewRequest("GET", "/", nil))
+	body := w.Body.String()
+	for _, want := range []string{
+		`id="tab-requests" data-tab="requests" aria-controls="panel-requests" aria-selected="true" tabindex="0"`,
+		`<span class="tab-name sc-sidenav-label">지시</span>`,
+		`<li id="crumbTab" aria-current="page">지시</li>`,
+		`id="panel-requests" role="tabpanel" aria-labelledby="tab-requests" tabindex="0" class="card">`,
+		`<option value="request">지시</option>`,
+		"const requestGroups=[['waiting','대표 답 기다림','warning'],['done','끝 — 안 봄','success'],['progress','진행','info'],['checked','확인함','neutral']];",
+		"if(st==='checked'){",
+		"apiSend('POST','requests/'+r.id+(check?'/check':'/uncheck'))",
+		"node('p','지시 없음','muted')",
+		"else if(h.kind==='request')openRequest(h.id);",
+		"liveCounts={requests:refreshRequestCount,",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("requests tab missing %q", want)
+		}
+	}
+	// The owner's words and titles are text, never markup.
+	src, _ := pageFS.ReadFile("page/tab_requests.js")
+	if strings.Contains(string(src), "innerHTML") {
+		t.Fatal("tab_requests.js sets innerHTML")
 	}
 }

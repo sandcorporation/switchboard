@@ -299,3 +299,25 @@ func TestParseQuery(t *testing.T) {
 		}
 	}
 }
+
+func TestSearchFindsRequests(t *testing.T) {
+	db := open(t)
+	mine := exec(t, db, `INSERT INTO requests(author,title,text,created_at) VALUES(?,?,?,?)`, "team/boss", "옛 이름", "옛 이름 다 바꿔", t0.Format(time.RFC3339Nano))
+	exec(t, db, `INSERT INTO request_notes(request_id,text,created_at) VALUES(?,?,?)`, mine, "안내 문서의 TTL 도", t0.Add(time.Minute).Format(time.RFC3339Nano))
+	exec(t, db, `INSERT INTO requests(author,title,text,created_at) VALUES(?,?,?,?)`, "crew/boss", "남의 지시", "옛 이름", t0.Format(time.RFC3339Nano))
+	see := func(role string) bool { return strings.HasPrefix(BaseOf(role), "team/") }
+	res := search(t, New(db), Query{Pattern: "옛 이름", Kinds: []string{wire.SearchRequest}}, see)
+	if got := kinds(res); got != fmt.Sprintf("request:%d", mine) {
+		t.Fatalf("hits = %q", got)
+	}
+	if h := res.Hits[0]; h.Open != fmt.Sprintf("request show %d", mine) || h.Title != "옛 이름" || h.From != "team/boss" {
+		t.Fatalf("hit = %+v", h)
+	}
+	// A note matches too; a thread filter leaves requests out.
+	if res := search(t, New(db), Query{Pattern: "ttl"}, nil); kinds(res) != fmt.Sprintf("request:%d", mine) {
+		t.Fatalf("note hits = %q", kinds(res))
+	}
+	if res := search(t, New(db), Query{Pattern: "옛", Thread: 1}, nil); len(res.Hits) != 0 {
+		t.Fatalf("thread hits = %q", kinds(res))
+	}
+}
