@@ -63,8 +63,12 @@ const HANDED = /^\s*(?:[A-Za-z_][A-Za-z0-9_]*=\S*\s+)*(['"]?)(?:[^\s'"]*\/)?swit
 export const alreadyHanded = (command: string): boolean => HANDED.test(command)
 
 /** 백그라운드 Bash 를 넘긴 명령: 실행기에 맡기고 끝날 때까지 기다린다(첫 줄에 `switchboard job <id>` 가 stderr 로 찍힌다). */
-export const jobRunCommand = (cli: string, shell: string, command: string): string =>
-  `${shellQuote(cli)} job run --wait --label ${shellQuote(handoffLabel(command))} -- ${shellQuote(shell)} -c ${shellQuote(command)}`
+export const jobRunCommand = (cli: string, shell: string, command: string, label?: string): string => {
+  // 사람이 준 라벨(Bash description)이 있을 때만 넘긴다. 없으면 서버가 「명령 #N」을 채운다(#410).
+  const given = handoffLabel(label ?? '')
+
+  return [shellQuote(cli), 'job run --wait', ...(given === '' ? [] : [`--label ${shellQuote(given)}`]), `-- ${shellQuote(shell)} -c ${shellQuote(command)}`].join(' ')
+}
 
 /** Monitor 의 시간 한도(ms)를 `--expires` 값으로(`<ms>ms`). 없거나 0 이면 undefined(CLI 기본 7d, 연장됨). */
 export const monitorExpires = (timeoutMs: number | undefined): string | undefined =>
