@@ -45,6 +45,14 @@ async function loadOlder(){
   btn.disabled=false;
 }
 $('olderMail').onclick=loadOlder;
+// alertRepeat is how a collapsing alert mail that came again reads (#525):
+// "×3 · 마지막 14:05"; '' for any other mail.
+function alertRepeat(m){
+  if(!(m.alert_count>1))return '';
+  if(!m.alert_last_at)return '×'+m.alert_count;
+  const d=new Date(m.alert_last_at);
+  return '×'+m.alert_count+' · 마지막 '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+}
 // mailRow is one row of the list column: who → whom, the number and the
 // request it belongs to (#501) on top, the subject under it (#514).
 function mailRow(m){
@@ -52,9 +60,10 @@ function mailRow(m){
   let top='#'+m.id;
   if(m.request_id)top+=' · 지시 #'+m.request_id;
   top+=' · '+m.sender+' → '+m.recipient;
-  const hover=(m.priority==='urgent'?'[긴급] ':'')+'#'+m.id+' '+m.subject+' — '+m.sender+' → '+(m.addressed_to&&m.addressed_to!==m.recipient?m.addressed_to+' 앞 ('+m.recipient+')':m.recipient)+' · '+(statusLabel[m.status]||m.status)+(m.task_id?' · task '+m.task_id:'')+(m.request_id?' · 지시 #'+m.request_id:'');
+  const rep=alertRepeat(m);
+  const hover=(m.priority==='urgent'?'[긴급] ':'')+'#'+m.id+' '+m.subject+(rep?' '+rep:'')+' — '+m.sender+' → '+(m.addressed_to&&m.addressed_to!==m.recipient?m.addressed_to+' 앞 ('+m.recipient+')':m.recipient)+' · '+(statusLabel[m.status]||m.status)+(m.task_id?' · task '+m.task_id:'')+(m.request_id?' · 지시 #'+m.request_id:'');
   return listRow('mail',String(m.id),{top:top,right:shortWhen(m.created_at),rightHover:when(m.created_at),
-    title:(m.priority==='urgent'?'[긴급] ':'')+m.subject,hover:hover,cls:(m.status==='pending'?'un':'')+(m.priority==='urgent'?' urgent':'')});
+    title:(m.priority==='urgent'?'[긴급] ':'')+m.subject+(rep?' '+rep:''),hover:hover,cls:(m.status==='pending'?'un':'')+(m.priority==='urgent'?' urgent':'')});
 }
 registerDetail('mail',{
   list:'메일',
@@ -83,6 +92,8 @@ registerDetail('mail',{
     if(m.addressed_to&&m.addressed_to!==m.recipient)pairs.push(['주소',m.addressed_to+' 앞']);
     pairs.push(['시각',when(m.created_at)],['상태',statusLabel[m.status]||m.status]);
     if(m.priority==='urgent')pairs.push(['우선','긴급']);
+    if(m.alert_source)pairs.push(['출처',m.alert_source]);
+    if(alertRepeat(m))pairs.push(['반복',alertRepeat(m)]);
     if(m.task_id)pairs.push(['task',m.task_id]);
     if(m.request_id){const a=node('a','지시 #'+m.request_id);a.href=detailHash('requests',String(m.request_id));a.title='이 메일이 딸린 지시를 연다';pairs.push(['지시',a])}
     box.append(dl(pairs),node('pre',m.body));

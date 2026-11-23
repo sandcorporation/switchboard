@@ -41,6 +41,12 @@ type Message struct {
 	// AnswersDirective: this mail answers a directive the reader sent, and
 	// the directive's state (#275). Only the directive's sender sees it.
 	AnswersDirective *DirectiveRef `json:"answers_directive,omitempty"`
+	// Collapsing alert mail (#525): the source that sent it (hook:<name>,
+	// watch:<name>), how many times the same alert came in all (set only
+	// above 1) and when it last came.
+	AlertSource string     `json:"alert_source,omitempty"`
+	AlertCount  int        `json:"alert_count,omitempty"`
+	AlertLastAt *time.Time `json:"alert_last_at,omitempty"`
 }
 
 // RecipientState is the receiving mailbox's state in a send or reply

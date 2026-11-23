@@ -113,7 +113,15 @@ func formatMailList(ms []wire.Message) string {
 		if m.Priority == "urgent" {
 			mark = "[urgent] "
 		}
-		fmt.Fprintf(&b, "#%d %s · %s → %s · %s · %s%s\n", m.ID, m.Status, m.Sender, m.Recipient, m.CreatedAt.Local().Format("01-02 15:04"), mark, m.Subject)
+		repeat := ""
+		if m.AlertCount > 1 {
+			var last time.Time
+			if m.AlertLastAt != nil {
+				last = *m.AlertLastAt
+			}
+			repeat = " " + AlertRepeat(m.AlertCount, last)
+		}
+		fmt.Fprintf(&b, "#%d %s · %s → %s · %s · %s%s%s\n", m.ID, m.Status, m.Sender, m.Recipient, m.CreatedAt.Local().Format("01-02 15:04"), mark, m.Subject, repeat)
 	}
 	return b.String()
 }

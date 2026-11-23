@@ -300,7 +300,9 @@ docker compose start
 # Restore: stop service, copy a verified backup back to /data/mail.db, then start.
 ```
 
-Use the actual volume name from `docker volume ls` if Compose prefixes it differently. Retain and protect the token file separately from database backups. For safe online backups use SQLite's backup API or briefly stop the container as above. Moving to another host: [docs/move-host.md](docs/move-host.md).
+Use the actual volume name from `docker volume ls` if Compose prefixes it differently. Retain and protect the token file separately from database backups.
+
+Secret values the server keeps for webhooks and watched APIs (#525) are sealed in the database with AES-256-GCM under the secrets key: `SWITCHBOARD_SECRETS_KEY` (32 bytes in base64, `openssl rand -base64 32`; `serve --check` refuses another form, without printing it). Unset, the server makes `secrets.key` (owner-only) next to the database on first start and logs `secrets: key file in use`. Back the key up with the database but keep it apart from database backups: a database without its key holds no readable secret. With a changed key the stored values read as "register again"; the server still starts. No answer, page or command reads a value back — only whether one is set, when, and for longer values its last four characters. For safe online backups use SQLite's backup API or briefly stop the container as above. Moving to another host: [docs/move-host.md](docs/move-host.md).
 
 ## API
 

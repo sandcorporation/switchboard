@@ -159,17 +159,22 @@ func moveHeld(tx *sql.Tx, ids []int64, box string, now time.Time) error {
 // messageCols is the column list scanMessage reads, for a query with the
 // messages table aliased m. status is the expression for the status column.
 func messageCols(status string) string {
-	return `m.id,m.sender,m.recipient,m.subject,m.body,m.created_at,COALESCE(m.task_id,''),COALESCE(m.thread_id,0),COALESCE(m.reply_to,0),` + status + `,COALESCE(m.priority,'normal'),COALESCE(m.addressed_to,''),COALESCE(m.held_id,0),COALESCE(m.held_at,''),COALESCE(m.delivered_at,''),m.directive,m.no_reply`
+	return `m.id,m.sender,m.recipient,m.subject,m.body,m.created_at,COALESCE(m.task_id,''),COALESCE(m.thread_id,0),COALESCE(m.reply_to,0),` + status + `,COALESCE(m.priority,'normal'),COALESCE(m.addressed_to,''),COALESCE(m.held_id,0),COALESCE(m.held_at,''),COALESCE(m.delivered_at,''),m.directive,m.no_reply,COALESCE(m.alert_source,''),m.alert_repeats,COALESCE(m.alert_last_at,'')`
 }
 
 // scanMessage reads messageCols, then any extra columns into extra.
 func scanMessage(sc interface{ Scan(...any) error }, extra ...any) (wire.Message, error) {
 	var m wire.Message
-	var created, held, delivered string
-	dest := append([]any{&m.ID, &m.Sender, &m.Recipient, &m.Subject, &m.Body, &created, &m.TaskID, &m.ThreadID, &m.ReplyTo, &m.Status, &m.Priority, &m.AddressedTo, &m.HeldID, &held, &delivered, &m.Directive, &m.NoReply}, extra...)
+	var created, held, delivered, alertLast string
+	var repeats int
+	dest := append([]any{&m.ID, &m.Sender, &m.Recipient, &m.Subject, &m.Body, &created, &m.TaskID, &m.ThreadID, &m.ReplyTo, &m.Status, &m.Priority, &m.AddressedTo, &m.HeldID, &held, &delivered, &m.Directive, &m.NoReply, &m.AlertSource, &repeats, &alertLast}, extra...)
 	err := sc.Scan(dest...)
 	m.CreatedAt, _ = time.Parse(time.RFC3339Nano, created)
 	m.HeldAt, m.DeliveredAt = optTime(held), optTime(delivered)
+	if repeats > 0 {
+		// A collapsing alert that came again (#525): ×count, last time.
+		m.AlertCount, m.AlertLastAt = repeats+1, optTime(alertLast)
+	}
 	return m, err
 }
 

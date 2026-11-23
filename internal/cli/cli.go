@@ -1615,7 +1615,13 @@ func prettyTo(w io.Writer, v any) {
 			// held mail handed to a session got a new ID (#392)
 			mark = fmt.Sprintf("(옛 #%d) ", int64(old)) + mark
 		}
-		fmt.Fprintf(w, "#%v %s%v\n%v → %v · %s\n", x["id"], mark, x["subject"], x["sender"], x["recipient"], x["status"])
+		repeat := ""
+		if n, _ := x["alert_count"].(float64); n > 1 {
+			last, _ := x["alert_last_at"].(string)
+			t, _ := time.Parse(time.RFC3339Nano, last)
+			repeat = " " + AlertRepeat(int(n), t)
+		}
+		fmt.Fprintf(w, "#%v %s%v%s\n%v → %v · %s\n", x["id"], mark, x["subject"], repeat, x["sender"], x["recipient"], x["status"])
 		if ref, ok := x["answers_directive"].(map[string]any); ok && ref["state"] == wire.DirectiveOpen {
 			id, _ := ref["id"].(float64)
 			answer, _ := x["id"].(float64)
@@ -1627,6 +1633,16 @@ func prettyTo(w io.Writer, v any) {
 	default:
 		fmt.Fprintln(w, v)
 	}
+}
+
+// AlertRepeat is how a collapsing alert mail that came n times in all, the
+// last at last, reads after its subject (#525): "×3 · 마지막 14:05" (local
+// time; without a time only the count).
+func AlertRepeat(n int, last time.Time) string {
+	if last.IsZero() {
+		return fmt.Sprintf("×%d", n)
+	}
+	return fmt.Sprintf("×%d · 마지막 %s", n, last.Local().Format("15:04"))
 }
 
 // indentBody prefixes every line of body with two spaces.
