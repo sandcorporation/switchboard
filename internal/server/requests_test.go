@@ -326,3 +326,34 @@ func TestRequestCLI(t *testing.T) {
 		t.Fatalf("help: %s", help)
 	}
 }
+
+// The admin mail list carries each mail's request (#514): the dashboard marks
+// it on the 메일 list. A mail without one has no request_id key.
+func TestAdminMessagesCarryRequestID(t *testing.T) {
+	t.Parallel()
+	s := requestServer(t)
+	rq := addRequest(t, s, "이름 바꾸기", "옛 이름 다 바꿔")
+	for _, body := range []map[string]any{
+		{"recipient": reportWorkerRole, "subject": "딸린 메일", "body": "x", "request_id": rq.ID},
+		{"recipient": reportWorkerRole, "subject": "따로 메일", "body": "y"},
+	} {
+		if w := callAs(s, "POST", "/api/messages", reportBossToken, reportBossRole, body); w.Code != 201 {
+			t.Fatalf("send: %d %s", w.Code, w.Body)
+		}
+	}
+	w := adminRequest(s, "GET", "/api/admin/messages", "", nil)
+	if w.Code != 200 {
+		t.Fatalf("list: %d %s", w.Code, w.Body)
+	}
+	var list []map[string]json.RawMessage
+	if err := json.Unmarshal(w.Body.Bytes(), &list); err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, m := range list {
+		got[string(m["subject"])] = string(m["request_id"])
+	}
+	if got[`"딸린 메일"`] != itoa(rq.ID) || got[`"따로 메일"`] != "" {
+		t.Fatalf("request_id: %v", got)
+	}
+}

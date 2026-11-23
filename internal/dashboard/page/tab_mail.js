@@ -7,7 +7,6 @@ function shortWhen(t){
   return d.toDateString()===n.toDateString()?d.toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'}):d.toLocaleDateString('ko-KR',{month:'numeric',day:'numeric'});
 }
 const mailTone={pending:'warning',read:'neutral',acknowledged:'info',complete:'success',completed:'success',held:'neutral'};
-const mailCols=['#','제목','보낸 쪽 → 받는 쪽','상태','시각'];
 // mailRows are the rows shown; a page is mailPage rows and 「더 오래된 메일」
 // asks for the next one before the last row's ID (#8).
 let mailRows=[];
@@ -17,12 +16,7 @@ function mailQuery(extra){
   return new URLSearchParams(Object.assign({box:$('box').value,role:$('role').value,status:$('status').value,q:$('search').value,thread:thread,task:task,id:mailID},extra));
 }
 function drawMail(more){
-  const list=$('list');
-  keepRowFocus(list,()=>{
-    list.replaceChildren();
-    for(const m of mailRows)list.append(mailRow(m));
-    if(!mailRows.length)emptyRow(list,mailCols.length,'메일 없음');
-  });
+  listFill($('list'),mailRows.map(mailRow),'메일 없음');
   const btn=$('olderMail');
   btn.hidden=!more;
   $('conn').textContent=mailRows.length+'통';
@@ -51,24 +45,23 @@ async function loadOlder(){
   btn.disabled=false;
 }
 $('olderMail').onclick=loadOlder;
+// mailRow is one row of the list column: who → whom, the number and the
+// request it belongs to (#501) on top, the subject under it (#514).
 function mailRow(m){
-  const tr=node('tr','',m.priority==='urgent'?'urgent':'');
-  const subj=node('td','');
-  if(m.priority==='urgent')subj.append(node('span','긴급','badge'));
-  subj.append(node('strong',m.subject));
-  if(m.task_id)subj.append(node('small','task '+m.task_id));
-  const who=node('td',m.sender+' → '+m.recipient);
-  if(m.addressed_to&&m.addressed_to!==m.recipient)who.append(node('small',m.addressed_to+' 앞'));
-  const t=node('td',shortWhen(m.created_at),'nowrap');t.title=when(m.created_at);
-  const cells=[node('td',String(m.id),'num nowrap'),subj,who,node('td',statusLabel[m.status]||m.status,'nowrap'),t];
-  cells.forEach((td,i)=>{if(i>0)td.dataset.label=mailCols[i];tr.append(td)});
-  detailRow(tr,'mail',m.id);
-  return tr;
+  // The numbers lead: a long role pair is what gets cut.
+  let top='#'+m.id;
+  if(m.request_id)top+=' · 지시 #'+m.request_id;
+  top+=' · '+m.sender+' → '+m.recipient;
+  const hover=(m.priority==='urgent'?'[긴급] ':'')+'#'+m.id+' '+m.subject+' — '+m.sender+' → '+(m.addressed_to&&m.addressed_to!==m.recipient?m.addressed_to+' 앞 ('+m.recipient+')':m.recipient)+' · '+(statusLabel[m.status]||m.status)+(m.task_id?' · task '+m.task_id:'')+(m.request_id?' · 지시 #'+m.request_id:'');
+  return listRow('mail',String(m.id),{top:top,right:shortWhen(m.created_at),rightHover:when(m.created_at),
+    title:(m.priority==='urgent'?'[긴급] ':'')+m.subject,hover:hover,cls:(m.status==='pending'?'un':'')+(m.priority==='urgent'?' urgent':'')});
 }
 registerDetail('mail',{
   list:'메일',
   load:async id=>(await api('messages?'+new URLSearchParams({id:id})))[0]||null,
-  head:m=>({title:'#'+m.id+' '+m.subject,badge:[statusLabel[m.status]||m.status,mailTone[m.status]||'neutral']}),
+  head:m=>({title:'#'+m.id+' '+m.subject,badge:[statusLabel[m.status]||m.status,mailTone[m.status]||'neutral'],crumb:{
+    path:[m.sender,m.addressed_to&&m.addressed_to!==m.recipient?m.addressed_to+' 앞':m.recipient,m.request_id?'지시 #'+m.request_id:''],
+    meta:[[shortWhen(m.created_at),'보낸 때 — '+when(m.created_at)],[m.reply_to?'#'+m.reply_to+' 의 답':'','이어진 메일']]}}),
   subs:()=>[['body','본문'],['thread','스레드']],
   draw:async(m,sub,box)=>{
     const root=m.thread_id||m.id;
@@ -91,10 +84,11 @@ registerDetail('mail',{
     pairs.push(['시각',when(m.created_at)],['상태',statusLabel[m.status]||m.status]);
     if(m.priority==='urgent')pairs.push(['우선','긴급']);
     if(m.task_id)pairs.push(['task',m.task_id]);
+    if(m.request_id){const a=node('a','지시 #'+m.request_id);a.href=detailHash('requests',String(m.request_id));a.title='이 메일이 딸린 지시를 연다';pairs.push(['지시',a])}
     box.append(dl(pairs),node('pre',m.body));
     const foot=node('p','','row muted');
     foot.append(node('span',m.thread_id?'스레드 #'+m.thread_id+(m.reply_to?' · #'+m.reply_to+'에 대한 답장':''):'스레드 시작 메일'));
-    const th=node('button','스레드 보기');
+    const th=node('button','스레드 보기');th.type='button';th.title='이 스레드의 메일만 목록에 남긴다';
     th.onclick=()=>{if(curTab!=='mail'){openThread(root);return}$('thread').value=root;mailID='';load()};
     foot.append(th);
     box.append(foot);

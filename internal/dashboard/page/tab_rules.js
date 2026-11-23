@@ -193,12 +193,12 @@ registerDetail('rules',{
 function ruleReviewForm(r){
   const f=node('form','','ruleform');
   const reason=node('input','');reason.placeholder='거절 까닭';reason.setAttribute('aria-label','거절 까닭');reason.autocomplete='off';
-  const ok=node('button','승인');ok.type='button';
-  const no=node('button','거절');no.type='button';
+  const ok=node('button','승인');ok.type='button';ok.title='제안을 유효한 규칙으로 채택한다';
+  const no=node('button','거절');no.type='button';no.title='적은 까닭과 함께 제안을 거절한다';
   const msg=node('div','','msg');msg.setAttribute('role','status');
   const row=node('div','','row');row.append(ok,reason,no);
   f.append(node('h3','제안','sechead'),row,msg);
-  const done=()=>{loadRules();drawDetail()};
+  const done=()=>{loadRules();drawDetail();if(curTab==='questions')loadQuestions()};
   const approve=async body=>{
     msg.className='msg';msg.replaceChildren();
     try{await apiSend('POST','rules/'+encodeURIComponent(r.id)+'/approve',body);done();return}
@@ -227,9 +227,10 @@ function ruleReviewForm(r){
 // The 결정 view of the 질문 tab lists answered questions as decisions. Its
 // filters build one query used both for the list and for the 「JSON 내보내기」
 // link (format=ndjson, a same-origin GET the browser downloads).
-let decisionsLoaded=false;
+let decisionsLoaded=false,questionView='questions';
 function showQuestionView(name){
-  const dec=name==='decisions';
+  const dec=name==='decisions';questionView=name;
+  if(curTab==='questions')frameSplit(!dec);
   $('viewQuestions').setAttribute('aria-pressed',dec?'false':'true');
   $('viewDecisions').setAttribute('aria-pressed',dec?'true':'false');
   $('questionsView').hidden=dec;$('decisionsView').hidden=!dec;

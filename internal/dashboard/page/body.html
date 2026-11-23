@@ -16,9 +16,9 @@
 <div class="lp-main" id="lpMain">
 <div id="tabs" class="tabs" role="tablist" aria-label="메뉴" aria-orientation="vertical">
 <button type="button" class="nv" title="지시 — 대표 지시 장부" role="tab" id="tab-requests" data-tab="requests" aria-controls="panel-requests" aria-selected="true" tabindex="0"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 2.5h11v8h-6l-3 3v-3h-2zM5 5.5h6M5 8h4" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="tab-name nv-label">지시</span><span class="tab-count nv-count"></span></button>
-<button type="button" class="nv" title="답이 필요함 — 답을 기다리는 질문과 권한 요청" data-wait role="tab" id="tab-questions" data-tab="questions" aria-controls="panel-questions" aria-selected="false" tabindex="-1"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 14.5a6.5 6.5 0 1 0 0-13 6.5 6.5 0 0 0 0 13zM6.3 6a1.8 1.8 0 1 1 2.4 1.7c-.5.2-.7.6-.7 1.1v.5M8 11.2v.1" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="tab-name nv-label">답이 필요함</span><span class="tab-count nv-count"></span></button>
-<button type="button" class="nv nv-sub" title="권한 요청 — 답을 기다리는 도구 사용" data-wait role="tab" id="tab-permissions" data-tab="permissions" aria-controls="panel-permissions" aria-selected="false" tabindex="-1"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5l5.5 2v4c0 3.5-2.5 6-5.5 7-3-1-5.5-3.5-5.5-7v-4z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="tab-name nv-label">권한 요청</span><span class="tab-count nv-count"></span></button>
-<button type="button" class="nv nv-sub" title="규칙 — 권한 요청에 미리 정한 답" role="tab" id="tab-rules" data-tab="rules" aria-controls="panel-rules" aria-selected="false" tabindex="-1"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4l1.5 1.5L6.5 3M8.5 4.5h5M2.5 9l1.5 1.5L6.5 8M8.5 9.5h5M8.5 13h5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="tab-name nv-label">규칙</span><span class="tab-count nv-count"></span></button>
+<button type="button" class="nv" title="답이 필요함 — 답을 기다리는 질문·권한 요청·규칙 제안" data-wait role="tab" id="tab-questions" data-tab="questions" aria-controls="panel-questions" aria-selected="false" tabindex="-1"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 14.5a6.5 6.5 0 1 0 0-13 6.5 6.5 0 0 0 0 13zM6.3 6a1.8 1.8 0 1 1 2.4 1.7c-.5.2-.7.6-.7 1.1v.5M8 11.2v.1" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="tab-name nv-label">답이 필요함</span><span class="tab-count nv-count"></span></button>
+<button type="button" class="nv nv-sub" title="권한 요청 — 답을 기다리는 도구 사용" data-wait role="tab" id="tab-permissions" data-tab="permissions" aria-controls="panel-permissions" aria-selected="false" tabindex="-1" hidden><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5l5.5 2v4c0 3.5-2.5 6-5.5 7-3-1-5.5-3.5-5.5-7v-4z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="tab-name nv-label">권한 요청</span><span class="tab-count nv-count"></span></button>
+<button type="button" class="nv nv-sub" title="규칙 — 권한 요청에 미리 정한 답" role="tab" id="tab-rules" data-tab="rules" aria-controls="panel-rules" aria-selected="false" tabindex="-1" hidden><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4l1.5 1.5L6.5 3M8.5 4.5h5M2.5 9l1.5 1.5L6.5 8M8.5 9.5h5M8.5 13h5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="tab-name nv-label">규칙</span><span class="tab-count nv-count"></span></button>
 <button type="button" class="nv" title="메일 — 역할 사이에 오간 메일" role="tab" id="tab-mail" data-tab="mail" aria-controls="panel-mail" aria-selected="false" tabindex="-1"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3.5h12v9H2zM2 4l6 5 6-5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="tab-name nv-label">메일</span><span class="tab-count nv-count"></span></button>
 <button type="button" class="nv" title="보고 — 세션이 올린 보고" role="tab" id="tab-reports" data-tab="reports" aria-controls="panel-reports" aria-selected="false" tabindex="-1"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 1.5h6l3 3v10h-9zM9.5 1.5v3h3M5.5 8h5M5.5 10.5h5M5.5 13h3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="tab-name nv-label">보고</span><span class="tab-count nv-count"></span></button>
 <button type="button" class="nv" title="작업 · 예약 — 돌고 있는 작업과 예약" role="tab" id="tab-jobs" data-tab="jobs" aria-controls="panel-jobs" aria-selected="false" tabindex="-1"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 14.5a6.5 6.5 0 1 0 0-13 6.5 6.5 0 0 0 0 13zM8 4.5V8l2.5 1.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="tab-name nv-label">작업 · 예약</span><span class="tab-count nv-count"></span></button>
@@ -38,9 +38,10 @@
 <div id="gsPanel" class="gspanel" hidden><div class="gshead"><span id="gsCount" role="status"></span><select id="gsKind" aria-label="종류" title="종류"><option value="">전체</option><option value="mail">메일</option><option value="report">보고</option><option value="question">질문</option><option value="left">남긴 것</option><option value="request">지시</option></select><label class="gsre" title="Go 정규식(RE2) · 대소문자 무시"><input type="checkbox" id="gsRe" title="검색어를 정규식으로 읽는다"> 정규식</label></div><ul id="gsList" class="gslist"></ul><button type="button" id="gsMore" class="gsmore" hidden title="더 보기">더 보기</button></div>
 <div class="sc-app-main" id="appMain">
 <main class="sc-app-page">
-<section id="panel-requests" role="tabpanel" aria-labelledby="tab-requests" tabindex="0" class="card">
-<div class="toolbar"><h2>지시</h2><button id="reloadRequests" title="다시 불러오기">새로 고침</button><span id="requestsNote" class="muted" role="status" aria-live="polite"></span></div>
-<div id="requests"></div>
+<section id="panel-requests" role="tabpanel" aria-labelledby="tab-requests" tabindex="0" class="lsec">
+<div class="ls-h"><h2>지시</h2><span id="requestsNote" class="ls-note" role="status" aria-live="polite"></span><button type="button" class="fr-ib" id="reloadRequests" title="다시 불러온다">↻</button></div>
+<input type="search" class="ls-filter" id="requestsFilter" placeholder="거르기" title="지시 제목·번호·결과로 거른다" aria-label="지시 거르기" autocomplete="off" maxlength="200">
+<div id="requests" class="ls-list"></div>
 </section>
 <section id="panel-progress" role="tabpanel" aria-labelledby="tab-progress" tabindex="0" class="card" hidden>
 <div class="toolbar"><h2>진행</h2><button id="reloadProgress" title="다시 불러오기">새로 고침</button><span id="progressNote" class="muted" role="status" aria-live="polite"></span></div>
@@ -90,29 +91,29 @@
 </div>
 <p id="mAliases" class="muted"></p>
 </section>
-<section id="panel-mail" role="tabpanel" aria-labelledby="tab-mail" tabindex="0" hidden>
-<div class="card filters">
+<section id="panel-mail" role="tabpanel" aria-labelledby="tab-mail" tabindex="0" class="lsec" hidden>
+<div class="ls-h"><h2>메일</h2><span id="conn" class="ls-note" role="status">연결 중…</span><button type="button" class="fr-ib" id="reloadMail" title="다시 불러온다">↻</button></div>
+<div class="ls-filters filters">
+<input id="search" type="search" class="ls-wide" aria-label="검색" placeholder="내용·역할·task 검색 (Enter)" title="제목·본문·역할·task 로 찾는다 (Enter)">
 <select id="box" aria-label="메일함" title="메일함"><option value="all">모든 메일</option><option value="inbox">받은 메일</option><option value="outbox">보낸 메일</option><option value="held">보관 중(라벨)</option></select>
-<select id="role" aria-label="역할" title="역할"><option value="">모든 역할</option></select>
 <select id="status" aria-label="상태" title="상태"><option value="">모든 상태</option><option value="pending">안 읽음</option><option value="read">읽음</option><option value="acknowledged">확인함</option><option value="complete">완료</option></select>
-<input id="search" aria-label="검색" placeholder="내용·역할·task 검색" title="검색">
-<input id="thread" type="number" min="1" aria-label="스레드 번호" placeholder="스레드 번호" title="스레드 번호">
-<input id="task" aria-label="task id" placeholder="task id" autocomplete="off" autocapitalize="off" spellcheck="false" title="task id">
-<div class="actions">
-<button id="go" type="submit" title="이 조건으로 찾기">검색</button>
-<button id="reset" title="조건 비우기">초기화</button>
-<button id="reloadMail" title="다시 불러오기">새로 고침</button>
-<span id="conn">연결 중…</span>
+<select id="role" class="ls-wide" aria-label="역할" title="역할"><option value="">모든 역할</option></select>
+<input id="thread" type="number" min="1" aria-label="스레드 번호" placeholder="스레드 번호" title="이 스레드의 메일만 본다">
+<input id="task" aria-label="task id" placeholder="task id" autocomplete="off" autocapitalize="off" spellcheck="false" title="이 task 의 메일만 본다">
+<div class="actions ls-wide">
+<button id="go" type="submit" title="이 조건으로 찾는다">검색</button>
+<button id="reset" type="button" title="조건을 비운다">초기화</button>
 </div>
 </div>
-<div id="notice" class="muted"></div>
-<table id="mailTbl" class="stack list"><thead><tr><th class="num">#</th><th>제목</th><th>보낸 쪽 → 받는 쪽</th><th>상태</th><th>시각</th></tr></thead><tbody id="list"></tbody></table>
-<button id="olderMail" hidden title="더 오래된 메일">더 오래된 메일</button>
+<div id="notice" class="ls-note-line"></div>
+<div id="list" class="ls-list"></div>
+<button id="olderMail" type="button" class="ls-more" hidden title="이 아래 더 오래된 메일을 불러온다">더 오래된 메일</button>
 </section>
-<section id="panel-reports" role="tabpanel" aria-labelledby="tab-reports" tabindex="0" class="card" hidden>
-<div class="toolbar"><h2>보고</h2><button id="reloadReports" title="다시 불러오기">새로 고침</button><span id="reportsNote" class="muted" role="status" aria-live="polite"></span></div>
-<div class="listbar"><div class="chips" id="reportChips" role="group" aria-label="상태 고르기"></div></div>
-<table id="reportsTbl" class="stack list"><thead><tr><th>상태</th><th>제목</th><th>보낸 쪽</th><th>시각</th></tr></thead><tbody id="reports"></tbody></table>
+<section id="panel-reports" role="tabpanel" aria-labelledby="tab-reports" tabindex="0" class="lsec" hidden>
+<div class="ls-h"><h2>보고</h2><span id="reportsNote" class="ls-note" role="status" aria-live="polite"></span><button type="button" class="fr-ib" id="reloadReports" title="다시 불러온다">↻</button></div>
+<input type="search" class="ls-filter" id="reportsFilter" placeholder="거르기" title="제목·지시 번호·올린 쪽으로 거른다" aria-label="보고 거르기" autocomplete="off" maxlength="200">
+<div class="ls-chips" id="reportChips" role="group" aria-label="상태 고르기"></div>
+<div id="reports" class="ls-list"></div>
 </section>
 <section id="panel-jobs" role="tabpanel" aria-labelledby="tab-jobs" tabindex="0" class="card" hidden>
 <div class="toolbar"><h2>작업</h2><button id="reloadJobs" title="다시 불러오기">새로 고침</button><span id="jobsNote" class="muted" role="status" aria-live="polite"></span></div>
@@ -155,13 +156,15 @@
 <div id="ruleAddMsg" class="msg" role="status" aria-live="polite"></div>
 </form></details>
 </section>
-<section id="panel-questions" role="tabpanel" aria-labelledby="tab-questions" tabindex="0" class="card" hidden>
-<div class="toolbar"><h2>질문</h2>
-<div class="viewswitch" role="group" aria-label="질문 보기 고르기"><button type="button" id="viewQuestions" aria-pressed="true" title="질문">질문</button><button type="button" id="viewDecisions" aria-pressed="false" title="결정">결정</button></div>
-<button id="reloadQuestions" title="다시 불러오기">새로 고침</button><span id="questionsNote" class="muted"></span></div>
+<section id="panel-questions" role="tabpanel" aria-labelledby="tab-questions" tabindex="0" class="lsec" hidden>
+<div class="ls-h"><h2>답이 필요함</h2><span id="questionsNote" class="ls-note"></span>
+<div class="viewswitch" role="group" aria-label="보기 고르기"><button type="button" class="fr-ib" id="viewQuestions" aria-pressed="true" title="답을 기다리는 것과 지난 기록">목록</button><button type="button" class="fr-ib" id="viewDecisions" aria-pressed="false" title="지난 답을 결정으로 모아 본다">결정</button></div>
+<a class="fr-ib ls-link" id="needsRules" href="#rules" title="모든 규칙을 보고 새 규칙을 올린다">규칙</a>
+<button type="button" class="fr-ib" id="reloadQuestions" title="다시 불러온다">↻</button></div>
 <div id="questionsView">
-<div id="questionsMsg" class="msg" role="status" aria-live="polite"></div>
-<table id="questionsTbl" class="stack list"><thead><tr><th>상태</th><th>질문</th><th>묻는 쪽</th><th>시각</th></tr></thead><tbody id="questions"></tbody></table>
+<input type="search" class="ls-filter" id="needsFilter" placeholder="거르기" title="묻는 쪽·도구·제목으로 거른다" aria-label="답이 필요함 거르기" autocomplete="off" maxlength="200">
+<div id="questionsMsg" class="msg ls-msg" role="status" aria-live="polite"></div>
+<div id="questions" class="ls-list"></div>
 </div>
 <div id="decisionsView" hidden>
 <form id="decForm" class="row decfilters">
@@ -237,8 +240,10 @@
 </div></dialog>
 </section>
 </main>
+<div id="splitEmpty" class="split-empty" hidden><p class="empty">고른 것 없음</p></div>
 <aside id="detail" class="detail" aria-labelledby="detailTitle" hidden>
 <div class="detail-head"><button type="button" id="detailBack" class="detail-back" title="상세를 닫고 목록으로"></button><h2 id="detailTitle" tabindex="-1"></h2><span id="detailBadge" class="sc-badge" hidden></span><button type="button" id="detailClose" class="detail-close" aria-label="닫기" title="닫기 (Esc)">×</button></div>
+<div id="detailCrumb" class="detail-crumb" hidden></div>
 <nav id="detailTabs" class="sc-tabs" aria-label="상세 보기"></nav>
 <div id="detailBody" class="detail-body"></div>
 </aside>

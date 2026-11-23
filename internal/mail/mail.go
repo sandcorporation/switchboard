@@ -78,7 +78,8 @@ func normalizePriority(p string) (string, bool) {
 }
 
 // AdminList serves GET /api/admin/messages: the newest 500 messages, or
-// `limit` (1..500) of them older than the message ID `before` (#8).
+// `limit` (1..500) of them older than the message ID `before` (#8). Each
+// carries its request_id (#501), so the dashboard marks a mail's request (#514).
 func (s *Service) AdminList(w http.ResponseWriter, r *http.Request) {
 	db := s.db
 	q, status, role, box := strings.TrimSpace(r.URL.Query().Get("q")), r.URL.Query().Get("status"), r.URL.Query().Get("role"), r.URL.Query().Get("box")
@@ -91,7 +92,7 @@ func (s *Service) AdminList(w http.ResponseWriter, r *http.Request) {
 	if box != "inbox" && box != "outbox" && box != "held" {
 		box = "all"
 	}
-	query := `SELECT ` + messageCols(StatusExpr) + ` FROM messages m ` + StatusJoin + ` WHERE 1=1`
+	query := `SELECT ` + messageCols(StatusExpr) + `,COALESCE(m.request_id,0) FROM messages m ` + StatusJoin + ` WHERE 1=1`
 	args := []any{}
 	if role != "" {
 		query += ` AND (m.sender=? OR m.recipient=?)`
@@ -161,7 +162,7 @@ func (s *Service) AdminList(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 	out := []wire.Message{}
 	for rows.Next() {
-		if m, err := scanMessage(rows); err == nil {
+		if m, err := scanAdminMessage(rows); err == nil {
 			out = append(out, m)
 		}
 	}

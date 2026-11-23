@@ -6,6 +6,21 @@
 const tabNames=['requests','questions','permissions','rules','mail','reports','jobs','metrics','settings','progress','sessions','terminals'];
 const tabLoaders={requests:loadRequests,progress:null,sessions:loadSessions,reports:loadReports,jobs:loadJobs,metrics:null,mail:initMail,permissions:null,questions:null,rules:loadRules,settings:null};
 const tabLoaded=new Set();
+// listTabs are the list screens (#514, #509 계약 4): no panels or splits, a
+// list column and the open item's body beside it (html.fr-split). A row
+// shows its item at once; with hosting on the workspace steps aside while
+// one is on screen.
+const listTabs=['requests','questions','mail','reports'];
+function listTab(name){return listTabs.includes(name)}
+// frameSplit turns the list screen layout on or off.
+function frameSplit(on){
+  document.documentElement.classList.toggle('fr-split',on);
+  const main=document.querySelector('.sc-app-page');if(ws)main.hidden=!on;
+  splitEmptyShow();
+}
+// splitEmptyShow shows the body column's empty state while a list screen
+// has nothing open.
+function splitEmptyShow(){$('splitEmpty').hidden=!document.documentElement.classList.contains('fr-split')||!!detailCur}
 // setTabCount(name,n) shows n as a small count next to the tab name; n
 // null/undefined hides it.
 // #42 calls it for 'questions' (open questions), #33 for 'permissions' (pending requests),

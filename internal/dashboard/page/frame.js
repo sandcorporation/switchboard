@@ -114,15 +114,19 @@ function frameDraw(){
   if(was)for(const b of list.querySelectorAll('.sess'))if(b.dataset.role===was)b.focus({preventScroll:true});
   frameMark();
 }
+// frameKind is the session's kind on its card (#517): the name part of the
+// role address without its number tail (team/worker-1-2 → worker).
+function frameKind(role){return role.slice(role.lastIndexOf('/')+1).replace(/(-\d+)+$/,'')}
 function frameCard(r){
   const b=node('button','','sess');b.type='button';b.dataset.role=r.role;if(r.term)b.dataset.term=r.term.id;
   const [stText,stCls]=r.st==='offline'?['꺼짐','st-offline']:r.st==='unknown'?['모름','st-unknown']:sessionStatus(r.st);
   const name=frameService(r.role)===r.role?r.role:r.role.slice(frameService(r.role).length+1);
   const l1=node('span','','sess-l1'),l2=node('span','','sess-l2');
   l1.append(node('span','','dot '+stCls),node('b',name+(r.label?' · '+r.label:''),'sess-nm'));
-  if(r.cli&&r.cli!=='unknown')l1.append(node('span',r.cli.split(/\s/)[0],'tag'));
+  const kind=node('span',frameKind(r.role),'tag');kind.title=r.role;l1.append(kind);
   if(r.wait)l1.append(node('span',String(r.wait),'sess-w'));
   if(r.machine)l2.append(node('span',r.machine,'tag'));
+  if(r.cli&&r.cli!=='unknown'){const c=node('span',r.cli.split(/\s/)[0],'tag');c.title=r.cli;l2.append(c)}
   l2.append(node('span',r.ctx===null||r.ctx===undefined?'-':kTokens(r.ctx),'sess-ctx'));
   if(r.dir)l2.append(node('span','\u200e'+r.dir+'\u200e','sess-dir'));
   l1.firstChild.title=frameStates[r.st]||stText;
@@ -135,9 +139,18 @@ function frameCard(r){
 // workspace) or the terminal detail, any other one as the session detail.
 function frameOpen(r){
   frameSel=r.term?r.term.id:r.role;frameMark();
-  if(r.term&&ws&&ws.openTerm)ws.openTerm(r.term);
+  if(r.term&&ws&&ws.openTerm){frameLeaveList();ws.openTerm(r.term)}
   else if(r.term)openDetail('terminals',r.term.id,'screen');
   else openDetail('sessions',r.role);
+}
+// frameLeaveList steps out of a list screen (#514) to the workspace: the
+// hash drops the screen, so its menu row opens it again.
+function frameLeaveList(){
+  if(!listTab(curTab))return;
+  history.replaceState(null,'',location.pathname+location.search);
+  hideDetail();$('panel-'+curTab).hidden=true;frameSplit(false);
+  for(const n of tabNames){const t=$('tab-'+n);t.setAttribute('aria-selected','false');t.tabIndex=n==='requests'?0:-1}
+  curTab='';
 }
 // frameMark marks the card of the session on screen.
 function frameMark(){

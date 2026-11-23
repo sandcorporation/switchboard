@@ -162,12 +162,22 @@ func messageCols(status string) string {
 	return `m.id,m.sender,m.recipient,m.subject,m.body,m.created_at,COALESCE(m.task_id,''),COALESCE(m.thread_id,0),COALESCE(m.reply_to,0),` + status + `,COALESCE(m.priority,'normal'),COALESCE(m.addressed_to,''),COALESCE(m.held_id,0),COALESCE(m.held_at,''),COALESCE(m.delivered_at,''),m.directive,m.no_reply`
 }
 
-func scanMessage(sc interface{ Scan(...any) error }) (wire.Message, error) {
+// scanMessage reads messageCols, then any extra columns into extra.
+func scanMessage(sc interface{ Scan(...any) error }, extra ...any) (wire.Message, error) {
 	var m wire.Message
 	var created, held, delivered string
-	err := sc.Scan(&m.ID, &m.Sender, &m.Recipient, &m.Subject, &m.Body, &created, &m.TaskID, &m.ThreadID, &m.ReplyTo, &m.Status, &m.Priority, &m.AddressedTo, &m.HeldID, &held, &delivered, &m.Directive, &m.NoReply)
+	dest := append([]any{&m.ID, &m.Sender, &m.Recipient, &m.Subject, &m.Body, &created, &m.TaskID, &m.ThreadID, &m.ReplyTo, &m.Status, &m.Priority, &m.AddressedTo, &m.HeldID, &held, &delivered, &m.Directive, &m.NoReply}, extra...)
+	err := sc.Scan(dest...)
 	m.CreatedAt, _ = time.Parse(time.RFC3339Nano, created)
 	m.HeldAt, m.DeliveredAt = optTime(held), optTime(delivered)
+	return m, err
+}
+
+// scanAdminMessage reads messageCols followed by the request ID (#514).
+func scanAdminMessage(sc interface{ Scan(...any) error }) (wire.Message, error) {
+	var req int64
+	m, err := scanMessage(sc, &req)
+	m.RequestID = req
 	return m, err
 }
 

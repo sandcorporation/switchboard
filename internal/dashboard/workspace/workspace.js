@@ -60,12 +60,13 @@ function wsStart(){
   const terms=new Map(),wraps=new Map(),titles=new Map(),items=new Map(),files=new Map(),trees=new Map();
   let autoFor=null,dragging=false;
   function valid(p){
-    if(p.startsWith('menu:'))return visibleTabs().includes(p.slice(5));
+    // A list screen (listTab, #514) is never a panel: it takes the centre.
+    if(p.startsWith('menu:'))return visibleTabs().includes(p.slice(5))&&!listTab(p.slice(5));
     return (p.startsWith('term:')&&p.length>5)||!!S.itemOf(p)||!!F.fileOf(p);
   }
   function load(){
     try{const s=L.parse(localStorage.getItem(KEY)||'',valid);if(s)return s}catch(e){}
-    return L.initial('menu:'+(curTab||'requests'));
+    return L.initial(curTab&&!listTab(curTab)?'menu:'+curTab:null);
   }
   function save(){try{localStorage.setItem(KEY,L.serialize(st))}catch(e){}}
   let st=load();
@@ -751,12 +752,13 @@ function wsStart(){
     if(mq.matches)drawer(false);
   }});
   for(const p of L.panels(st))if(p.startsWith('term:'))term(p.slice(5));
-  if(location.hash.length>1&&curTab)st=L.open(st,'menu:'+curTab);
+  if(location.hash.length>1&&curTab&&!listTab(curTab))st=L.open(st,'menu:'+curTab);
   side.session=S.follow(side.session,st.focus);
   render();drawSess();loadNeeds();
   return {
     // showMenu opens (or goes to) the section of tab name.
     showMenu(name){
+      if(listTab(name))return;
       const p='menu:'+name,g=L.groupOf(st,p);
       if(g&&g.active===p&&(st.focus===p||!mq.matches)&&(!st.max||st.max===p))return;
       st=L.open(st,p);if(st.max&&st.max!==p)st=L.setMax(st,null);commit();
