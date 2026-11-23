@@ -85,7 +85,9 @@ func pagePart(name string) string {
 	if err != nil {
 		panic("dashboard: " + err.Error())
 	}
-	return string(b)
+	// A Windows checkout may turn line ends into CRLF; Go drops them from a
+	// raw string, so the parts must too.
+	return strings.ReplaceAll(string(b), "\r\n", "\n")
 }
 
 func buildPage() string {
