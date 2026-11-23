@@ -461,7 +461,8 @@ type NodeStatusLineFunc func(adapter, out string)
 type PluginInstallFunc func(version, dir string, quiet bool, w io.Writer) error
 
 // PluginStatusFunc prints the carried plugins' state in the agents' settings.
-type PluginStatusFunc func(version, dir string, jsonOut bool, w io.Writer) error
+// sync is the CLI's own record of keeping the plugin at its version (#483).
+type PluginStatusFunc func(version, dir string, jsonOut bool, sync wire.PluginSync, w io.Writer) error
 
 // Commands are the commands the binary supplies because they run the server
 // or open its database.

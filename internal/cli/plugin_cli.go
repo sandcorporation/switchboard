@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/sandcorporation/switchboard/internal/config"
+	"github.com/sandcorporation/switchboard/internal/wire"
 )
 
 // The agent plugin the binary carries (#477): `plugin install|status`, the
@@ -20,6 +22,13 @@ import (
 // last installed the plugin; a run of another version installs it once.
 const pluginMarker = "plugin-version"
 
+// pluginAttemptFile holds the last install's wire.PluginAttempt (#483).
+const pluginAttemptFile = "plugin-attempt" // no .json: the folder's *.json are profiles
+
+// pluginRetryAfter is how long a failed install of a version waits before
+// a run tries it again (#483).
+const pluginRetryAfter = 10 * time.Minute
+
 // pluginLockStale is how old a leftover lock may be before a run takes it
 // over (a run killed in the middle of an install).
 const pluginLockStale = 2 * time.Minute
@@ -28,10 +37,12 @@ const pluginLockStale = 2 * time.Minute
 var noPluginFlag bool
 
 // noAutoPlugin are the commands that never install on their own: the plugin
-// command itself, join (it installs after saving the profile), version (the
-// plugin's hooks run it under a short limit), and the long-running server
-// and node (the node installs per hosted session).
-var noAutoPlugin = map[string]bool{"plugin": true, "join": true, "version": true, "up": true, "node": true, "serve": true, "admin": true}
+// command itself, join (it installs after saving the profile), version and
+// job (the plugin's hooks run them under a short limit: `job ping` in 3
+// seconds, which an install outlasts, so a killed run left the lock behind
+// and the runs after it skipped, #483), and the long-running server and
+// node (the node installs per hosted session).
+var noAutoPlugin = map[string]bool{"plugin": true, "join": true, "version": true, "job": true, "up": true, "node": true, "serve": true, "admin": true}
 
 // configDir is the client's config folder: SWITCHBOARD_CONFIG_DIR, else
 // <user config>/switchboard.
@@ -62,14 +73,15 @@ func cliPlugin(p parsedArgs, stdout io.Writer) (int, error) {
 	dir := configDir()
 	switch p.pos[0] {
 	case "install":
-		err := binary.PluginInstall(version, dir, false, stdout)
-		markPlugin(dir)
+		var out bytes.Buffer
+		err := binary.PluginInstall(version, dir, false, io.MultiWriter(stdout, &out))
+		recordPlugin(dir, err, out.String())
 		if err != nil {
 			return 0, err
 		}
 		return ExitOK, nil
 	case "status":
-		if err := binary.PluginStatus(version, dir, p.bool("--json"), stdout); err != nil {
+		if err := binary.PluginStatus(version, dir, p.bool("--json"), pluginSyncOf(dir), stdout); err != nil {
 			return 0, err
 		}
 		return ExitOK, nil
@@ -90,7 +102,6 @@ func installPluginAfterJoin(stderr io.Writer) {
 	}
 	defer release()
 	installQuietly(dir, stderr)
-	markPlugin(dir)
 }
 
 // syncPluginOnce installs the plugin when the marker names another version
@@ -105,17 +116,25 @@ func syncPluginOnce(stderr io.Writer) {
 	if b, err := os.ReadFile(filepath.Join(dir, pluginMarker)); err == nil && strings.TrimSpace(string(b)) == version {
 		return
 	}
+	// A failed install of this version waits pluginRetryAfter (#483): it is
+	// not marked, so it is tried again, but not on every command.
+	if a, ok := lastPluginAttempt(dir); ok && a.Version == version && !a.OK {
+		if at, err := time.Parse(time.RFC3339, a.At); err == nil && time.Since(at) < pluginRetryAfter && time.Since(at) > -time.Minute {
+			return
+		}
+	}
 	release, ok := lockPlugin(dir)
 	if !ok {
 		return // another run is installing it
 	}
 	defer release()
 	installQuietly(dir, stderr)
-	// Marked even after a failure, so a broken install does not slow every
-	// command; the line says how to retry.
-	markPlugin(dir)
 }
 
+// installQuietly installs, prints only what changed or failed, and records
+// the attempt: the marker on success only (#483), so a failure is tried
+// again after pluginRetryAfter. An agent that is not installed is a
+// success (its line says nothing was installed).
 func installQuietly(dir string, stderr io.Writer) {
 	var out bytes.Buffer
 	err := binary.PluginInstall(version, dir, true, &out)
@@ -124,9 +143,60 @@ func installQuietly(dir string, stderr io.Writer) {
 			fmt.Fprintln(stderr, line)
 		}
 	}
+	recordPlugin(dir, err, out.String())
 	if err != nil {
-		fmt.Fprintf(stderr, "plugin: run '%s plugin install' to retry\n", progName())
+		fmt.Fprintf(stderr, "plugin: tried again in %d minutes; '%s plugin install' retries now\n", int(pluginRetryAfter/time.Minute), progName())
 	}
+}
+
+// recordPlugin stores an install's attempt, and on success the marker.
+func recordPlugin(dir string, err error, out string) {
+	a := wire.PluginAttempt{Version: version, At: time.Now().UTC().Format(time.RFC3339), OK: err == nil}
+	if err != nil {
+		a.Reason = err.Error()
+	} else {
+		for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+			if line = strings.TrimSpace(line); line != "" && !strings.Contains(line, ": up to date") {
+				a.Reason = line
+				break
+			}
+		}
+	}
+	if r := []rune(a.Reason); len(r) > 300 {
+		a.Reason = string(r[:300]) + "…"
+	}
+	if os.MkdirAll(dir, 0o700) != nil {
+		return
+	}
+	if b, jerr := json.Marshal(a); jerr == nil {
+		_ = os.WriteFile(filepath.Join(dir, pluginAttemptFile), append(b, '\n'), 0o600)
+	}
+	if err == nil {
+		markPlugin(dir)
+	}
+}
+
+// lastPluginAttempt reads the attempt file; false when there is none.
+func lastPluginAttempt(dir string) (wire.PluginAttempt, bool) {
+	var a wire.PluginAttempt
+	b, err := os.ReadFile(filepath.Join(dir, pluginAttemptFile))
+	if err != nil || json.Unmarshal(b, &a) != nil || a.Version == "" {
+		return wire.PluginAttempt{}, false
+	}
+	return a, true
+}
+
+// pluginSyncOf is what `plugin status` shows of the marker and the last
+// attempt in dir.
+func pluginSyncOf(dir string) wire.PluginSync {
+	var s wire.PluginSync
+	if b, err := os.ReadFile(filepath.Join(dir, pluginMarker)); err == nil {
+		s.Marked = strings.TrimSpace(string(b))
+	}
+	if a, ok := lastPluginAttempt(dir); ok {
+		s.LastAttempt = &a
+	}
+	return s
 }
 
 func markPlugin(dir string) {

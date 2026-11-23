@@ -10,6 +10,7 @@ import (
 
 	"github.com/sandcorporation/switchboard/internal/agent"
 	_ "github.com/sandcorporation/switchboard/internal/agent/builtin"
+	"github.com/sandcorporation/switchboard/internal/wire"
 )
 
 // PluginDir is the folder an adapter's carried plugin is unpacked under
@@ -59,15 +60,23 @@ func PluginInstallCLI(version, dir string, quiet bool, w io.Writer) error {
 	return nil
 }
 
-// PluginStatusCLI prints every carried plugin's state (`plugin status`).
-func PluginStatusCLI(version, dir string, asJSON bool, w io.Writer) error {
-	states := []agent.PluginState{}
+// pluginStatusRow is one agent's row of `plugin status --json`: its state
+// and the CLI's sync record (#483).
+type pluginStatusRow struct {
+	agent.PluginState
+	Sync wire.PluginSync `json:"sync"`
+}
+
+// PluginStatusCLI prints every carried plugin's state (`plugin status`) and
+// one line of sync: the version the marker holds and the last install.
+func PluginStatusCLI(version, dir string, asJSON bool, sync wire.PluginSync, w io.Writer) error {
+	states := []pluginStatusRow{}
 	for _, a := range installers() {
 		st, err := a.(agent.PluginInstaller).PluginStatus(context.Background(), agent.PluginOptions{Version: version, Dir: PluginDir(dir, a)})
 		if err != nil {
 			return err
 		}
-		states = append(states, st)
+		states = append(states, pluginStatusRow{PluginState: st, Sync: sync})
 	}
 	if asJSON {
 		b, err := json.MarshalIndent(states, "", "  ")
@@ -102,5 +111,29 @@ func PluginStatusCLI(version, dir string, asJSON bool, w io.Writer) error {
 			fmt.Fprintf(w, "  old %s %s (%s): %s\n", l.ID, l.Version, where, on)
 		}
 	}
-	return nil
+	_, err := fmt.Fprintln(w, PluginSyncLine(sync))
+	return err
+}
+
+// PluginSyncLine is the sync line of `plugin status`.
+func PluginSyncLine(s wire.PluginSync) string {
+	marked := s.Marked
+	if marked == "" {
+		marked = "none"
+	}
+	line := "sync: marked " + marked + "; last try "
+	a := s.LastAttempt
+	if a == nil {
+		return line + "none"
+	}
+	line += a.Version + " at " + a.At
+	switch {
+	case !a.OK:
+		line += ", failed: " + a.Reason
+	case a.Reason != "":
+		line += ", ok: " + a.Reason
+	default:
+		line += ", ok"
+	}
+	return line
 }

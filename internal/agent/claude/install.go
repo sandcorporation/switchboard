@@ -312,6 +312,11 @@ func (in installer) status(ctx context.Context, o agent.PluginOptions) (agent.Pl
 		return st, nil
 	}
 	st.Available = true
+	// Before the first install the folder does not exist (#479): list from
+	// the current folder, which says the plugin is not installed.
+	if _, err := os.Stat(s.dir); err != nil {
+		s.dir = ""
+	}
 	var plugins []listed
 	if err := s.list(ctx, &plugins, "list"); err != nil {
 		return st, err
