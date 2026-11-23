@@ -138,7 +138,7 @@ func TestProgressDirectiveClosedByComplete(t *testing.T) {
 	if got := openIDs(t, s); !sameIDs(got, []int64{done, read}) {
 		t.Fatalf("after read: open %v", got)
 	}
-	apiMail(t, s, clock, "team/worker", fmt.Sprintf("/api/messages/%d/complete", done), nil)
+	apiMail(t, s, clock, "team/worker", fmt.Sprintf("/api/messages/%d/complete", done), map[string]any{"left_none": true})
 	if got := openIDs(t, s); !sameIDs(got, []int64{read}) {
 		t.Fatalf("after complete: open %v, want %d", got, read)
 	}

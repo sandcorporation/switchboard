@@ -342,7 +342,7 @@ func (s *Service) send(w http.ResponseWriter, r *http.Request, p identity.Princi
 	// otherwise nothing is stored.
 	complete := m.Complete
 	m.Complete = nil
-	claim := claimOf(r, m.Left, m.LeftNone)
+	claim := claimOf(m.Left, m.LeftNone)
 	m.Left, m.LeftNone = nil, false
 	var ending []int64 // directives the send ends (#470)
 	for i, id := range complete {
@@ -732,7 +732,7 @@ func (s *Service) Status(w http.ResponseWriter, r *http.Request, role string, id
 		if !ok {
 			return
 		}
-		claim = claimOf(r, note.Left, note.LeftNone)
+		claim = claimOf(note.Left, note.LeftNone)
 		ending = s.isDirective(m) && !s.ended(id)
 		if msg := claim.problem(ending, id); msg != "" {
 			http.Error(w, msg, 400)
@@ -804,7 +804,7 @@ func (s *Service) Reply(w http.ResponseWriter, r *http.Request, p identity.Princ
 	done := m.Done
 	m.Done = false
 	// reply --complete to a directive ends it (#470): it says what is left.
-	claim := claimOf(r, m.Left, m.LeftNone)
+	claim := claimOf(m.Left, m.LeftNone)
 	m.Left, m.LeftNone = nil, false
 	ending := done && s.isDirective(orig)
 	if msg := claim.problem(ending, id); msg != "" {

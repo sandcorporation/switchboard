@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sandcorporation/switchboard/internal/config"
 	"github.com/sandcorporation/switchboard/internal/identity"
 	"github.com/sandcorporation/switchboard/internal/store"
 	"github.com/sandcorporation/switchboard/internal/wire"
@@ -38,13 +37,12 @@ const (
 
 // leftClaim is what an ending answer said about what it left.
 type leftClaim struct {
-	items  []string
-	none   bool
-	marked bool // the client records what is left (config.LeftHeaderName)
+	items []string
+	none  bool
 }
 
-func claimOf(r *http.Request, items []string, none bool) leftClaim {
-	c := leftClaim{none: none, marked: r.Header.Get(config.HeaderPrefix+config.LeftHeaderName) != ""}
+func claimOf(items []string, none bool) leftClaim {
+	c := leftClaim{none: none}
 	for _, it := range items {
 		if it = strings.TrimSpace(it); it != "" {
 			c.items = append(c.items, it)
@@ -70,7 +68,7 @@ func (c leftClaim) problem(ending bool, directive int64) string {
 			return fmt.Sprintf("a --left item is at most %d characters", leftItemMax)
 		}
 	}
-	if ending && c.marked && len(c.items) == 0 && !c.none {
+	if ending && len(c.items) == 0 && !c.none {
 		return fmt.Sprintf("this answer ends directive #%d: %s", directive, leftHowTo)
 	}
 	return ""
@@ -89,18 +87,15 @@ func (s *Service) ended(id int64) bool {
 }
 
 // recordLeft stores what an ending answer by role to directive said: its
-// items, else a none row, else (an older CLI said nothing) an open
-// unrecorded row. none and unrecorded rows are kept once per directive.
+// items, else a none row (kept once per directive). problem has refused an
+// answer that says neither (#471), so no new unrecorded row is made; the
+// ones from before stay readable and endable.
 func recordLeft(tx *sql.Tx, directive int64, role string, c leftClaim, now time.Time) error {
 	at := now.UTC().Format(time.RFC3339Nano)
 	if len(c.items) > 0 {
 		return insertItems(tx, directive, role, c.items, at)
 	}
-	kind, state := wire.LeftKindUnrecorded, wire.LeftOpen
-	if c.none {
-		kind, state = wire.LeftKindNone, wire.LeftNoneSet
-	}
-	_, err := tx.Exec(`INSERT OR IGNORE INTO left_items(directive_id,kind,recorded_by,recorded_at,state) VALUES(?,?,?,?,?)`, directive, kind, role, at, state)
+	_, err := tx.Exec(`INSERT OR IGNORE INTO left_items(directive_id,kind,recorded_by,recorded_at,state) VALUES(?,?,?,?,?)`, directive, wire.LeftKindNone, role, at, wire.LeftNoneSet)
 	return err
 }
 
@@ -252,7 +247,7 @@ func (s *Service) addLeft(w http.ResponseWriter, r *http.Request, p identity.Pri
 		http.Error(w, "invalid JSON", http.StatusBadRequest)
 		return
 	}
-	c := claimOf(r, in.Left, false)
+	c := claimOf(in.Left, false)
 	if len(c.items) == 0 {
 		http.Error(w, "left: at least one item", http.StatusBadRequest)
 		return

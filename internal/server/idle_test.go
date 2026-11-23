@@ -71,7 +71,7 @@ func TestDirectiveViewsAgree(t *testing.T) {
 	if got := viewsOf(t, s, clock, rp.ID, d.ID); got != (directiveViews{progress: true, waitOld: true, waitStalled: true, report: true, reminded: true}) {
 		t.Fatalf("plain reply, idle: %+v", got)
 	}
-	apiMail(t, s, clock, "team/worker", fmt.Sprintf("/api/messages/%d/reply", d.ID), map[string]any{"subject": "re", "body": "built", "done": true})
+	apiMail(t, s, clock, "team/worker", fmt.Sprintf("/api/messages/%d/reply", d.ID), map[string]any{"subject": "re", "body": "built", "done": true, "left_none": true})
 	if got := viewsOf(t, s, clock, rp.ID, d.ID); got != (directiveViews{}) {
 		t.Fatalf("reply --done: %+v", got)
 	}
@@ -168,7 +168,7 @@ func TestIdleOpenShowsInWaitAndTellsSender(t *testing.T) {
 	if got := stalledIDs(t, s); !sameIDs(got, []int64{d.ID}) {
 		t.Fatalf("stalled %v after idle again", got)
 	}
-	apiMail(t, s, clock, "team/worker", fmt.Sprintf("/api/messages/%d/complete", d.ID), nil)
+	apiMail(t, s, clock, "team/worker", fmt.Sprintf("/api/messages/%d/complete", d.ID), map[string]any{"left_none": true})
 	if got := stalledIDs(t, s); len(got) != 0 {
 		t.Fatalf("stalled %v after complete", got)
 	}
@@ -213,7 +213,7 @@ func TestIdleOpenNewestDirectiveOnly(t *testing.T) {
 	if got := stalledIDs(t, s); !sameIDs(got, []int64{newer.ID}) {
 		t.Fatalf("stalled %v after a plain reply, want only #%d", got, newer.ID)
 	}
-	apiMail(t, s, clock, "team/worker", fmt.Sprintf("/api/messages/%d/complete", newer.ID), nil)
+	apiMail(t, s, clock, "team/worker", fmt.Sprintf("/api/messages/%d/complete", newer.ID), map[string]any{"left_none": true})
 	if got := stalledIDs(t, s); !sameIDs(got, []int64{old.ID}) {
 		t.Fatalf("stalled %v after #%d is done, want the open #%d", got, newer.ID, old.ID)
 	}
@@ -222,7 +222,7 @@ func TestIdleOpenNewestDirectiveOnly(t *testing.T) {
 		t.Fatalf("off: stalled %v, idle_after_s %d", got, r.IdleAfterS)
 	}
 	s.presenceCfg.Remind.Idle = 0
-	apiMail(t, s, clock, "hq/boss", fmt.Sprintf("/api/messages/%d/close", old.ID), nil)
+	apiMail(t, s, clock, "hq/boss", fmt.Sprintf("/api/messages/%d/close", old.ID), map[string]any{"left_none": true})
 	if got := stalledIDs(t, s); len(got) != 0 {
 		t.Fatalf("stalled %v after close", got)
 	}

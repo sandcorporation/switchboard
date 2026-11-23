@@ -12,7 +12,7 @@ import (
 
 // closeAs posts /api/messages/{id}/close as role.
 func closeAs(s *Server, role string, id int64) (int, string) {
-	w := callAs(s, "POST", fmt.Sprintf("/api/messages/%d/close", id), tokenFor(role), role, nil)
+	w := callAs(s, "POST", fmt.Sprintf("/api/messages/%d/close", id), tokenFor(role), role, wire.LeftNote{LeftNone: true})
 	return w.Code, strings.TrimSpace(w.Body.String())
 }
 

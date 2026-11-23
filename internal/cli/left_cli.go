@@ -14,8 +14,8 @@ import (
 )
 
 // setLeftHeader marks this CLI as one that says what an answer ending a
-// directive left undone (#470): the server refuses its ending answer
-// without --left or --left-none, and takes an older CLI's as unrecorded.
+// directive left undone (#470); the server refuses any ending answer without
+// --left or --left-none (#471).
 func setLeftHeader(req *http.Request) {
 	req.Header.Set(config.HeaderPrefix+config.LeftHeaderName, "1")
 }

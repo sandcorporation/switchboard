@@ -67,7 +67,7 @@ func TestHeldMailOldIDFollowsToNewID(t *testing.T) {
 	if w.Code != 201 || json.Unmarshal(w.Body.Bytes(), &reply) != nil || reply.ReplyTo != now.ID || reply.Recipient != "hq/boss" {
 		t.Fatalf("reply to old #%d: %d %s", d.ID, w.Code, w.Body)
 	}
-	w = callAs(s, "POST", "/api/messages/"+itoa(d.ID)+"/complete", workerToken, a.Role, nil)
+	w = callAs(s, "POST", "/api/messages/"+itoa(d.ID)+"/complete", workerToken, a.Role, wire.LeftNote{LeftNone: true})
 	var st wire.Message
 	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &st) != nil || st.ID != now.ID || st.Status != "complete" {
 		t.Fatalf("complete old #%d: %d %s", d.ID, w.Code, w.Body)
@@ -82,7 +82,7 @@ func TestHeldMailOldIDFollowsToNewID(t *testing.T) {
 	}
 
 	// send --complete with the old ID completes the mail it is now.
-	w = callAs(s, "POST", "/api/messages", workerToken, a.Role, map[string]any{"recipient": "hq/boss", "subject": "report", "complete": []int64{done.ID}})
+	w = callAs(s, "POST", "/api/messages", workerToken, a.Role, map[string]any{"recipient": "hq/boss", "subject": "report", "complete": []int64{done.ID}, "left_none": true})
 	if w.Code != 201 {
 		t.Fatalf("send --complete old #%d: %d %s", done.ID, w.Code, w.Body)
 	}

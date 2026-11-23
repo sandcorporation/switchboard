@@ -203,7 +203,7 @@ func TestReportStatusFollowsAnsweredRule(t *testing.T) {
 	}
 	// Completing the second directive leaves the report in progress: the
 	// first got a reply but is not done (#269).
-	if w := callAs(s, "POST", "/api/messages/"+itoa(completed)+"/complete", reportWorkerToken, reportWorkerRole, nil); w.Code >= 300 {
+	if w := callAs(s, "POST", "/api/messages/"+itoa(completed)+"/complete", reportWorkerToken, reportWorkerRole, wire.LeftNote{LeftNone: true}); w.Code >= 300 {
 		t.Fatalf("complete: %d %s", w.Code, w.Body)
 	}
 	d = reportDetail(t, s, rp.ID)
@@ -211,7 +211,7 @@ func TestReportStatusFollowsAnsweredRule(t *testing.T) {
 		t.Fatalf("after complete: %+v", d)
 	}
 	// reply --done on the first closes it, and with it the report.
-	if w := callAs(s, "POST", "/api/messages/"+itoa(answered)+"/reply", reportWorkerToken, reportWorkerRole, map[string]any{"subject": "re", "body": "shipped", "done": true}); w.Code != 201 {
+	if w := callAs(s, "POST", "/api/messages/"+itoa(answered)+"/reply", reportWorkerToken, reportWorkerRole, map[string]any{"subject": "re", "body": "shipped", "done": true, "left_none": true}); w.Code != 201 {
 		t.Fatalf("reply --done: %d %s", w.Code, w.Body)
 	}
 	d = reportDetail(t, s, rp.ID)
@@ -397,7 +397,7 @@ func TestReportBossReadsListAndDetail(t *testing.T) {
 	s := reportServer(t)
 	open := directive(t, s, "open one")
 	done := directive(t, s, "done one")
-	if w := callAs(s, "POST", "/api/messages/"+itoa(done)+"/complete", reportWorkerToken, reportWorkerRole, nil); w.Code != 200 {
+	if w := callAs(s, "POST", "/api/messages/"+itoa(done)+"/complete", reportWorkerToken, reportWorkerRole, wire.LeftNote{LeftNone: true}); w.Code != 200 {
 		t.Fatalf("complete: %d %s", w.Code, w.Body)
 	}
 	ro := mustReport(t, s, map[string]any{"title": "Open", "body": "b", "mail": []int64{open}})
@@ -519,7 +519,7 @@ func TestReportOpenVersusProgressOpenDirectives(t *testing.T) {
 		t.Fatalf("answered only: report %s answered=%v completed=%v progress=%d", st, th.Answered, th.Completed, progressOpen())
 	}
 	// Completed: closed in both.
-	if w := callAs(s, "POST", "/api/messages/"+itoa(asked)+"/complete", reportWorkerToken, reportWorkerRole, nil); w.Code != 200 {
+	if w := callAs(s, "POST", "/api/messages/"+itoa(asked)+"/complete", reportWorkerToken, reportWorkerRole, wire.LeftNote{LeftNone: true}); w.Code != 200 {
 		t.Fatalf("complete: %d", w.Code)
 	}
 	if st, _ := statusOf(asked); st != wire.ReportDone || progressOpen() != 0 {
