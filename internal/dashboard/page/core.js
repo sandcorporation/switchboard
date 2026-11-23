@@ -31,7 +31,7 @@ async function loadMe(){
     const m=await r.json();adminMode=m.mode||'';hostingOn=m.hosting===true;termAssets=Array.isArray(m.terminal_assets)?m.terminal_assets:[];editorAssets=Array.isArray(m.editor_assets)?m.editor_assets:[];termRefused=typeof m.terminal_refused==='string'?m.terminal_refused:'';if(Array.isArray(m.perms))adminPerms=m.perms;
     $('termAddOpen').hidden=!can('sessions');
     if(hostingOn)loadWorkspace(Array.isArray(m.workspace_assets)?m.workspace_assets:[]);
-    $('tab-terminals').hidden=!hostingOn;setViewButton('nodes').hidden=!hostingOn;setViewButton('groups').hidden=!hostingOn;
+    $('tab-terminals').hidden=!hostingOn;if(setData)loadSettingsView();
     if(hostingOn&&curTab==='settings')route();
     if(hostingOn&&location.hash.startsWith('#terminal'))route();
     if(hostingOn&&curTab==='sessions')loadSessions();

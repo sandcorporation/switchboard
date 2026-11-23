@@ -224,3 +224,4 @@
 /* A page section (#515) fills the centre; the right column steps aside. */
 .ws-page #ws,.ws-page .ws-side,.ws-page .fr-grip-r{display:none}
 .ws-on.ws-page .sc-app-main:not(.detail-wide)>.sc-app-page:not([hidden]){display:block}
+.ws-on.ws-page .sc-app-main:not(.has-detail){grid-template-columns:minmax(0,1fr)}

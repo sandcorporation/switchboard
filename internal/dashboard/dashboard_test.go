@@ -214,8 +214,7 @@ func TestDashboardTerminalsTabOnlyWithHosting(t *testing.T) {
 		`tabLoaders.terminals=loadTerminals;`,
 		`api('terminals')`,
 		`confirm(`,
-		`<button type="button" data-view="nodes" aria-pressed="false" hidden title="노드">노드</button>`,
-		`setViewButton('nodes').hidden=!hostingOn;`,
+		"$('tab-terminals').hidden=!hostingOn;if(setData)loadSettingsView();",
 		`if(!setViewHash[v]||((v==='nodes'||v==='groups')&&!hostingOn))v='qsettings';`,
 		`api('nodes')`,
 		`apiSend('DELETE','nodes/'+encodeURIComponent(v.name))`,
@@ -577,18 +576,19 @@ func TestDashboardSettingsDetail(t *testing.T) {
 	Page(w, httptest.NewRequest("GET", "/", nil))
 	body := w.Body.String()
 	for _, want := range []string{
-		`<div class="viewswitch" id="setViews" role="group" aria-label="설정 고르기"><button type="button" data-view="qsettings" aria-pressed="true" title="질문 설정">질문 설정</button><button type="button" data-view="roles" aria-pressed="false" title="역할">역할</button><button type="button" data-view="nodes" aria-pressed="false" hidden title="노드">노드</button><button type="button" data-view="groups" aria-pressed="false" hidden title="묶음">묶음</button><button type="button" data-view="reminders" aria-pressed="false" title="다시 알림">다시 알림</button></div>`,
-		`<table id="settingsTbl" class="stack list cards">`,
-		`<table id="refusalsTbl" class="stack list cards"><thead><tr><th>역할</th><th>맞은 대상</th><th>대신 물을 역할</th><th class="num">횟수</th><th>마지막 거절</th></tr></thead><tbody id="refusalsTable"></tbody></table>`,
-		"const [rows,refused]=await Promise.all([api('question-settings'),api('question-refusals')]);",
-		`<table id="rolesTbl" class="stack list cards">`,
-		`<table id="nodesTbl" class="stack list cards">`,
+		// #515: one list column of groups beside the item's detail; every
+		// earlier action stays in the detail.
+		`<section id="panel-settings" role="tabpanel" aria-labelledby="tab-settings" tabindex="0" class="card" data-lv hidden>`,
+		`<div class="lv-head"><h2>설정</h2>`, `<div id="settingsList" class="lv-list"></div>`,
+		"setGroup(box,'roles','역할',d.roles,", "setGroup(box,'nodes','기계',d.nodes,", "setGroup(box,'groups','묶음',d.groups,",
+		"setGroup(box,'logins','로그인',d.logins,", "setGroup(box,'qsettings','질문 설정',d.qs,", "setGroup(box,'reminders','다시 알림',",
+		"lvRow('settings','refusals:24h',['24시간'],'최근 거절',",
+		"host?get(api('nodes')):null,host?get(api('terminals/work-groups')):null",
+		"api('question-refusals')", "api('logins')", "perms.title='바꾸기: switchboard admin allow';",
 		`<dialog id="setAdd" class="sc-drawer" aria-labelledby="setAddTitle">`,
-		"const setViewHash={qsettings:'settings',roles:'settings-roles',nodes:'settings-nodes',groups:'settings-groups',reminders:'settings-reminders'};",
+		"const setViewHash={qsettings:'settings',roles:'settings-roles',nodes:'settings-nodes',groups:'settings-groups',logins:'settings-logins',reminders:'settings-reminders'};",
 		"registerDetail('settings',{",
-		"detailRow(tr,'settings','qs:'+v.target);",
-		"detailRow(tr,'settings','role:'+v.role);",
-		"detailRow(tr,'settings','node:'+v.name);",
+		"lvRow('settings','qs:'+v.target,", "lvRow('settings','role:'+v.role,", "lvRow('settings','node:'+v.name,", "lvRow('settings','login:'+v.name,", "lvRow('settings','group:'+g.name,",
 		"back:id=>setViewHash[setKindView[id.slice(0,id.indexOf(':'))]]||'settings',",
 		"function closeDetail(){if(detailCur){const b=details[detailCur.tab].back;location.hash=b?b(detailCur.id):detailCur.tab}}",
 		"if(parts[0]==='settings')showSettingsView(setKindView[id.slice(0,id.indexOf(':'))]);",
@@ -601,7 +601,10 @@ func TestDashboardSettingsDetail(t *testing.T) {
 		"' 역할을 끊을까요? 이 토큰으로 접속한 세션이 모두 끊깁니다.'+(used?'\\n최근 사용: '",
 		"confirm(v.name+' 노드를 끊을까요? 연결이 바로 끊기고 이 노드의 토큰은 다시 쓸 수 없습니다.')",
 		"apiSend('DELETE','nodes/'+encodeURIComponent(v.name))",
-		"const s=await api('settings');",
+		"apiSend('POST','terminals/work-groups',{name:n,threshold:thresholdOf(th)})",
+		"apiSend('PUT','terminals/work-groups/'+encodeURIComponent(g.name),{threshold:thresholdOf(th)})",
+		"if(!confirm(g.name+' 묶음을 지울까요?'))return;",
+		"get(api('settings'))",
 		"$('setAdd').addEventListener('keydown',e=>{if(e.key==='Escape'){e.preventDefault();$('setAdd').close()}});",
 		"settings:loadSettingsView,",
 	} {
@@ -609,7 +612,7 @@ func TestDashboardSettingsDetail(t *testing.T) {
 			t.Errorf("dashboard missing %q", want)
 		}
 	}
-	for _, gone := range []string{`id="nodesBox"`, `id="rolesMsg"`, `id="nodesMsg"`, `function loadSettings(`} {
+	for _, gone := range []string{`id="nodesBox"`, `id="rolesMsg"`, `id="nodesMsg"`, `function loadSettings(`, `id="setViews"`, `id="groupForm"`} {
 		if strings.Contains(body, gone) {
 			t.Errorf("dashboard still has %q", gone)
 		}

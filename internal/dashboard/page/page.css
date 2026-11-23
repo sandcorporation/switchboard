@@ -470,9 +470,9 @@ input:focus,select:focus,textarea:focus{border-color:var(--color-accent);outline
 }
 /* 목록 칸 + 본문 (#515): a panel with data-lv is the list column; the detail
    fills the rest. Below 720px the list is the screen and the detail covers it. */
-.sc-app-main:has(>.sc-app-page:not([hidden])>[data-lv]:not([hidden])){grid-template-columns:var(--lv-w,248px) minmax(0,1fr)}
-.sc-app-main:has(>.sc-app-page:not([hidden])>[data-lv]:not([hidden]))>.sc-app-page{padding:0;background:var(--color-paper);border-right:1px solid var(--color-line);overflow-x:hidden}
-.sc-app-main:has(>.sc-app-page:not([hidden])>[data-lv]:not([hidden]))>.detail{border-left:0}
+.sc-app-main:has(>.sc-app-page:not([hidden])>[data-lv]:not([data-lv=full]):not([hidden])){grid-template-columns:var(--lv-w,248px) minmax(0,1fr)}
+.sc-app-main:has(>.sc-app-page:not([hidden])>[data-lv]:not([data-lv=full]):not([hidden]))>.sc-app-page{padding:0;background:var(--color-paper);border-right:1px solid var(--color-line);overflow-x:hidden}
+.sc-app-main:has(>.sc-app-page:not([hidden])>[data-lv]:not([data-lv=full]):not([hidden]))>.detail{border-left:0}
 .lv-head{position:sticky;top:0;z-index:1;height:28px;display:flex;align-items:center;gap:4px;padding:0 6px 0 12px;background:var(--color-paper);font-size:11px;font-weight:600;color:var(--color-muted)}
 .lv-head h2{flex:1 1 auto;min-width:0;margin:0;font-size:11px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .lv-filter{display:flex;gap:4px;padding:0 8px 6px}
@@ -505,7 +505,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--color-accent);outline
 .dsec{margin:16px 0 4px;font-size:11px;font-weight:600;color:var(--color-muted)}
 .dsec:first-child{margin-top:0}
 @media (max-width:720px){
-.sc-app-main:has(>.sc-app-page:not([hidden])>[data-lv]:not([hidden])){grid-template-columns:minmax(0,1fr)}
-.sc-app-main:has(>.sc-app-page:not([hidden])>[data-lv]:not([hidden]))>.sc-app-page{border-right:0}
+.sc-app-main:has(>.sc-app-page:not([hidden])>[data-lv]:not([data-lv=full]):not([hidden])){grid-template-columns:minmax(0,1fr)}
+.sc-app-main:has(>.sc-app-page:not([hidden])>[data-lv]:not([data-lv=full]):not([hidden]))>.sc-app-page{border-right:0}
 .fld{grid-template-columns:minmax(0,1fr)}
 }

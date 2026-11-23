@@ -598,6 +598,25 @@ func (s *Server) adminRoutes(w http.ResponseWriter, r *http.Request, path string
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	if path == "logins" {
+		// 설정's login list (#515): read only, for a signed-in admin that
+		// may view; permissions change with `admin allow` only (#476).
+		if boss != nil {
+			http.NotFound(w, r)
+			return
+		}
+		if !who.Can(wire.PermView) {
+			refusePerm(w, wire.PermView)
+			return
+		}
+		logins, err := s.adminAuth().Logins()
+		if err != nil {
+			http.Error(w, "logins unavailable", http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, logins)
+		return
+	}
 	switch path {
 	case "me":
 		// The dashboard's bootstrap call; hosting tells it whether to show

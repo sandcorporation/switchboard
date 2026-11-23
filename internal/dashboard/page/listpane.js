@@ -1,5 +1,6 @@
 // ---- 목록 칸 (#515) ----
-// A panel marked data-lv is a list column of grouped two-line rows; a row
+// A panel marked data-lv is a page of its own (no work-screen tabs); with
+// data-lv="full" it is one body, otherwise a list column of grouped two-line rows; a row
 // opens its item in the detail beside it (detailRow). lvGroup adds a group
 // head that folds its rows (kept for the page's life, per key) and returns
 // the box its rows go in; lvRow makes one row; lvFind hides the rows whose

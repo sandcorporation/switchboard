@@ -356,15 +356,48 @@ type adminRow struct {
 	Perms Perms `json:"perms"`
 }
 
-func listAdmins(jsonOut bool, stdout io.Writer) (int, error) {
-	db, err := store.Open(config.Env("DB_PATH", "/data/mail.db"))
+// Login is one dashboard login as 설정 lists it (#515): a built-in user, or
+// a login named only by its permission row (an oidc e-mail). Never a
+// password hash or TOTP secret.
+type Login struct {
+	adminRow
+	// Kind is builtin (admin_users) or external (admin_perms only).
+	Kind string `json:"kind"`
+}
+
+// Logins lists the built-in users by name, then the other logins that have
+// a permission row.
+func (s *Service) Logins() ([]Login, error) {
+	users, err := builtinLogins(s.db)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
-	defer db.Close()
+	out := make([]Login, 0, len(users))
+	for _, u := range users {
+		out = append(out, Login{adminRow: u, Kind: "builtin"})
+	}
+	rows, err := s.db.Query(`SELECT p.name,p.perms,p.updated_at FROM admin_perms p WHERE NOT EXISTS (SELECT 1 FROM admin_users u WHERE u.name=p.name) ORDER BY p.name`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var l Login
+		var perms sql.NullString
+		if err := rows.Scan(&l.Name, &perms, &l.CreatedAt); err != nil {
+			return nil, err
+		}
+		l.Perms, l.Kind = permsOf(perms), "external"
+		out = append(out, l)
+	}
+	return out, rows.Err()
+}
+
+// builtinLogins is admin_users with each user's permissions.
+func builtinLogins(db *sql.DB) ([]adminRow, error) {
 	rows, err := db.Query(`SELECT u.name,u.created_at,u.disabled_at IS NOT NULL,u.totp_last_step,p.perms FROM admin_users u LEFT JOIN admin_perms p ON p.name=u.name ORDER BY u.name`)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 	defer rows.Close()
 	out := []adminRow{}
@@ -373,7 +406,7 @@ func listAdmins(jsonOut bool, stdout io.Writer) (int, error) {
 		var step int64
 		var perms sql.NullString
 		if err := rows.Scan(&r.Name, &r.CreatedAt, &r.Disabled, &step, &perms); err != nil {
-			return 0, err
+			return nil, err
 		}
 		r.Perms = permsOf(perms)
 		if step > 0 {
@@ -381,7 +414,17 @@ func listAdmins(jsonOut bool, stdout io.Writer) (int, error) {
 		}
 		out = append(out, r)
 	}
-	if err := rows.Err(); err != nil {
+	return out, rows.Err()
+}
+
+func listAdmins(jsonOut bool, stdout io.Writer) (int, error) {
+	db, err := store.Open(config.Env("DB_PATH", "/data/mail.db"))
+	if err != nil {
+		return 0, err
+	}
+	defer db.Close()
+	out, err := builtinLogins(db)
+	if err != nil {
 		return 0, err
 	}
 	if jsonOut {
