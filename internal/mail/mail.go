@@ -76,7 +76,8 @@ func normalizePriority(p string) (string, bool) {
 	return "", false
 }
 
-// AdminList serves GET /api/admin/messages.
+// AdminList serves GET /api/admin/messages: the newest 500 messages, or
+// `limit` (1..500) of them older than the message ID `before` (#8).
 func (s *Service) AdminList(w http.ResponseWriter, r *http.Request) {
 	db := s.db
 	q, status, role, box := strings.TrimSpace(r.URL.Query().Get("q")), r.URL.Query().Get("status"), r.URL.Query().Get("role"), r.URL.Query().Get("box")
@@ -128,7 +129,29 @@ func (s *Service) AdminList(w http.ResponseWriter, r *http.Request) {
 		query += ` AND m.id=?`
 		args = append(args, id)
 	}
-	query += ` ORDER BY m.id DESC LIMIT 500`
+	limit, before := adminListMax, int64(0)
+	if v := r.URL.Query().Get("limit"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 1 || n > listLimitMax {
+			http.Error(w, fmt.Sprintf("limit: a number from 1 to %d", listLimitMax), http.StatusBadRequest)
+			return
+		}
+		limit = n
+	}
+	if v := r.URL.Query().Get("before"); v != "" {
+		n, err := strconv.ParseInt(v, 10, 64)
+		if err != nil || n < 1 {
+			http.Error(w, "before: a message ID", http.StatusBadRequest)
+			return
+		}
+		before = n
+	}
+	if before > 0 {
+		query += ` AND m.id<?`
+		args = append(args, before)
+	}
+	query += ` ORDER BY m.id DESC LIMIT ?`
+	args = append(args, limit)
 	rows, err := db.Query(query, args...)
 	if err != nil {
 		http.Error(w, "query failed", 500)
@@ -548,6 +571,8 @@ func (s *Service) recordView(viewer, mailbox string, id int64) error {
 const (
 	listLimitDefault = 100
 	listLimitMax     = 500
+	// adminListMax is what GET /api/admin/messages answers without a limit.
+	adminListMax = 500
 )
 
 // listPaging reads limit (1..listLimitMax, default listLimitDefault) and
