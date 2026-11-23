@@ -364,6 +364,10 @@ func (s *Server) serveAPI(w http.ResponseWriter, r *http.Request) {
 		s.rules().API(w, r, s.ruleCaller(who), strings.TrimPrefix(strings.TrimPrefix(path, "rules"), "/"))
 		return
 	}
+	if path == "search" {
+		s.searchAPI(w, r, who)
+		return
+	}
 	if path == "reports" || strings.HasPrefix(path, "reports/") {
 		s.reports().API(w, r, who, strings.TrimPrefix(strings.TrimPrefix(path, "reports"), "/"))
 		return
@@ -495,6 +499,10 @@ func (s *Server) adminRoutes(w http.ResponseWriter, r *http.Request, path string
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
+	if path == "search" {
+		s.search().API(w, r, nil, "")
+		return
+	}
 	if path == "question-refusals" {
 		s.asks().QuestionRefusalsAPI(w, r)
 		return
