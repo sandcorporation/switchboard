@@ -7,6 +7,7 @@ import {
   wireClaudeEvents,
   createEmitter,
   createMidTurnBox,
+  createTurnWatch,
   exportRole,
   mailProfilePath,
   permissionSummary,
@@ -148,4 +149,77 @@ test('Claude 어댑터(#130): 프로필은 새 이름 우선, 옛 이름만 있�
   )
   expect(over.override).toEqual({ endpoint: 'http://new', token: 't-old' })
   expect((await mailProfilePath(envSelf({ HOME: '/home/u' }).self)).paths).toBe(null)
+})
+
+/** 셸 넘기기(#526) 시험용 가짜 $: 시계·환경·턴 끊기만. */
+const bgSelf = (o: { env?: Record<string, string>; abortFails?: boolean }) => {
+  const aborted: string[] = []
+  const self = asSelf({
+    env: { get: async (k: string) => o.env?.[k] },
+    turn: {
+      abort: async ({ turnId }: { turnId: string }) => {
+        if (o.abortFails === true) throw new Error('not the running turn')
+        aborted.push(turnId)
+      },
+    },
+  })
+
+  return { self, aborted }
+}
+
+test('Claude 어댑터(#526): 본 세션의 Bash 가 문턱 넘게 돌면 턴을 끊고 걸린 끼워 넣기를 false 로 푼다', async () => {
+  const box = createMidTurnBox()
+  let now = 1_000
+  const watch = createTurnWatch(() => now)
+  watch.turnStart('turn-1')
+  watch.begin('Bash')
+  now = 31_000
+  const { self, aborted } = bgSelf({})
+  const host = claudeHost(self, createEmitter(), box, watch)
+  const pending = box.put('[긴급 메일]')
+  expect(await host.moveShellToBackground?.(30_000)).toBe(true)
+  expect(aborted).toEqual(['turn-1'])
+  expect(await pending).toBe(false)
+  expect(watch.isHeld()).toBe(true) // 끊긴 Bash 결과에 끼워 넣기를 붙이지 않는다.
+  watch.turnEnd()
+  expect(watch.isHeld()).toBe(false)
+})
+
+test('Claude 어댑터(#526): 문턱 전·Bash 아닌 도구·턴 없음·백그라운드 꺼짐·끊기 실패면 넘기지 않는다', async () => {
+  const cases: { name: string; tools: [string, number][]; now: number; turn?: boolean; env?: Record<string, string>; abortFails?: boolean }[] = [
+    { name: '문턱 전', tools: [['Bash', 1_000]], now: 30_999 },
+    { name: 'Bash 아닌 도구', tools: [['Bash', 1_000], ['Agent', 1_000]], now: 60_000 },
+    { name: '도는 도구 없음', tools: [], now: 60_000 },
+    { name: '턴 없음', tools: [['Bash', 1_000]], now: 60_000, turn: false },
+    { name: '백그라운드 꺼짐', tools: [['Bash', 1_000]], now: 60_000, env: { CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: '1' } },
+    { name: '끊기 실패', tools: [['Bash', 1_000]], now: 60_000, abortFails: true },
+  ]
+  for (const c of cases) {
+    const box = createMidTurnBox()
+    let now = 0
+    const watch = createTurnWatch(() => now)
+    if (c.turn !== false) watch.turnStart('turn-1')
+    for (const [tool, at] of c.tools) {
+      now = at
+      watch.begin(tool)
+    }
+    now = c.now
+    const { self, aborted } = bgSelf({ env: c.env, abortFails: c.abortFails })
+    const host = claudeHost(self, createEmitter(), box, watch)
+    expect([c.name, await host.moveShellToBackground?.(30_000)]).toEqual([c.name, false])
+    expect([c.name, aborted]).toEqual([c.name, []])
+    expect([c.name, watch.isHeld()]).toEqual([c.name, false])
+  }
+})
+
+test('Claude 어댑터(#526): 끝난 도구는 넘길 대상에서 빠지고, 감시 없이 만든 호스트에는 넘기기가 없다', () => {
+  let now = 0
+  const watch = createTurnWatch(() => now)
+  watch.turnStart('turn-1')
+  const key = watch.begin('Bash')
+  now = 60_000
+  expect(watch.movable(30_000)).toBe('turn-1')
+  watch.end(key)
+  expect(watch.movable(30_000)).toBe(null)
+  expect(claudeHost(asSelf({}), createEmitter(), createMidTurnBox()).moveShellToBackground).toBe(undefined)
 })

@@ -3,6 +3,7 @@
 //  - 바쁜 동안 온 메일은 한 줄로 묶는다. 같은 ID 는 두 번 알리지 않는다. 커서로 다시 이어 놓친 메일이 없다.
 //  - 서버가 죽어 있거나 프로필이 틀려도 세션은 멀쩡하다: 간격을 늘려 가며 다시 잇는다.
 //  - 긴급(priority=urgent, D4): 본문을 바쁘면 다음 도구 호출 뒤에 끼워 넣고 유휴면 새 턴으로 넣은 뒤 read 로 표시한다.
+//    바쁜 세션이 셸 명령을 오래 돌리고 있으면 그 명령을 백그라운드로 넘기고 새 턴으로 넣는다(#526, 일반 메일은 넘기지 않는다).
 //  - 연결 통지(D7): SWITCHBOARD_PARENT 가 있으면 처음 이어졌을 때 부모에게 「연결됨(주소·라벨·기계·폴더)」 시스템 통지를 보낸다.
 //    받는 쪽은 시스템 통지(제목이 SYSTEM_SUBJECT_PREFIX 로 시작)를 ID 대신 본문 그대로, 일반 메일 뒤 일반 시점에 넣고 read 로 표시한다.
 //  - 서버 시스템 통지(D8): 보낸이가 `switchboard/system`(옛 `agent-mail/system`, 둘 다 `-N`)인 일반 메일(멈춤·라벨 미연결)도
@@ -354,6 +355,14 @@ const toEvent = (e: Record<string, unknown>, id: number): MailEvent => {
 
   return out
 }
+
+/**
+ * 긴급 메일 때 셸 명령 넘기기 문턱(#526): 본 세션이 셸 명령 하나를 이만큼 넘게 앞에서 돌리고 있으면 백그라운드로 넘기고
+ * 메일을 새 턴으로 넣는다. 짧은 명령(빌드 한 단계·시험 하나)은 끝나기를 기다려 다음 도구 호출 뒤에 붙이는 편이 싸다.
+ */
+export const URGENT_BACKGROUND_AFTER_MS = 30_000
+/** 끼워 넣기를 기다리는 동안 넘기기 조건을 다시 보는 간격. */
+export const URGENT_BACKGROUND_POLL_MS = 5_000
 
 /** 긴급 메일 본문 상한(글자). 일반 메일 MAIL_INLINE_MAX 와 같다. 넘으면 자르고 전문 읽는 길(ID)을 붙인다. */
 export const URGENT_MAX_CHARS = 4000
@@ -725,8 +734,35 @@ export const createMailbox = (host: AgentHost, opts: MailboxOptions): Mailbox =>
     }
   }
 
+  /** 셸 명령 넘기기를 지금과 간격마다 시도한다(넘기면 그친다). 돌려준 함수로 그친다. */
+  const backgroundWhileWaiting = (): (() => void) => {
+    const move = host.moveShellToBackground
+    if (move === undefined) return () => {}
+    let done = false
+    let trying = false
+    const tryMove = async () => {
+      if (done || trying) return
+      trying = true
+      try {
+        if (await move(URGENT_BACKGROUND_AFTER_MS)) done = true
+      } catch {
+        // 못 넘기면 다음 도구 호출 뒤에 붙는다.
+      } finally {
+        trying = false
+      }
+    }
+    const timer = clock.every(URGENT_BACKGROUND_POLL_MS, () => void tryMove())
+    void tryMove()
+
+    return () => {
+      done = true
+      timer.cancel()
+    }
+  }
+
   /**
    * 긴급 메일(D4): 바쁘면 다음 도구 호출 뒤에 끼워 넣고(기능 없으면 새 턴, 턴 뒤 맨 앞), 유휴면 새 턴으로 넣는다.
+   * 기다리는 동안 셸 명령이 URGENT_BACKGROUND_AFTER_MS 넘게 돌면 백그라운드로 넘기고 새 턴으로 넣는다(#526).
    * compact 중이면 끝난 뒤. 사용자 보류(isIdle 의 일부)는 따르지 않는다. 넣는 즉시 read 로 표시한다.
    */
   const deliverUrgent = async (): Promise<void> => {
@@ -764,7 +800,17 @@ export const createMailbox = (host: AgentHost, opts: MailboxOptions): Mailbox =>
       const text = texts.join('\n\n')
       const canInject = host.features.midTurnInject && host.injectMidTurn !== undefined
       let attached = false
-      if (act === 'busy' && canInject && host.injectMidTurn !== undefined) attached = await host.injectMidTurn(text)
+      if (act === 'busy' && canInject && host.injectMidTurn !== undefined) {
+        const pending = host.injectMidTurn(text)
+        // 긴급 메일(일반·질문 답 아님)이면 기다리는 동안 오래 도는 셸 명령을 백그라운드로 넘긴다(#526).
+        // 넘기면 끼워 넣기가 false 로 풀려 아래 새 턴 길로 간다. 못 넘기면 지금처럼 다음 도구 호출 뒤에 붙는다.
+        const stop = items.length > 0 ? backgroundWhileWaiting() : () => {}
+        try {
+          attached = await pending
+        } finally {
+          stop()
+        }
+      }
       if (!attached) {
         // 유휴, 끼워 넣기 기능 없음, 또는 도구 호출 없이 턴이 끝났다: 새 턴(돌고 있으면 그 턴 뒤 맨 앞).
         await host.submitTurn(text)

@@ -1,6 +1,8 @@
 // Claude 어댑터: Claude Code 모드 API(`$`)로 AgentHost 포트를 구현한다. 코어는 이 파일을 모른다.
 //  - submitTurn → $.prompt.submit({ asUser: true }) (턴이 돌면 끝난 뒤 새 턴으로 간다)
 //  - injectMidTurn → 본 세션의 다음 도구 호출 결과에 context 로 붙인다(PostToolUse 리마인더와 같은 자리)
+//  - moveShellToBackground → 본 세션에서 앞에서 도는 도구가 모두 Bash 이고 문턱을 넘었으면 $.turn.abort(#526: 플러그인의 턴 끊기는
+//    돌던 Bash 를 죽이지 않고 백그라운드로 넘기며, 끝나면 task 알림이 세션에 온다. 2.1.330 tmux 세션에서 확인)
 //  - compact·usage → $.session.compact·$.session.usage
 //  - 이벤트 → turn.start·turn.complete·prompt.edit·prompt.change·prompt.submit·session.compact 훅(wireClaudeEvents)
 //  - services → $.http·$.clock·$.fs
@@ -66,6 +68,50 @@ export const createMidTurnBox = () => {
 
 export type MidTurnBox = ReturnType<typeof createMidTurnBox>
 
+/** 백그라운드로 넘길 수 있는 도구(#526). 플러그인의 턴 끊기가 백그라운드로 넘기는 것은 Bash 뿐이다(그 밖의 도구는 멈춘다). */
+export const BACKGROUND_TOOLS: ReadonlySet<string> = new Set(['Bash'])
+
+/**
+ * 본 세션 턴과 앞에서 도는 도구(#526). wireClaudeEvents 가 채우고 claudeHost 의 moveShellToBackground 가 읽는다.
+ * held 동안(턴을 끊는 중)에는 끼워 넣기를 끊긴 도구 결과에 붙이지 않는다: 붙지 못하고 새 턴으로 가야 세션이 읽는다.
+ */
+export const createTurnWatch = (now: () => number = () => Date.now()) => {
+  let turnId: string | null = null
+  let held = false
+  const running = new Map<symbol, { tool: string; at: number }>()
+
+  return {
+    turnStart: (id: string) => {
+      turnId = id
+      held = false
+    },
+    turnEnd: () => {
+      turnId = null
+      held = false
+    },
+    begin: (tool: string): symbol => {
+      const key = Symbol(tool)
+      running.set(key, { tool, at: now() })
+
+      return key
+    },
+    end: (key: symbol) => void running.delete(key),
+    isHeld: () => held,
+    /** 넘길 턴: 턴이 돌고, 도는 도구가 모두 넘길 수 있는 것이고, 가장 오래된 것이 minRunMs 넘게 돌았으면 그 턴 id. */
+    movable: (minRunMs: number): string | null => {
+      const list = [...running.values()]
+      if (turnId === null || held || list.length === 0) return null
+      if (list.some(t => !BACKGROUND_TOOLS.has(t.tool))) return null
+
+      return now() - Math.min(...list.map(t => t.at)) >= minRunMs ? turnId : null
+    },
+    hold: () => void (held = true),
+    release: () => void (held = false),
+  }
+}
+
+export type TurnWatch = ReturnType<typeof createTurnWatch>
+
 /**
  * 도구 호출에 덧붙일 글(규칙 원장 #219). warm 은 도구가 돌기 전에(기다리지 않는다), lines 는 도구가 끝난 뒤
  * 막히지 않은 호출에만 부른다. 실패는 삼킨다.
@@ -87,10 +133,13 @@ export function hookHttp($: Self): Pick<Http, 'fetch'> {
 }
 
 /** 본 세션의 이벤트를 포트 이벤트로 넘긴다. 서브에이전트(agentId 가 있는 루프)의 것은 넘기지 않는다(규칙 줄은 서브에이전트 호출에도 붙인다). */
-export function wireClaudeEvents(on: On, emitter: Emitter, box: MidTurnBox, hints?: ToolHints): void {
+export function wireClaudeEvents(on: On, emitter: Emitter, box: MidTurnBox, hints?: ToolHints, watch?: TurnWatch): void {
   // 관찰만 한다: 실패해도 원래 흐름은 그대로 간다.
   on('turn.start', ($, e, next) => {
-    if (e.agentId === undefined) emitter.emit({ type: 'turn.start' })
+    if (e.agentId === undefined) {
+      watch?.turnStart(e.turnId)
+      emitter.emit({ type: 'turn.start' })
+    }
 
     return next(e)
   }).catch(($, e, next) => next(e))
@@ -99,6 +148,7 @@ export function wireClaudeEvents(on: On, emitter: Emitter, box: MidTurnBox, hint
     if (e.agentId === undefined) {
       // 붙지 못한 끼워 넣기는 버린다(코어가 새 턴으로 넣는다). 턴 끝 이벤트보다 먼저.
       box.expire()
+      watch?.turnEnd()
       emitter.emit({ type: 'turn.complete' })
     }
 
@@ -134,11 +184,21 @@ export function wireClaudeEvents(on: On, emitter: Emitter, box: MidTurnBox, hint
     } catch {
       // 덤이다.
     }
-    const r = await next(e)
-    if (e.agentId === undefined) emitter.emit({ type: 'tool.complete' })
+    const main = e.agentId === undefined
+    // 시각은 동기 시계로 잰다: 도구 호출마다 엔진을 더 부르지 않는다.
+    const key = main ? watch?.begin(e.tool) : undefined
+    const run = async () => {
+      try {
+        return await next(e)
+      } finally {
+        if (key !== undefined) watch?.end(key)
+      }
+    }
+    const r = await run()
+    if (main) emitter.emit({ type: 'tool.complete' })
     if (r.deny !== undefined) return r
     const ruled = hints === undefined ? [] : await hints.lines(http, e).catch(() => [])
-    const mid = e.agentId === undefined && box.size() > 0 ? box.take() : []
+    const mid = main && box.size() > 0 && watch?.isHeld() !== true ? box.take() : []
     const add = [...(ruled.length === 0 ? [] : [ruled.join('\n')]), ...mid]
 
     return add.length === 0 ? r : { ...r, context: [...(r.context ?? []), ...add] }
@@ -370,8 +430,31 @@ export async function readCliVersion($: Self): Promise<string | undefined> {
   }
 }
 
+/**
+ * 앞에서 오래 도는 Bash 를 백그라운드로 넘긴다(#526): 턴을 끊으면 엔진이 돌던 Bash 를 백그라운드로 옮긴다.
+ * 백그라운드 작업이 꺼진 세션(CLAUDE_CODE_DISABLE_BACKGROUND_TASKS)에서는 끊으면 명령이 죽으므로 넘기지 않는다.
+ * 끊은 뒤 걸린 끼워 넣기는 버린다(false): 코어가 새 턴으로 넣는다.
+ */
+async function moveShellToBackground($: Self, box: MidTurnBox, watch: TurnWatch, minRunMs: number): Promise<boolean> {
+  const turnId = watch.movable(minRunMs)
+  if (turnId === null) return false
+  const off = ((await $.env.get('CLAUDE_CODE_DISABLE_BACKGROUND_TASKS')) ?? '').trim().toLowerCase()
+  if (off !== '' && off !== '0' && off !== 'false') return false
+  watch.hold()
+  try {
+    await $.turn.abort({ turnId })
+  } catch {
+    watch.release()
+
+    return false
+  }
+  box.expire()
+
+  return true
+}
+
 /** `$` 하나로 AgentHost 를 만든다. emitter·box 는 wireClaudeEvents 에 준 것과 같아야 한다. */
-export function claudeHost($: Self, emitter: Emitter, box: MidTurnBox): AgentHost {
+export function claudeHost($: Self, emitter: Emitter, box: MidTurnBox, watch?: TurnWatch): AgentHost {
   return {
   identity: async () => {
     let sessionId = ''
@@ -415,6 +498,7 @@ export function claudeHost($: Self, emitter: Emitter, box: MidTurnBox): AgentHos
     await $.prompt.submit({ text, asUser: true })
   },
   injectMidTurn: text => box.put(text),
+  ...(watch === undefined ? {} : { moveShellToBackground: (minRunMs: number) => moveShellToBackground($, box, watch, minRunMs) }),
   compact: async instructions => {
     // 플러그인이 건 compact 는 끝나고 풀리지만 session.compact 훅이 오지 않을 수 있다(#104: resume 직후 첫 턴 전에
     // 확인). 그러면 코어가 완료를 몰라 compacting 에 갇힌다: 그 사이 훅이 없었으면 여기서 완료를 알린다.

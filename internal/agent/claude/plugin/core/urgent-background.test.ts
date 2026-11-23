@@ -1,0 +1,101 @@
+// #526 긴급 메일 때 앞에서 오래 도는 셸 명령을 백그라운드로 넘기고 메일을 새 턴으로 넣는다.
+import { expect, test } from 'claude-code/testing'
+
+import { URGENT_BACKGROUND_AFTER_MS, URGENT_BACKGROUND_POLL_MS } from './mailbox'
+import { setup } from './mailtest'
+import { flush } from './testing'
+
+test('긴급: 셸 명령이 문턱 넘게 돌고 있으면 백그라운드로 넘기고 명령이 끝나기 전에 새 턴으로 넣는다', async () => {
+  const { host, mail } = await setup()
+  host.emit({ type: 'turn.start' })
+  const end = await host.runTool('shell')
+  await host.clock.advance(URGENT_BACKGROUND_AFTER_MS)
+  const id = mail.send('urgent', '배포 멈춰라')
+  await flush()
+  expect(host.backgrounded()).toBe(1)
+  expect(host.turns.length).toBe(1)
+  expect(host.turns[0]).toContain('배포 멈춰라')
+  expect(host.injected).toEqual([])
+  expect(mail.status(id)).toBe('read')
+  end() // 백그라운드 명령이 끝나도 다시 넣지 않는다.
+  await flush()
+  expect(host.turns.length).toBe(1)
+  expect(host.injected).toEqual([])
+})
+
+test('긴급: 문턱 전에 온 메일은 기다렸다가 셸 명령이 문턱을 넘으면 넘긴다', async () => {
+  const { host, mail } = await setup()
+  host.emit({ type: 'turn.start' })
+  await host.runTool('shell')
+  await host.clock.advance(URGENT_BACKGROUND_POLL_MS)
+  mail.send('urgent', '늦기 전에')
+  await flush()
+  expect(host.backgrounded()).toBe(0)
+  expect(host.turns).toEqual([])
+  await host.clock.advance(URGENT_BACKGROUND_AFTER_MS)
+  await flush()
+  expect(host.backgrounded()).toBe(1)
+  expect(host.turns.length).toBe(1)
+  expect(host.turns[0]).toContain('늦기 전에')
+})
+
+test('긴급: 셸 명령이 문턱 전에 끝나면 넘기지 않고 다음 도구 호출 뒤에 붙인다', async () => {
+  const { host, mail } = await setup()
+  host.emit({ type: 'turn.start' })
+  const end = await host.runTool('shell')
+  mail.send('urgent', '짧은 명령')
+  await flush()
+  await host.clock.advance(URGENT_BACKGROUND_POLL_MS)
+  end()
+  await flush()
+  await host.clock.advance(URGENT_BACKGROUND_AFTER_MS)
+  await flush()
+  expect(host.backgrounded()).toBe(0)
+  expect(host.injected.length).toBe(1)
+  expect(host.injected[0]).toContain('짧은 명령')
+  expect(host.turns).toEqual([])
+})
+
+test('일반 메일은 셸 명령을 넘기지 않는다', async () => {
+  const { host, mail } = await setup()
+  host.emit({ type: 'turn.start' })
+  await host.runTool('shell')
+  await host.clock.advance(URGENT_BACKGROUND_AFTER_MS)
+  mail.send('normal', '천천히')
+  await flush()
+  await host.clock.advance(URGENT_BACKGROUND_AFTER_MS)
+  await flush()
+  expect(host.backgrounded()).toBe(0)
+  expect(host.turns).toEqual([])
+})
+
+test('긴급: 셸 명령이 아닌 도구가 돌고 있으면 넘기지 않고 지금처럼 그 뒤에 붙인다', async () => {
+  const { host, mail } = await setup()
+  host.emit({ type: 'turn.start' })
+  await host.runTool('shell')
+  const other = await host.runTool('other')
+  await host.clock.advance(URGENT_BACKGROUND_AFTER_MS)
+  mail.send('urgent', '함께 도는 도구')
+  await flush()
+  await host.clock.advance(URGENT_BACKGROUND_AFTER_MS)
+  await flush()
+  expect(host.backgrounded()).toBe(0)
+  other()
+  await flush()
+  expect(host.injected.length).toBe(1)
+  expect(host.turns).toEqual([])
+})
+
+test('긴급: 넘기기 길이 없는 에이전트는 지금처럼 다음 도구 호출 뒤에 붙인다', async () => {
+  const { host, mail } = await setup({ background: false })
+  host.emit({ type: 'turn.start' })
+  const end = await host.runTool('shell')
+  await host.clock.advance(URGENT_BACKGROUND_AFTER_MS)
+  mail.send('urgent', '길 없음')
+  await flush()
+  expect(host.turns).toEqual([])
+  end()
+  await flush()
+  expect(host.injected.length).toBe(1)
+  expect(host.injected[0]).toContain('길 없음')
+})

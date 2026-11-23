@@ -111,6 +111,13 @@ export type AgentHost = {
    * 붙었으면 true. 턴이 도구 호출 없이 끝나 붙지 못했으면 false 로 풀린다(그 글은 버려진다: 코어가 새 턴으로 넣는다).
    */
   injectMidTurn?: (text: string) => Promise<boolean>
+  /**
+   * 앞에서 도는 셸 명령을 백그라운드로 넘긴다(선택, #526). 본 세션 턴에서 도는 도구가 모두 셸 명령이고 가장 오래된 것이
+   * minRunMs 넘게 돌았을 때만 턴을 끊는다: 명령은 죽지 않고 끝까지 돌며 끝나면 결과가 세션에 온다.
+   * 넘겼으면 true 이고, 그 턴에 걸린 끼워 넣기는 붙지 않고 false 로 풀린다(코어가 새 턴으로 넣는다).
+   * 조건이 안 맞거나 못 넘기면 false(아무것도 바꾸지 않는다).
+   */
+  moveShellToBackground?: (minRunMs: number) => Promise<boolean>
   /** 대화를 줄인다(선택, features.compact). 턴이 도는 중이면 거절된다. */
   compact?: (instructions?: string) => Promise<CompactResult>
   usage: () => Promise<Usage>

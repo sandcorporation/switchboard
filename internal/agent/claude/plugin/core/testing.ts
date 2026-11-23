@@ -154,6 +154,13 @@ export type FakeHost = AgentHost & {
   injected: string[]
   /** 본 세션 도구 호출 하나가 끝났다: 기다리던 끼워 넣기를 붙인다(Claude 의 PostToolUse 자리). */
   toolCall: () => void
+  /**
+   * 본 세션 도구 하나가 앞에서 돌기 시작한다(shell: 셸 명령, other: 그 밖). 돌려준 함수로 끝낸다(그 도구 호출 끝: toolCall).
+   * 백그라운드로 넘어간 셸 명령은 이미 도구 호출이 끝났으므로 그 함수가 아무것도 하지 않는다.
+   */
+  runTool: (kind: 'shell' | 'other') => Promise<() => void>
+  /** moveShellToBackground 가 백그라운드로 넘긴 셸 명령 수. */
+  backgrounded: () => number
   /** compact 호출의 instructions. */
   compacts: (string | undefined)[]
   /** 이벤트를 보낸다(에이전트 쪽 흉내). */
@@ -181,7 +188,14 @@ export type CompactBehavior = 'complete' | 'silent' | 'hang'
  * Claude 처럼 실제 서비스가 조건부로 하는 일도 흉내 낸다: 턴이 도는 중이면 compact 를 거절한다.
  */
 export const fakeHost = (
-  opts: { identity?: Partial<Identity>; features?: Partial<Features>; clock?: FakeClock; sse?: boolean } = {},
+  opts: {
+    identity?: Partial<Identity>
+    features?: Partial<Features>
+    clock?: FakeClock
+    sse?: boolean
+    /** moveShellToBackground 를 둔다(기본 true). false 는 넘기기 길이 없는 에이전트·환경. */
+    background?: boolean
+  } = {},
 ): FakeHost => {
   const features: Features = { midTurnInject: true, compact: true, ...opts.features }
   const clock = opts.clock ?? fakeClock()
@@ -197,6 +211,10 @@ export const fakeHost = (
   let compactResult: CompactResult = { done: true }
   let compactBehavior: CompactBehavior = 'complete'
   let running = false
+  /** 앞에서 도는 본 세션 도구(시작 시각). */
+  const tools = new Map<number, { kind: 'shell' | 'other'; at: number }>()
+  let toolSeq = 0
+  let moved = 0
   // 끼워 넣기는 Claude 처럼 다음 도구 호출에서야 붙고, 도구 호출 없이 턴이 끝나면 버려진다(false).
   let box: { text: string; done: (attached: boolean) => void }[] = []
   const drain = (attached: boolean) => {
@@ -226,6 +244,16 @@ export const fakeHost = (
     turns,
     injected,
     toolCall: () => drain(true),
+    runTool: async kind => {
+      const id = ++toolSeq
+      tools.set(id, { kind, at: await clock.now() })
+
+      return () => {
+        if (!tools.delete(id)) return
+        drain(true)
+      }
+    },
+    backgrounded: () => moved,
     compacts,
     emit,
     failNextSubmit: (reason = 'submit failed') => void (failSubmit = reason),
@@ -253,6 +281,21 @@ export const fakeHost = (
 
       return () => void listeners.delete(l)
     },
+  }
+  // 실제 엔진처럼 조건부다: 턴이 돌고, 앞에서 도는 도구가 모두 셸 명령이고, 가장 오래된 것이 문턱을 넘었을 때만 넘긴다.
+  // 넘기면 그 턴은 끝나고(끊김) 걸린 끼워 넣기는 붙지 않는다.
+  if (opts.background ?? true) {
+    host.moveShellToBackground = async minRunMs => {
+      const now = await clock.now()
+      const list = [...tools.values()]
+      if (!running || list.length === 0 || list.some(t => t.kind !== 'shell')) return false
+      if (now - Math.min(...list.map(t => t.at)) < minRunMs) return false
+      moved += list.length
+      tools.clear()
+      emit({ type: 'turn.complete' })
+
+      return true
+    }
   }
   if (features.midTurnInject) host.injectMidTurn = text => new Promise<boolean>(done => void box.push({ text, done }))
   if (features.compact) {

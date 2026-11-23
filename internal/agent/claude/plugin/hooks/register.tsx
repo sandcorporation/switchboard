@@ -5,6 +5,7 @@ import {
   claudeHost,
   createEmitter,
   createMidTurnBox,
+  createTurnWatch,
   compactEnv,
   emitSubmit,
   exportRole,
@@ -88,6 +89,8 @@ const NO_SURFACE_TEXT =
 // 포트 이벤트와 도구 뒤 끼워 넣기 상자는 세션에 하나다(register 가 한 번 돈다).
 const emitter = createEmitter()
 const box = createMidTurnBox()
+// 본 세션 턴과 앞에서 도는 도구(#526: 긴급 메일 때 오래 도는 Bash 를 백그라운드로 넘긴다).
+const watch = createTurnWatch()
 let board: Switchboard | undefined
 
 /** mod 상태(atom)를 코어의 Store 포트로. */
@@ -413,7 +416,7 @@ export const register: Register = on => {
   wireClaudeEvents(on, emitter, box, {
     warm: http => board?.warmRules({ http }),
     lines: async (http, e) => (await board?.ruleLines(toolCallOf(e.tool, e), e.agentId ?? '', { http })) ?? [],
-  })
+  }, watch)
   // 미분류 답 붙들기(#221): 이 역할의 패널 질문 답이 분류되지 않았으면 턴 끝을 막는다. 프로필 없는 세션은 board 가 end.
   wireStopHold(on, async http => (await board?.stopCheck({ http })) ?? { kind: 'end' })
   // 멈춤 감지(D8): API 오류 멈춤·사람 기다림을 코어로.
@@ -464,7 +467,7 @@ export const register: Register = on => {
     const se = await slotEnv($)
     const pe = await permissionEnv($)
     const mp = await mailProfilePath($)
-    board = createSwitchboard(claudeHost($, emitter, box), {
+    board = createSwitchboard(claudeHost($, emitter, box, watch), {
       log: text => void $.ui.log(text),
       warn: text => void $.ui.toast(text),
       permissions: { waitMs: permissionWaitConfig(pe.wait), bosses: bossRolesConfig(pe.bosses) },
