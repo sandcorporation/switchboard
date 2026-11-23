@@ -36,7 +36,7 @@ function wsStart(){
   }
   function load(){
     try{const s=L.parse(localStorage.getItem(KEY)||'',valid);if(s)return s}catch(e){}
-    return L.initial('menu:'+(curTab||'progress'));
+    return L.initial('menu:'+(curTab||'requests'));
   }
   function save(){try{localStorage.setItem(KEY,L.serialize(st))}catch(e){}}
   let st=load();

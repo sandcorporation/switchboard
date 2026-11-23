@@ -1,7 +1,7 @@
 // ---- 검색 (#481) ----
 // The top bar's search box: Enter searches mail, reports, questions and left
 // items (GET /api/admin/search), newest first; a row opens its record.
-const gsKinds={mail:'메일',report:'보고',question:'질문',left:'남긴 것'};
+const gsKinds={mail:'메일',report:'보고',question:'질문',left:'남긴 것',request:'지시'};
 let gsSeq=0,gsNext='';
 async function gsFetch(p){
   let r;
@@ -57,6 +57,7 @@ function gsOpenHit(h){
   else if(h.kind==='left')openMessage(String(h.directive));
   else if(h.kind==='report')openDetail('reports',h.id);
   else if(h.kind==='question')openDetail('questions',h.id);
+  else if(h.kind==='request')openRequest(h.id);
 }
 $('gsForm').addEventListener('submit',e=>{e.preventDefault();gsRun(false)});
 $('gsKind').onchange=()=>gsRun(false);
