@@ -39,9 +39,6 @@
 .ws-maxed .ws-cell:not(:has(.ws-max)),.ws-maxed .ws-gutter{display:none}
 .ws-maxed .ws-group:not(.ws-max){display:none}
 /* 노드 index (#446): 메뉴 | 노드 tabs atop the side menu; 노드 widens it. */
-.ws-idx{display:flex;flex-wrap:wrap;gap:2px;width:100%;margin-bottom:var(--space-1)}
-.ws-idx-tab{flex:1 1 auto;min-width:0;border:1px solid var(--color-line);border-radius:var(--radius);background:none;padding:.2rem .4rem;font-size:.8em;color:var(--color-muted)}
-.ws-idx-tab[aria-selected=true]{background:var(--color-accent-tint);border-color:var(--color-accent);color:var(--color-ink);font-weight:600}
 .ws-nodes[hidden],.ws-invite[hidden],.ws-invited[hidden],.lp-main[hidden]{display:none}
 .ws-nodes{flex:1 1 auto;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:var(--space-2);min-width:0;padding:4px 10px;font-size:.9em}
 .ws-nodes-bar{display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-2)}
@@ -221,3 +218,7 @@
    a narrow inactive tab shows its close button on hover or focus only. */
 .ws-x{flex:none}
 .ws-tablist .ws-tabcell:not(.on):not(:hover):not(:focus-within) .ws-x{display:none}
+/* A page section (#515) fills the centre; the right column steps aside. */
+.fr-full #ws,.fr-full .ws-side,.fr-full .fr-grip-r{display:none}
+.ws-on.fr-full .sc-app-main:not(.detail-wide)>.sc-app-page:not([hidden]){display:block}
+.ws-on.fr-full .sc-app-main:not(.has-detail){grid-template-columns:minmax(0,1fr)}

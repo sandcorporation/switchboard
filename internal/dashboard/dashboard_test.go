@@ -214,8 +214,7 @@ func TestDashboardTerminalsTabOnlyWithHosting(t *testing.T) {
 		`tabLoaders.terminals=loadTerminals;`,
 		`api('terminals')`,
 		`confirm(`,
-		`<button type="button" data-view="nodes" aria-pressed="false" hidden title="노드">노드</button>`,
-		`setViewButton('nodes').hidden=!hostingOn;`,
+		"$('tab-terminals').hidden=!hostingOn;if(setData)loadSettingsView();",
 		`if(!setViewHash[v]||((v==='nodes'||v==='groups')&&!hostingOn))v='qsettings';`,
 		`api('nodes')`,
 		`apiSend('DELETE','nodes/'+encodeURIComponent(v.name))`,
@@ -577,18 +576,20 @@ func TestDashboardSettingsDetail(t *testing.T) {
 	Page(w, httptest.NewRequest("GET", "/", nil))
 	body := w.Body.String()
 	for _, want := range []string{
-		`<div class="viewswitch" id="setViews" role="group" aria-label="설정 고르기"><button type="button" data-view="qsettings" aria-pressed="true" title="질문 설정">질문 설정</button><button type="button" data-view="roles" aria-pressed="false" title="역할">역할</button><button type="button" data-view="nodes" aria-pressed="false" hidden title="노드">노드</button><button type="button" data-view="groups" aria-pressed="false" hidden title="묶음">묶음</button><button type="button" data-view="reminders" aria-pressed="false" title="다시 알림">다시 알림</button></div>`,
-		`<table id="settingsTbl" class="stack list cards">`,
-		`<table id="refusalsTbl" class="stack list cards"><thead><tr><th>역할</th><th>맞은 대상</th><th>대신 물을 역할</th><th class="num">횟수</th><th>마지막 거절</th></tr></thead><tbody id="refusalsTable"></tbody></table>`,
-		"const [rows,refused]=await Promise.all([api('question-settings'),api('question-refusals')]);",
-		`<table id="rolesTbl" class="stack list cards">`,
-		`<table id="nodesTbl" class="stack list cards">`,
+		// #515: one list column of groups beside the item's detail; every
+		// earlier action stays in the detail.
+		`<section id="panel-settings" role="tabpanel" aria-labelledby="tab-settings" tabindex="0" class="lsec" hidden>`,
+		`<div class="ls-h"><h2>설정</h2>`, `<div id="settingsList" class="ls-list"></div>`,
+		"setGroup(items,'roles','역할',d.roles,", "setGroup(items,'nodes','기계',d.nodes,", "setGroup(items,'groups','묶음',d.groups,",
+		"setGroup(items,'logins','로그인',d.logins,", "setGroup(items,'qsettings','질문 설정',d.qs,", "setGroup(items,'reminders','다시 알림',",
+		"setRow('refusals:24h',['24시간'],'최근 거절',",
+		"const listTabs=['requests','questions','mail','reports','jobs','settings'];", "const fullTabs=['metrics'];",
+		"host?get(api('nodes')):null,host?get(api('terminals/work-groups')):null",
+		"api('question-refusals')", "api('logins')", "perms.title='바꾸기: switchboard admin allow';",
 		`<dialog id="setAdd" class="sc-drawer" aria-labelledby="setAddTitle">`,
-		"const setViewHash={qsettings:'settings',roles:'settings-roles',nodes:'settings-nodes',groups:'settings-groups',reminders:'settings-reminders'};",
+		"const setViewHash={qsettings:'settings',roles:'settings-roles',nodes:'settings-nodes',groups:'settings-groups',logins:'settings-logins',reminders:'settings-reminders'};",
 		"registerDetail('settings',{",
-		"detailRow(tr,'settings','qs:'+v.target);",
-		"detailRow(tr,'settings','role:'+v.role);",
-		"detailRow(tr,'settings','node:'+v.name);",
+		"setRow('qs:'+v.target,", "setRow('role:'+v.role,", "setRow('node:'+v.name,", "setRow('login:'+v.name,", "setRow('group:'+g.name,",
 		"back:id=>setViewHash[setKindView[id.slice(0,id.indexOf(':'))]]||'settings',",
 		"function closeDetail(){if(detailCur){const b=details[detailCur.tab].back;location.hash=b?b(detailCur.id):detailCur.tab}}",
 		"if(parts[0]==='settings')showSettingsView(setKindView[id.slice(0,id.indexOf(':'))]);",
@@ -601,7 +602,10 @@ func TestDashboardSettingsDetail(t *testing.T) {
 		"' 역할을 끊을까요? 이 토큰으로 접속한 세션이 모두 끊깁니다.'+(used?'\\n최근 사용: '",
 		"confirm(v.name+' 노드를 끊을까요? 연결이 바로 끊기고 이 노드의 토큰은 다시 쓸 수 없습니다.')",
 		"apiSend('DELETE','nodes/'+encodeURIComponent(v.name))",
-		"const s=await api('settings');",
+		"apiSend('POST','terminals/work-groups',{name:n,threshold:thresholdOf(th)})",
+		"apiSend('PUT','terminals/work-groups/'+encodeURIComponent(g.name),{threshold:thresholdOf(th)})",
+		"if(!confirm(g.name+' 묶음을 지울까요?'))return;",
+		"get(api('settings'))",
 		"$('setAdd').addEventListener('keydown',e=>{if(e.key==='Escape'){e.preventDefault();$('setAdd').close()}});",
 		"settings:loadSettingsView,",
 	} {
@@ -609,7 +613,7 @@ func TestDashboardSettingsDetail(t *testing.T) {
 			t.Errorf("dashboard missing %q", want)
 		}
 	}
-	for _, gone := range []string{`id="nodesBox"`, `id="rolesMsg"`, `id="nodesMsg"`, `function loadSettings(`} {
+	for _, gone := range []string{`id="nodesBox"`, `id="rolesMsg"`, `id="nodesMsg"`, `function loadSettings(`, `id="setViews"`, `id="groupForm"`} {
 		if strings.Contains(body, gone) {
 			t.Errorf("dashboard still has %q", gone)
 		}
@@ -638,16 +642,21 @@ func TestDashboardJobsTab(t *testing.T) {
 	Page(w, httptest.NewRequest("GET", "/", nil))
 	body := w.Body.String()
 	for _, want := range []string{
-		`<select id="jobRole" aria-label="역할" title="역할">`, `<select id="jobState" aria-label="상태" title="상태">`,
-		`<th>종류</th><th>이름</th><th>역할</th><th>기계</th><th>상태</th><th>시작</th><th>만료</th><th>마지막 줄</th>`,
+		// #515: one list column of groups (예약 · 돌고 있는 작업 · 끝난 작업),
+		// no tabs or splits; the actions sit in the item's detail.
+		`<section id="panel-jobs" role="tabpanel" aria-labelledby="tab-jobs" tabindex="0" class="lsec" hidden>`,
+		`<div class="ls-h"><h2>작업 · 예약</h2>`, `<select id="jobRole" aria-label="역할" title="역할">`,
+		`<input id="jobFind" type="search"`, "listGroup('jobs-sched','예약'", "listGroup('jobs-live','돌고 있는 작업'",
+		"listGroup('jobs-ended','끝난 작업'",
 		"api('jobs'", "apiSend('POST','jobs/'", "apiSend('DELETE','jobs/'", "jobs:loadJobs",
-		"api('schedules'", "apiSend('DELETE','schedules/'",
+		"api('schedules'", "apiSend('DELETE','schedules/'", "apiSend('POST','schedules/'+id+'/resume'",
+		"'/autos'", "apiSend('POST','terminals/'+encodeURIComponent(v.id)+'/autos/'+a.id+'/run')",
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("jobs tab missing %q", want)
 		}
 	}
-	for _, want := range []string{"if(!confirm('#'+j.id+' '+j.label+' 작업을 멈출까요?'))return;", "if(!confirm('#'+j.id+' '+j.label+' 기록을 지울까요? 되돌릴 수 없습니다.'))return;", "if(!confirm('#'+j.id+' '+j.label+' 예약을 지울까요? 되돌릴 수 없습니다.'))return;"} {
+	for _, want := range []string{"confirm('#'+j.id+' '+j.label+' 작업을 멈출까요?')?undefined:false", "confirm('#'+j.id+' '+j.label+' 기록을 지울까요? 되돌릴 수 없습니다.')?undefined:false", "confirm('#'+j.id+' '+j.label+' 예약을 지울까요? 되돌릴 수 없습니다.')?undefined:false"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("job stop and remove need a confirm: %q", want)
 		}
@@ -747,8 +756,8 @@ func TestDashboardWorkspaceLoadsWithHosting(t *testing.T) {
 	for _, want := range []string{
 		"if(hostingOn)loadWorkspace(Array.isArray(m.workspace_assets)?m.workspace_assets:[]);",
 		// A list screen (#514) stays in the page; the others are panels.
-		"$('panel-'+n).hidden=ws&&!listTab(n)?false:!on;",
-		"if(ws&&!listTab(name))ws.showMenu(name);",
+		"$('panel-'+n).hidden=ws&&!pageTab(n)?false:!on;",
+		"frameFull(fullTabs.includes(name));", "if(ws&&!pageTab(name))ws.showMenu(name);",
 		"frameSplit(listTab(name)&&!(name==='questions'&&questionView==='decisions'));",
 		// With hosting on, the list column shows only the list screen, and
 		// opening a terminal from the left pane leaves it for the workspace.
@@ -756,7 +765,7 @@ func TestDashboardWorkspaceLoadsWithHosting(t *testing.T) {
 		// A session card opens the session screen (#519) through the address.
 		"const h='#session='+encodeURIComponent(r.role);",
 		"if(r&&r.term&&ws){frameScreen('');ws.followRole('');ws.openTerm(r.term)}",
-		"wsLoading=loadAssets(list).then(()=>{ws=wsStart();if(listTab(curTab))frameSplit(true);if(curTab)frameScreen('menu');frameSessionTry()})",
+		"wsLoading=loadAssets(list).then(()=>{ws=wsStart();if(listTab(curTab))frameSplit(true);frameFull(fullTabs.includes(curTab));if(curTab)frameScreen('menu');frameSessionTry()})",
 		"if(tabShown(k))liveDirty.add(k);",
 		"if(ws)ws.live(kinds);",
 		"api('admin-actions?target='+id+'&limit=20').catch(()=>null)",
@@ -774,13 +783,13 @@ func TestDashboardWorkspaceLoadsWithHosting(t *testing.T) {
 	for _, want := range []string{
 		"main.before(box);main.hidden=true;",
 		"try{const s=L.parse(localStorage.getItem(KEY)||'',valid);if(s)return s}catch(e){}",
-		"return L.initial(curTab&&!listTab(curTab)?'menu:'+curTab:null);",
-		"if(p.startsWith('menu:'))return visibleTabs().includes(p.slice(5))&&!listTab(p.slice(5));",
+		"return L.initial(curTab&&!pageTab(curTab)?'menu:'+curTab:null);",
+		"if(p.startsWith('menu:'))return visibleTabs().includes(p.slice(5))&&!pageTab(p.slice(5));",
 		"window.matchMedia('(max-width:600px)')",
 		"if(m)main.append($('panel-'+m));",
 		"else{const id=p.slice(5),t=terms.get(id);if(t){termStop(t);terms.delete(id)}",
 		"const nodeIdx=wsNodeIndex({openSession(v){",
-		"$('lpFoot').prepend(idx);tabs.after(box);",
+		"return {live:live,show:show,el:box};", "nodes(){return nodeIdx},",
 		"apiSend('POST','node-invites',{name:invName.value.trim()})",
 		"if(!confirm(n.name+' 노드를 끊을까요?",
 		"if(!confirm(g.role+' 역할의 '+n.name+' 허가를 거둘까요?'))return;",
@@ -949,5 +958,37 @@ func TestDashboardFrame(t *testing.T) {
 		if !strings.Contains(css, want) {
 			t.Errorf("frame styles lack %q", want)
 		}
+	}
+}
+
+// The left pane's foot shows only 설정 (#515): 진행·세션 표·터미널 keep
+// their tabs and addresses but open from 설정's 화면 rows, and the 노드
+// index opens in 설정's detail instead of a 메뉴/노드 switch.
+func TestDashboardSettingsHoldsViews(t *testing.T) {
+	w := httptest.NewRecorder()
+	Page(w, httptest.NewRequest("GET", "/", nil))
+	body := w.Body.String()
+	for _, tab := range []string{"progress", "sessions", "terminals"} {
+		b := regexp.MustCompile(`<button[^>]*id="tab-` + tab + `"[^>]*>`).FindString(body)
+		if !strings.Contains(b, `class="nv nv-set"`) {
+			t.Errorf("tab %s button %q is not a 설정 view", tab, b)
+		}
+	}
+	for _, want := range []string{
+		`.lp-more .nv-set{display:none}`,
+		`const setTabs=['progress','sessions','terminals'];`,
+		`setTabs.includes(name)?'settings':name;`,
+		`filter(n=>!$('tab-'+n).hidden&&!setTabs.includes(n))`,
+		`setGroup(items,'views','화면',views,setViewRow);`,
+		`const go=()=>{location.hash=x[0]};`,
+		`if(ws&&ws.nodes)views.push(['nodes','노드','노드 → 세션',true]);`,
+		`view:(v,box)=>{const n=ws.nodes();box.append(n.el);n.show()}`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("page missing %q", want)
+		}
+	}
+	if src := workspaceSource(t); strings.Contains(src, "ws-idx") || strings.Contains(src, "lpFoot") {
+		t.Error("the workspace still adds a 메뉴/노드 switch to the left pane")
 	}
 }

@@ -1,6 +1,5 @@
-// ---- 노드 색인 (#446): the workspace's second left index ----
-// The side menu gains two index tabs: 메뉴 (the tab list as it was) and 노드
-// (a node → session tree). A node row shows its state, version (marked when
+// ---- 노드 색인 (#446): a node → session tree ----
+// It shows as 설정 › 노드 (#515; it was the left pane's second index). A node row shows its state, version (marked when
 // below the server's), session count and last contact; opened, it shows the
 // agents' remaining usage, the roles granted on it with their directory
 // roots, its sessions and its admin actions. 노드 붙이기 makes a one-time
@@ -8,20 +7,8 @@
 // Runs on the page's globals (node, api, apiSend, setMsg, badge, when,
 // shortWhen, termRole, termSt, termStateText, detailHash) and wsNodes.
 function wsNodeIndex(opts){
-  const N=wsNodes,KEY='switchboard.workspace.index';
-  const html=document.documentElement,tabs=$('lpMain');
-  const idx=node('div','','ws-idx');idx.setAttribute('role','tablist');idx.setAttribute('aria-label','색인');
-  const box=node('section','','ws-nodes');box.id='wsNodes';box.setAttribute('role','tabpanel');box.setAttribute('aria-label','노드');box.hidden=true;
-  const btns={};
-  for(const [k,t] of [['menu','메뉴'],['nodes','노드']]){
-    const b=node('button',t,'ws-idx-tab');b.type='button';b.id='wsIdx-'+k;b.setAttribute('role','tab');
-    b.onclick=()=>show(k,true);btns[k]=b;idx.append(b);
-  }
-  idx.addEventListener('keydown',e=>{
-    if(e.key!=='ArrowLeft'&&e.key!=='ArrowRight'&&e.key!=='ArrowUp'&&e.key!=='ArrowDown')return;
-    e.preventDefault();show(cur==='menu'?'nodes':'menu',true);btns[cur].focus();
-  });
-  $('lpFoot').prepend(idx);tabs.after(box);
+  const N=wsNodes;
+  const box=node('section','','ws-nodes');box.id='wsNodes';box.setAttribute('aria-label','노드');
   const bar=node('div','','ws-nodes-bar');
   const addBtn=node('button','노드 붙이기');addBtn.type='button';
   const note=node('span','','muted');note.setAttribute('role','status');note.setAttribute('aria-live','polite');
@@ -54,17 +41,11 @@ function wsNodeIndex(opts){
     const cmd=node('code','switchboard node --host '+location.origin+' --join '+r.code,'ws-cmd');
     got.replaceChildren(head,code,copy,cmd);got.hidden=false;
   }
-  let cur='menu',stale=true,timer=0,serverVersion=null,last=null;
+  let stale=true,timer=0,serverVersion=null,last=null;
   const open=new Set(),msgs=new Map();
-  try{if(localStorage.getItem(KEY)==='nodes')cur='nodes'}catch(e){}
-  function show(k,store){
-    cur=k;
-    for(const [n,b] of Object.entries(btns)){const on=n===k;b.setAttribute('aria-selected',String(on));b.tabIndex=on?0:-1}
-    tabs.hidden=k!=='menu';box.hidden=k!=='nodes';
-    html.classList.toggle('ws-idx-nodes',k==='nodes');
-    if(store)try{localStorage.setItem(KEY,k)}catch(e){}
-    if(k==='nodes'&&stale)load();
-  }
+  // show loads the tree when it goes on screen (설정 › 노드, #515) and a
+  // change came while it was away.
+  function show(){if(stale)load()}
   async function load(){
     stale=false;
     if(!tree.childElementCount)note.textContent='불러오는 중…';
@@ -191,7 +172,7 @@ msgs.set(n.name,[g.role+' 허가를 거뒀습니다.','ok'])}
   // until the tab shows. A focused field keeps its text: the redraw waits.
   function live(kinds){
     if(!kinds.includes('terminals')&&!kinds.includes('settings'))return;
-    if(box.hidden){stale=true;return}
+    if(!box.isConnected){stale=true;return}
     if(!timer)timer=setTimeout(flush,300);
   }
   function flush(){
@@ -200,6 +181,5 @@ msgs.set(n.name,[g.role+' 허가를 거뒀습니다.','ok'])}
     if(a&&box.contains(a)&&a.matches('input')){timer=setTimeout(flush,2000);return}
     load();
   }
-  show(cur,false);
-  return {live:live,show:show};
+  return {live:live,show:show,el:box};
 }

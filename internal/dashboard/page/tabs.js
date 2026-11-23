@@ -3,6 +3,8 @@
 // tab's own 「새로 고침」 button reloads it. #33 sets tabLoaders.permissions and
 // #42 sets tabLoaders.questions / tabLoaders.settings (null = nothing to load).
 // The order is the left pane's (#510): the menu rows, then the foot.
+// setTabs open from 설정's 화면 rows; the left pane shows only 설정 (#515).
+const setTabs=['progress','sessions','terminals'];
 const tabNames=['requests','questions','permissions','rules','mail','reports','jobs','metrics','settings','progress','sessions','terminals'];
 const tabLoaders={requests:loadRequests,progress:null,sessions:loadSessions,reports:loadReports,jobs:loadJobs,metrics:null,mail:initMail,permissions:null,questions:null,rules:loadRules,settings:null};
 const tabLoaded=new Set();
@@ -10,8 +12,16 @@ const tabLoaded=new Set();
 // list column and the open item's body beside it (html.fr-split). A row
 // shows its item at once; with hosting on the workspace steps aside while
 // one is on screen.
-const listTabs=['requests','questions','mail','reports'];
+const listTabs=['requests','questions','mail','reports','jobs','settings'];
 function listTab(name){return listTabs.includes(name)}
+// fullTabs (#515) are one body with no list column (지표): like a list
+// screen they take the centre, no panels or splits (html.fr-full).
+const fullTabs=['metrics'];
+function pageTab(name){return listTab(name)||fullTabs.includes(name)}
+function frameFull(on){
+  document.documentElement.classList.toggle('fr-full',on);
+  if(ws&&on)document.querySelector('.sc-app-page').hidden=false;
+}
 // frameSplit turns the list screen layout on or off.
 function frameSplit(on){
   document.documentElement.classList.toggle('fr-split',on);

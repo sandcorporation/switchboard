@@ -60,13 +60,14 @@ function wsStart(){
   const terms=new Map(),wraps=new Map(),titles=new Map(),items=new Map(),files=new Map(),trees=new Map();
   let autoFor=null,dragging=false;
   function valid(p){
-    // A list screen (listTab, #514) is never a panel: it takes the centre.
-    if(p.startsWith('menu:'))return visibleTabs().includes(p.slice(5))&&!listTab(p.slice(5));
+    // A list screen (listTab, #514) or a full one (지표, #515) is never a
+    // panel: it takes the centre.
+    if(p.startsWith('menu:'))return visibleTabs().includes(p.slice(5))&&!pageTab(p.slice(5));
     return (p.startsWith('term:')&&p.length>5)||!!S.itemOf(p)||!!F.fileOf(p);
   }
   function load(){
     try{const s=L.parse(localStorage.getItem(KEY)||'',valid);if(s)return s}catch(e){}
-    return L.initial(curTab&&!listTab(curTab)?'menu:'+curTab:null);
+    return L.initial(curTab&&!pageTab(curTab)?'menu:'+curTab:null);
   }
   function save(){try{localStorage.setItem(KEY,L.serialize(st))}catch(e){}}
   let st=load();
@@ -770,13 +771,13 @@ function wsStart(){
     if(mq.matches)drawer(false);
   }});
   for(const p of L.panels(st))if(p.startsWith('term:'))term(p.slice(5));
-  if(location.hash.length>1&&curTab&&!listTab(curTab))st=L.open(st,'menu:'+curTab);
+  if(location.hash.length>1&&curTab&&!pageTab(curTab))st=L.open(st,'menu:'+curTab);
   side.session=S.follow(side.session,st.focus);
   render();drawSess();loadNeeds();
   return {
     // showMenu opens (or goes to) the section of tab name.
     showMenu(name){
-      if(listTab(name))return;
+      if(pageTab(name))return;
       const p='menu:'+name,g=L.groupOf(st,p);
       if(g&&g.active===p&&(st.focus===p||!mq.matches)&&(!st.max||st.max===p))return;
       st=L.open(st,p);if(st.max&&st.max!==p)st=L.setMax(st,null);commit();
@@ -788,6 +789,8 @@ function wsStart(){
     // followRole points the column at a session that is not hosted (its
     // screen is on the centre, #519); '' follows the focused panel again.
     followRole(role){if(role===pageRole)return;pageRole=role;drawSess()},
+    // nodes is the 노드 index, drawn inside 설정 (#515).
+    nodes(){return nodeIdx},
     // shown says whether tab name's section is on screen now.
     shown(name){return shownPanels().includes('menu:'+name)},
     // termPaneFor stands in a detail body for the terminal screen: it opens

@@ -52,22 +52,24 @@ function showTab(name){
   if(name!=='terminals'&&$('termAdd').open)$('termAdd').close();
   if(name!=='settings'&&$('setAdd').open)$('setAdd').close();
   curTab=name;
-  // 권한 요청 and 규칙 sit in 답이 필요함 (#514): that row stays marked.
-  const mark=name==='permissions'||name==='rules'?'questions':name;
+  // 권한 요청 and 규칙 sit in 답이 필요함 (#514), 진행·세션 표·터미널 in 설정
+  // (#515): that row stays marked.
+  const mark=name==='permissions'||name==='rules'?'questions':setTabs.includes(name)?'settings':name;
   for(const n of tabNames){
     const on=n===name,t=$('tab-'+n);
     t.setAttribute('aria-selected',n===mark?'true':'false');
     t.tabIndex=n===mark?0:-1;
     // In the workspace every section shows wherever its panel is, except a
     // list screen's (listTab), which stays in the page.
-    $('panel-'+n).hidden=ws&&!listTab(n)?false:!on;
+    $('panel-'+n).hidden=ws&&!pageTab(n)?false:!on;
     if(n===mark)$('crumbTab').textContent=t.querySelector('.tab-name').textContent;
   }
   frameSplit(listTab(name)&&!(name==='questions'&&questionView==='decisions'));
   // A menu is on screen (#519): no session screen, no right column.
   frameScreen('menu');
+  frameFull(fullTabs.includes(name));
   loadTab(name);
-  if(ws&&!listTab(name))ws.showMenu(name);
+  if(ws&&!pageTab(name))ws.showMenu(name);
 }
 // loadTab loads a tab's section the first time it shows, and again when a
 // live change marked it stale meanwhile.
@@ -130,7 +132,7 @@ for(const n of tabNames)$('tab-'+n).onclick=()=>selectTab(n);
 // visibleTabs leaves out 터미널 unless hosting is on.
 function visibleTabs(){return tabNames.filter(n=>n!=='terminals'||hostingOn)}
 for(const tl of [$('tabs'),$('tabsMore')])tl.addEventListener('keydown',e=>{
-  const tabs=visibleTabs().filter(n=>!$('tab-'+n).hidden);
+  const tabs=visibleTabs().filter(n=>!$('tab-'+n).hidden&&!setTabs.includes(n));
   const i=tabs.findIndex(n=>$('tab-'+n)===document.activeElement);
   if(i<0)return;
   let j;
@@ -165,7 +167,8 @@ $('ruleForm').onsubmit=e=>{
   postRule(body,$('ruleAddMsg'),r=>{for(const id of ['ruleText','ruleSource','ruleWhenTool','ruleWhenCommand','ruleWhenPath'])$(id).value='';loadRules();openDetail('rules',String(r.id))});
 };
 $('reloadJobs').onclick=()=>loadJobs();
-$('jobRole').onchange=$('jobState').onchange=()=>loadJobs();
+$('jobRole').onchange=()=>loadJobs();
+$('jobFind').oninput=()=>{if(jobsLast)drawJobs(...jobsLast)};
 $('reloadQuestions').onclick=()=>{setMsg($('questionsMsg'),'');loadQuestions()};
 $('reloadSettings').onclick=()=>{setMsg($('settingsMsg'),'');loadSettingsView()};
 $('reset').onclick=()=>{$('thread').value='';$('task').value='';mailID='';$('search').value='';$('status').value='';$('role').value='';$('box').value='all';load()};
