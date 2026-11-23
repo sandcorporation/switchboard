@@ -1,5 +1,9 @@
 # switchboard 바뀐 것
 
+## 내 지시의 답을 남긴 것과 함께 끝내기 (#483)
+
+- CLI 가 v0.54.0 이상이면 내가 보낸 지시의 답 메일에는 「답하고 끝내기」 줄 대신 `complete <답> --left "…"`(되풀이) 또는 `--left-none` 한 줄을 낸다. 열린 지시는 끝나고 남긴 것이 그 장부에 들어가며, 이미 끝난 지시의 답이면 남긴 것을 장부에 더하라고 한다. 낮으면 지금처럼 `close <답>`.
+
 ## switchboard 저장소로 옮김 (#477)
 
 - 소스가 switchboard 저장소 `internal/agent/claude/plugin/` 으로 왔다(원본: dev-kit `plugins/switchboard`, 커밋 cf290d4196009690a9e1c77592ebc63761386e80, 플러그인 0.19.0). 이제 플러그인 판은 CLI·서버 릴리스 태그와 같다: CLI 바이너리가 이 폴더를 싣고, `switchboard plugin install` 이 풀 때 `plugin.json` 의 `version` 을 제 판으로 찍는다. 저장소의 `version` 은 자리 값이다.

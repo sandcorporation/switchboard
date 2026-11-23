@@ -222,6 +222,8 @@ export const MAIL_TURN_MAX = 8000
 export const MAIL_TAIL_MIN_VERSION = '0.32.0'
 /** 남긴 것 꼬리(`--left …`·`--left-none`, #470)를 내는 CLI 판 문턱. 낮으면 MAIL_TAIL_MIN_VERSION 의 꼬리. */
 export const MAIL_LEFT_MIN_VERSION = '0.51.0'
+/** 내가 보낸 지시의 답을 `complete <답> --left …` 로 끝내는 꼬리(#483)를 내는 CLI 판 문턱. 낮으면 `close <답>`. */
+export const MAIL_ANSWER_LEFT_MIN_VERSION = '0.54.0'
 
 /** 세션에 넣을 일반 메일 한 통. body 가 undefined 면 본문을 받지 못했다(옛 꼴: ID 만). */
 export type MailItem = { id: number; sender?: string; subject?: string; to: string; body?: string }
@@ -238,8 +240,12 @@ const indent = (body: string) =>
  * newTail 이면 답하기·끝내기 꼬리를(leftTail 이면 남긴 것 적는 법까지), 아니면 옛 꼬리(열린 지시의 답 안내만)를 붙인다.
  * 본문을 하나도 못 받았고 옛 꼬리면 announce 와 같다.
  */
-export const mailTurn = (items: readonly MailItem[], o: { open?: ReadonlyMap<number, number>; newTail?: boolean; leftTail?: boolean } = {}): string => {
+export const mailTurn = (
+  items: readonly MailItem[],
+  o: { open?: ReadonlyMap<number, number>; done?: ReadonlyMap<number, number>; newTail?: boolean; leftTail?: boolean; answerLeftTail?: boolean } = {},
+): string => {
   const open = o.open ?? new Map<number, number>()
+  const done = o.done ?? new Map<number, number>()
   const blocks: string[] = []
   const missing: number[] = []
   let used = 0
@@ -259,18 +265,36 @@ export const mailTurn = (items: readonly MailItem[], o: { open?: ReadonlyMap<num
     }
   }
   if (missing.length > 0) blocks.push(`메일 ${missing.map(i => `#${i}`).join(', ')} 을 읽고 처리하라(switchboard read <ID>).`)
-  const answers = items.flatMap(m => {
-    const n = open.get(m.id)
+  const pairs = (of: ReadonlyMap<number, number>) =>
+    items.flatMap(m => {
+      const n = of.get(m.id)
 
-    return n === undefined ? [] : [{ m: m.id, n }]
-  })
+      return n === undefined ? [] : [{ m: m.id, n }]
+    })
+  const answers = pairs(open)
+  // 내가 보낸 지시의 답(#483): 답하고 끝내기 줄 대신 서버가 받는 명령을 한 줄씩 낸다.
+  const answerLeft = o.leftTail === true && o.answerLeftTail === true
+  const general = answerLeft ? items.filter(m => !open.has(m.id) && !done.has(m.id)) : items
   const tail = o.newTail
     ? [
-        (id =>
-          o.leftTail
-            ? `답하고 끝내기: switchboard reply ${id} --complete --left "…"(남긴 것마다 되풀이) 또는 --left-none / 답 없이 끝내기: switchboard complete ${id} --left-none`
-            : `답하고 끝내기: switchboard reply ${id} --complete … / 답 없이 끝내기: switchboard complete ${id}`)(items.length === 1 ? String(items[0]!.id) : '<ID>'),
-        ...answers.map(({ m, n }) => `메일 #${m} 은 지시 #${n} 의 답이다. 끝났으면 switchboard close ${m}`),
+        ...(general.length === 0
+          ? []
+          : [
+              (id =>
+                o.leftTail
+                  ? `답하고 끝내기: switchboard reply ${id} --complete --left "…"(남긴 것마다 되풀이) 또는 --left-none / 답 없이 끝내기: switchboard complete ${id} --left-none`
+                  : `답하고 끝내기: switchboard reply ${id} --complete … / 답 없이 끝내기: switchboard complete ${id}`)(general.length === 1 ? String(general[0]!.id) : '<ID>'),
+            ]),
+        ...answers.map(({ m, n }) =>
+          answerLeft
+            ? `메일 #${m} 은 지시 #${n} 의 답이다. 끝났으면 switchboard complete ${m} --left "…"(남긴 것마다 되풀이) 또는 --left-none — 지시 #${n} 이 끝나고 남긴 것은 그 장부에 들어간다`
+            : `메일 #${m} 은 지시 #${n} 의 답이다. 끝났으면 switchboard close ${m}`,
+        ),
+        ...(answerLeft
+          ? pairs(done).map(
+              ({ m, n }) => `메일 #${m} 은 끝난 지시 #${n} 의 답이다. 남긴 것이 있으면 switchboard complete ${m} --left "…"(남긴 것마다 되풀이)로 지시 장부에 더하고, 없으면 switchboard complete ${m}`,
+            )
+          : []),
       ]
     : answers.map(({ m, n }) => `메일 #${m} 은 지시 #${n} 의 답이다. #${n} 은 아직 열려 있다 — 끝났으면 \`switchboard close ${n}\`, 더 시킬 것이 있으면 reply.`)
 
@@ -383,6 +407,8 @@ export const createMailbox = (host: AgentHost, opts: MailboxOptions): Mailbox =>
   let queued: number[] = []
   /** 일반 메일 id → 그 답이 닫지 않은(open) 지시 id. */
   const openDirective = new Map<number, number>()
+  /** 일반 메일 id → 그 답이 가리키는, 이미 끝난(done) 내 지시 id(#483). */
+  const doneDirective = new Map<number, number>()
   /** 기다리는 일반 메일의 머리(보낸이·제목). */
   const meta = new Map<number, MailEvent>()
   /**
@@ -394,11 +420,15 @@ export const createMailbox = (host: AgentHost, opts: MailboxOptions): Mailbox =>
   const readVersion = opts.cliVersion ?? opts.slot?.cliVersion
   const cliVersion = readVersion === undefined ? undefined : cachedCliVersion(readVersion, clock)
   /** 어느 꼬리를 내는가: CLI 가 MAIL_TAIL_MIN_VERSION 이상이면 새 꼬리, MAIL_LEFT_MIN_VERSION 이상이면 남긴 것까지. 못 읽으면 옛 꼬리. */
-  const tails = async (): Promise<{ newTail: boolean; leftTail: boolean }> => {
+  const tails = async (): Promise<{ newTail: boolean; leftTail: boolean; answerLeftTail: boolean }> => {
     const v = await cliVersion?.()
-    if (v === undefined) return { newTail: false, leftTail: false }
+    if (v === undefined) return { newTail: false, leftTail: false, answerLeftTail: false }
 
-    return { newTail: versionAtLeast(v, MAIL_TAIL_MIN_VERSION), leftTail: versionAtLeast(v, MAIL_LEFT_MIN_VERSION) }
+    return {
+      newTail: versionAtLeast(v, MAIL_TAIL_MIN_VERSION),
+      leftTail: versionAtLeast(v, MAIL_LEFT_MIN_VERSION),
+      answerLeftTail: versionAtLeast(v, MAIL_ANSWER_LEFT_MIN_VERSION),
+    }
   }
   /** 돌고 있는 일의 세대. stop·다시 잇기 때 올려 늦게 온 응답을 버린다. */
   let gen = 0
@@ -561,6 +591,7 @@ export const createMailbox = (host: AgentHost, opts: MailboxOptions): Mailbox =>
         queued.push(e.id)
         meta.set(e.id, e)
         if (e.answers_directive?.state === 'open') openDirective.set(e.id, e.answers_directive.id)
+        else if (e.answers_directive !== undefined) doneDirective.set(e.id, e.answers_directive.id)
       }
     }
     if (body.cursor > (cursor ?? -1)) cursor = body.cursor
@@ -885,10 +916,11 @@ export const createMailbox = (host: AgentHost, opts: MailboxOptions): Mailbox =>
             ...(body === undefined ? {} : { body }),
           }
         })
-        await host.submitTurn(mailTurn(items, { open: openDirective, ...(await tails()) }))
+        await host.submitTurn(mailTurn(items, { open: openDirective, done: doneDirective, ...(await tails()) }))
         const got = send.filter(i => bodies.has(i))
         for (const m of send) {
           openDirective.delete(m)
+          doneDirective.delete(m)
           meta.delete(m)
           bodies.delete(m)
         }

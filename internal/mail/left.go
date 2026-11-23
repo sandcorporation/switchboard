@@ -366,3 +366,44 @@ func OpenLeft(q *sql.DB) ([]wire.LeftItem, error) {
 	}
 	return out, rows.Err()
 }
+
+// leftElsewhere is why complete N --left is refused when N neither ends a
+// directive nor answers one role sent, with the command to give instead,
+// its numbers filled in (#483).
+func (s *Service) leftElsewhere(role string, m wire.Message) string {
+	const head = "--left goes to a directive's ledger, and complete #%d records into none: "
+	plain := fmt.Sprintf("complete %d (without --left) marks it complete", m.ID)
+	d, ok := s.directiveAbove(m)
+	if !ok {
+		return fmt.Sprintf(head+"it answers no directive; %s", m.ID, plain)
+	}
+	ended := s.ended(d.ID)
+	switch {
+	case d.Sender == role && ended, d.Recipient == role && ended:
+		return fmt.Sprintf(head+`directive #%d has ended, so use left add %d "ITEM" (repeatable)`, m.ID, d.ID, d.ID)
+	case d.Sender == role:
+		return fmt.Sprintf(head+`to end directive #%d, use close %d --left "ITEM" (repeatable) or --left-none`, m.ID, d.ID, d.ID)
+	case d.Recipient == role:
+		return fmt.Sprintf(head+`to end directive #%d, use reply %d --complete --left "ITEM" or complete %d --left "ITEM" (repeatable)`, m.ID, d.ID, d.ID, d.ID)
+	}
+	return fmt.Sprintf(head+"directive #%d is %s's to record what it left; %s", m.ID, d.ID, d.Sender, plain)
+}
+
+// directiveAbove is the directive m is or the nearest one up its reply
+// chain.
+func (s *Service) directiveAbove(m wire.Message) (wire.Message, bool) {
+	for i := 0; i < maxReplyChain; i++ {
+		if isDirectiveMail(m) {
+			return m, true
+		}
+		if m.ReplyTo == 0 {
+			return wire.Message{}, false
+		}
+		next, err := s.Get(m.ReplyTo)
+		if err != nil {
+			return wire.Message{}, false
+		}
+		m = next
+	}
+	return wire.Message{}, false
+}

@@ -1178,7 +1178,7 @@ func cliRegister(p parsedArgs) (int, error) {
 	defer resp.Body.Close()
 	b, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode >= 300 {
-		return 0, fmt.Errorf("server returned %s: %s", resp.Status, string(b))
+		return 0, fmt.Errorf("server returned %s: %s", resp.Status, strings.TrimSpace(string(b)))
 	}
 	fmt.Print(string(b))
 	return ExitOK, nil
@@ -1218,7 +1218,7 @@ func cliReply(c Config, req *http.Request, id string, jsonMode bool) (int, error
 		return code, nil
 	}
 	if resp.StatusCode >= 300 {
-		return 0, fmt.Errorf("server returned %s: %s", resp.Status, string(b))
+		return 0, fmt.Errorf("server returned %s: %s", resp.Status, strings.TrimSpace(string(b)))
 	}
 	var out wire.Message
 	if json.Unmarshal(b, &out) == nil {
@@ -1474,7 +1474,7 @@ func doRequestWith(c Config, req *http.Request, jsonMode bool, after func([]byte
 		return code, nil
 	}
 	if resp.StatusCode >= 300 {
-		return 0, fmt.Errorf("server returned %s: %s", resp.Status, string(b))
+		return 0, fmt.Errorf("server returned %s: %s", resp.Status, strings.TrimSpace(string(b)))
 	}
 	if after != nil {
 		after(b)

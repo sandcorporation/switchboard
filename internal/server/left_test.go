@@ -366,3 +366,95 @@ func TestProgressLeft(t *testing.T) {
 		t.Fatalf("after drop %+v", rp.Left)
 	}
 }
+
+// complete <answer> --left by the directive's sender records into the
+// directive's ledger (#483): it ends a directive still open, as close
+// <answer> does, and adds to one that has ended. Elsewhere --left is
+// refused with the command to give instead.
+func TestLeftCompleteAnswer(t *testing.T) {
+	t.Parallel()
+	s, clock := slotsWithRoles(t)
+	reply := func(d int64, body map[string]any) wire.Message {
+		t.Helper()
+		return apiMail(t, s, clock, "team/worker", fmt.Sprintf("/api/messages/%d/reply", d), body)
+	}
+	complete := func(role string, id int64, body any) *httptest.ResponseRecorder {
+		return callNew(s, "POST", fmt.Sprintf("/api/messages/%d/complete", id), role, body)
+	}
+	noReply := func(id int64) bool {
+		t.Helper()
+		var v bool
+		if err := s.db.QueryRow(`SELECT no_reply FROM messages WHERE id=?`, id).Scan(&v); err != nil {
+			t.Fatal(err)
+		}
+		return v
+	}
+
+	// The answer ended the directive (reply --complete): the items join
+	// its ledger.
+	d1 := directiveTo(t, s, clock, "ended by the answer")
+	a1 := reply(d1.ID, map[string]any{"body": "done", "done": true, "left_none": true})
+	if w := complete("hq/boss", a1.ID, wire.LeftNote{Left: []string{"a", "b"}}); w.Code != 200 {
+		t.Fatalf("complete <answer> --left: %d %s", w.Code, w.Body)
+	}
+	if done, _ := s.mailCompleted(a1.ID); !done {
+		t.Fatal("the answer is not complete")
+	}
+
+	// The answer left the directive open (a progress reply): the sender's
+	// complete ends it, as close does.
+	d2 := directiveTo(t, s, clock, "open after the answer")
+	a2 := reply(d2.ID, map[string]any{"body": "half"})
+	if w := complete("hq/boss", a2.ID, wire.LeftNote{Left: []string{"c"}}); w.Code != 200 {
+		t.Fatalf("complete <answer> --left, open directive: %d %s", w.Code, w.Body)
+	}
+	if !noReply(d2.ID) {
+		t.Fatal("the directive did not end")
+	}
+	d3 := directiveTo(t, s, clock, "none")
+	a3 := reply(d3.ID, map[string]any{"body": "half"})
+	if w := complete("hq/boss", a3.ID, wire.LeftNote{LeftNone: true}); w.Code != 200 {
+		t.Fatalf("complete <answer> --left-none: %d %s", w.Code, w.Body)
+	}
+	if !noReply(d3.ID) {
+		t.Fatal("--left-none did not end the directive")
+	}
+	// Already ended: --left-none adds nothing.
+	if w := complete("hq/boss", a1.ID, wire.LeftNote{LeftNone: true}); w.Code != 200 {
+		t.Fatalf("complete <answer> --left-none again: %d %s", w.Code, w.Body)
+	}
+
+	wantRows(t, s,
+		fmt.Sprintf("%d none none team/worker", d1.ID),
+		fmt.Sprintf("%d item open hq/boss a", d1.ID),
+		fmt.Sprintf("%d item open hq/boss b", d1.ID),
+		fmt.Sprintf("%d item open hq/boss c", d2.ID),
+		fmt.Sprintf("%d none none hq/boss", d3.ID),
+	)
+
+	// Refused, with the command to give instead.
+	refused := func(role string, id int64, want string) {
+		t.Helper()
+		w := complete(role, id, wire.LeftNote{Left: []string{"x"}})
+		if w.Code != 400 || !strings.Contains(w.Body.String(), want) {
+			t.Fatalf("complete #%d --left by %s: %d %s, want %q", id, role, w.Code, w.Body, want)
+		}
+	}
+	// The worker's own directive, ended: left add.
+	refused("team/worker", d1.ID, fmt.Sprintf(`left add %d "ITEM"`, d1.ID))
+	// A reply the worker got in the thread of an ended directive.
+	r1 := apiMail(t, s, clock, "hq/boss", fmt.Sprintf("/api/messages/%d/reply", a1.ID), map[string]any{"body": "thanks"})
+	refused("team/worker", r1.ID, fmt.Sprintf(`left add %d "ITEM"`, d1.ID))
+	// ... of a directive still open: end it with what is left.
+	d4 := directiveTo(t, s, clock, "still open")
+	a4 := reply(d4.ID, map[string]any{"body": "question"})
+	r4 := apiMail(t, s, clock, "hq/boss", fmt.Sprintf("/api/messages/%d/reply", a4.ID), map[string]any{"body": "answer"})
+	refused("team/worker", r4.ID, fmt.Sprintf(`complete %d --left "ITEM"`, d4.ID))
+	// The sender's close of an ended directive: left add with its number.
+	if w := callNew(s, "POST", fmt.Sprintf("/api/messages/%d/close", d1.ID), "hq/boss", wire.LeftNote{Left: []string{"x"}}); w.Code != 400 || !strings.Contains(w.Body.String(), fmt.Sprintf(`left add %d "ITEM"`, d1.ID)) {
+		t.Fatalf("close of an ended directive --left: %d %s", w.Code, w.Body)
+	}
+	if n := len(leftRows(t, s)); n != 5 {
+		t.Fatalf("refusals stored rows: %d", n)
+	}
+}

@@ -661,6 +661,10 @@ func (s *Service) Status(w http.ResponseWriter, r *http.Request, role string, id
 	// what is left.
 	var claim leftClaim
 	ending := false
+	// answered: complete of an answer to a directive role sent, with --left
+	// or --left-none, records into that directive's ledger (#483).
+	var answered int64
+	answeredEnding := false
 	if status == "complete" {
 		note, ok := leftNote(w, r)
 		if !ok {
@@ -672,19 +676,34 @@ func (s *Service) Status(w http.ResponseWriter, r *http.Request, role string, id
 			http.Error(w, msg, 400)
 			return
 		}
-		if len(claim.items) > 0 && !ending {
-			http.Error(w, "--left goes with the complete that ends a directive; this one has ended or is not a directive (left add N adds to a directive you ended)", 400)
-			return
+		if !ending && (len(claim.items) > 0 || claim.none) {
+			if d, ok := s.answeredDirective(role, m); ok {
+				answered, answeredEnding = d, !s.ended(d)
+			} else if len(claim.items) > 0 {
+				http.Error(w, s.leftElsewhere(role, m), 400)
+				return
+			}
 		}
 	}
 	e = store.InTx(r.Context(), s.db, func(tx *sql.Tx) error {
 		if _, err := tx.Exec(`INSERT INTO role_states(role,message_id,status,updated_at) VALUES(?,?,?,?) ON CONFLICT(role,message_id) DO UPDATE SET status=excluded.status,updated_at=excluded.updated_at`, role, id, status, time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
 			return err
 		}
-		if !ending {
-			return nil
+		switch {
+		case ending:
+			return recordLeft(tx, id, role, claim, s.now())
+		case answered != 0 && answeredEnding:
+			// As close <answer> does: the sender ends the directive.
+			if _, err := tx.Exec(`UPDATE messages SET no_reply=1 WHERE id=? AND no_reply=0`, answered); err != nil {
+				return err
+			}
+			return recordLeft(tx, answered, role, claim, s.now())
+		case answered != 0 && len(claim.items) > 0:
+			// The directive has ended: the items join its ledger, as
+			// left add does.
+			return insertItems(tx, answered, role, claim.items, s.now().UTC().Format(time.RFC3339Nano))
 		}
-		return recordLeft(tx, id, role, claim, s.now())
+		return nil
 	})
 	if e != nil {
 		http.Error(w, "update failed", 500)

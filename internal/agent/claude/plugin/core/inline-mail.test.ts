@@ -161,3 +161,36 @@ test('꼬리: 여러 통이면 ID 자리를 <ID> 로 둔다', async () => {
   await flush()
   expect(host.turns[0]).toContain(`${NEW_TAIL} <ID> --complete`)
 })
+
+test('꼬리: CLI 가 v0.54.0 이상이면 내 지시의 답은 complete <답> --left 로 끝내라고 한다(#483)', async () => {
+  const { host, mail } = await withCli(async () => 'switchboard v0.54.0\n')
+  const a = mail.send('normal', '', { id: 7, state: 'open' })
+  await flush()
+  expect(host.turns).toEqual([inlined([a], new Map([[a, 7]]), { newTail: true, leftTail: true, answerLeftTail: true })])
+  expect(host.turns[0]).toContain(`메일 #${a} 은 지시 #7 의 답이다. 끝났으면 switchboard complete ${a} --left "…"(남긴 것마다 되풀이) 또는 --left-none`)
+  // 답에는 reply --complete 꼬리를 내지 않는다(서버가 답의 reply --complete --left 를 거절한다).
+  expect(host.turns[0]).not.toContain(NEW_TAIL)
+})
+
+test('꼬리: 끝난 지시의 답은 complete <답> --left 로 지시 장부에 더하라고 한다(#483)', async () => {
+  const { host, mail } = await withCli(async () => 'switchboard v0.54.0\n')
+  host.emit({ type: 'turn.start' })
+  const a = mail.send('normal', '', { id: 7, state: 'done' })
+  const b = mail.send('normal', '')
+  await flush()
+  host.emit({ type: 'turn.complete' })
+  await flush()
+  expect(host.turns).toEqual([inlined([a, b], new Map(), { done: new Map([[a, 7]]), newTail: true, leftTail: true, answerLeftTail: true })])
+  const t = host.turns[0]!
+  expect(t).toContain(`메일 #${a} 은 끝난 지시 #7 의 답이다. 남긴 것이 있으면 switchboard complete ${a} --left "…"`)
+  // 답이 아닌 메일 한 통은 ID 를 채운 지금 꼬리.
+  expect(t).toContain(`${NEW_TAIL} ${b} --complete --left "…"`)
+})
+
+test('꼬리: CLI 가 v0.54.0 보다 낮으면 답은 close <답>, 끝난 지시의 답에는 줄이 없다(#483)', async () => {
+  const { host, mail } = await withCli(async () => 'switchboard v0.53.0\n')
+  const a = mail.send('normal', '', { id: 7, state: 'done' })
+  await flush()
+  expect(host.turns).toEqual([inlined([a], new Map(), { newTail: true, leftTail: true })])
+  expect(host.turns[0]).not.toContain('끝난 지시')
+})
