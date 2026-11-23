@@ -16,6 +16,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/sandcorporation/switchboard/internal/agent"
@@ -49,8 +50,14 @@ var _ agent.PluginInstaller = Adapter{}
 // user scope, and at a project's local or project scope where that
 // project's settings turn it on.
 func (Adapter) InstallPlugin(ctx context.Context, o agent.PluginOptions) (agent.PluginReport, error) {
-	return defaultInstaller().install(ctx, o)
+	in := defaultInstaller()
+	in.done = &installed
+	return in.install(ctx, o)
 }
+
+// installed holds the (folder, version, settings folder) this process
+// installed, for PluginOptions.Once.
+var installed sync.Map
 
 // PluginStatus reads `plugin list --json`.
 func (Adapter) PluginStatus(ctx context.Context, o agent.PluginOptions) (agent.PluginState, error) {
@@ -64,6 +71,8 @@ type installer struct {
 	look  func(string) (string, error)
 	// run runs the CLI exe with args in dir under env and returns stdout.
 	run func(ctx context.Context, exe, dir string, env []string, args ...string) ([]byte, error)
+	// done remembers the installs made (PluginOptions.Once); nil: none.
+	done *sync.Map
 }
 
 func defaultInstaller() installer {
@@ -182,6 +191,20 @@ func (in installer) open(o agent.PluginOptions) (session, bool) {
 
 func (in installer) install(ctx context.Context, o agent.PluginOptions) (agent.PluginReport, error) {
 	rep := agent.PluginReport{Where: configDir(o.Env)}
+	key := o.Dir + "\x00" + o.Version + "\x00" + rep.Where
+	if o.Once && in.done != nil {
+		if _, ok := in.done.Load(key); ok {
+			return rep, nil
+		}
+	}
+	rep, err := in.installAll(ctx, o, rep)
+	if err == nil && rep.Skipped == "" && in.done != nil {
+		in.done.Store(key, true)
+	}
+	return rep, err
+}
+
+func (in installer) installAll(ctx context.Context, o agent.PluginOptions, rep agent.PluginReport) (agent.PluginReport, error) {
 	s, ok := in.open(o)
 	if !ok {
 		rep.Skipped = "Claude Code not found (no " + Name + " on PATH)"

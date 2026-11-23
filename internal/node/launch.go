@@ -61,6 +61,15 @@ type Config struct {
 	// `node --allow-checks` or SWITCHBOARD_HOSTING_ALLOW_CHECKS=on. Off, the
 	// node refuses them.
 	AllowChecks bool
+	// Version is this binary's version and PluginDir the folder the
+	// adapters' carried plugins are unpacked under (<config dir>/plugins,
+	// #477): before a session of an adapter that carries a plugin launches,
+	// the plugin is brought to Version in the agent settings the session
+	// runs with. Empty PluginDir (SWITCHBOARD_PLUGIN=off): never.
+	Version   string
+	PluginDir string
+	// Logf logs what the node did on its own (nil: log.Printf).
+	Logf func(format string, args ...any)
 }
 
 // Host is what Resolve needs from the machine; Machine fills it from the OS.

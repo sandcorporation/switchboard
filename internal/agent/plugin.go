@@ -28,6 +28,10 @@ type PluginOptions struct {
 	// Env is the environment the agent's commands run with ("KEY=value"),
 	// which names the agent's user settings folder; nil: this process's.
 	Env []string
+	// Once skips the install when this process already installed this
+	// version into the same agent settings (a node launching many sessions);
+	// a failed or skipped install is tried again.
+	Once bool
 }
 
 // PluginReport is what an install did.

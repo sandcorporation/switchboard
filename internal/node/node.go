@@ -13,6 +13,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
+	"path/filepath"
+
 	"github.com/sandcorporation/switchboard/internal/agent"
 	"slices"
 	"strings"
@@ -344,6 +347,45 @@ func (n *Node) event(s *state, kind, actor string, exit *int) {
 	if len(s.events) > EventKeep {
 		s.events = slices.Delete(s.events, 0, len(s.events)-EventKeep)
 	}
+}
+
+// pluginTimeout bounds one plugin install before a launch.
+const pluginTimeout = 2 * time.Minute
+
+// installPlugin brings the carried plugin of r's adapter to this binary's
+// version in the agent settings the session runs with (env, the child's:
+// its settings folder variable decides where), once per version and
+// settings folder (#477). A failure is logged and recorded as a
+// plugin-failed event with its reason; the session launches anyway.
+func (n *Node) installPlugin(ctx context.Context, r Record, s *state, env []string) {
+	a := n.cfg.adapterFor(r)
+	p, ok := a.(agent.PluginInstaller)
+	if !ok || n.cfg.PluginDir == "" {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, pluginTimeout)
+	defer cancel()
+	rep, err := p.InstallPlugin(ctx, agent.PluginOptions{Version: n.cfg.Version, Dir: filepath.Join(n.cfg.PluginDir, a.Name()), Env: env, Once: true})
+	switch {
+	case err != nil:
+		reason := err.Error()
+		if len(reason) > 300 {
+			reason = reason[:300] + "…"
+		}
+		n.logf("node: %s: %s plugin install failed, launching anyway: %v", TerminalName(r.ID), a.Name(), err)
+		n.event(s, wire.HostedEventPluginFailed, wire.HostedActorNode, nil)
+		s.events[len(s.events)-1].Reason = reason
+	case len(rep.Changes) > 0:
+		n.logf("node: %s plugin: %s (changed %s)", a.Name(), strings.Join(rep.Changes, "; "), rep.Where)
+	}
+}
+
+func (n *Node) logf(format string, args ...any) {
+	if n.cfg.Logf != nil {
+		n.cfg.Logf(format, args...)
+		return
+	}
+	log.Printf(format, args...)
 }
 
 // exitEvent records the end of a run that started at started with code:
@@ -742,6 +784,7 @@ func (n *Node) launch(ctx context.Context, r Record, s *state, kind, actor strin
 	if spec.Rows <= 0 {
 		spec.Rows = DefaultRows
 	}
+	n.installPlugin(ctx, r, s, spec.Env)
 	if err := n.backend.Launch(ctx, spec); err != nil {
 		s.Observed = ObservedStopped
 		return fmt.Errorf("node: launch %s: %w", spec.Name, err)

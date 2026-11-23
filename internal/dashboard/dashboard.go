@@ -2086,7 +2086,7 @@ function termActs(v,box){
 function termDir(d){const s=node('span','‎'+d+'‎','dir');s.title=d;return s}
 const termLogKind={attach:'연결',detach:'끊음',input:'입력'};
 const termLogMode={view:'보기',input:'입력'};
-const termEventKind={start:'시작',restart:'재시작',stop:'정지',crash:'비정상 종료',exit:'종료',adopt:'이어받음',add:'추가',remove:'제거'};
+const termEventKind={start:'시작',restart:'재시작',stop:'정지',crash:'비정상 종료',exit:'종료',adopt:'이어받음','plugin-failed':'플러그인 설치 실패',add:'추가',remove:'제거'};
 const termEventActor={admin:'관리자',policy:'재시작 규칙',node:'노드'};
 // termTable is a stack table with head labels and one row per item (rowOf: values and classes).
 function termTable(id,labels,items,rowOf){
@@ -2109,7 +2109,7 @@ async function termHistory(v,box){
   // them (a boss role's) leaves the section out.
   const [events,rows,acts]=await Promise.all([api('terminals/'+id+'/events'),api('terminals/'+id+'/log'),api('admin-actions?target='+id+'&limit=20').catch(()=>null)]);
   box.append(dl(pairs),node('h3','실행'));
-  box.append(termTable('termEvents',['시각','종류','종료 코드','재시작','요청'],events,e=>[[when(e.at),termEventKind[e.kind]||e.kind,e.exit_code===null||e.exit_code===undefined?'-':String(e.exit_code),String(e.restarts||0),termEventActor[e.actor]||e.actor||'-'],['','','num','num','']]));
+  box.append(termTable('termEvents',['시각','종류','종료 코드','재시작','요청'],events,e=>[[when(e.at),(termEventKind[e.kind]||e.kind)+(e.reason?' · '+e.reason:''),e.exit_code===null||e.exit_code===undefined?'-':String(e.exit_code),String(e.restarts||0),termEventActor[e.actor]||e.actor||'-'],['','','num','num','']]));
   box.append(node('h3','접속'));
   box.append(termTable('termLog',['시각','관리자','종류','방식','주소','바이트'],rows,e=>[[when(e.at),e.admin_user,termLogKind[e.kind]||e.kind,termLogMode[e.mode]||e.mode||'-',e.ip||'-',e.kind==='input'?String(e.bytes):'-'],['','','','','mono','num']]));
   if(Array.isArray(acts)){

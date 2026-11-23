@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"testing/fstest"
 
@@ -326,5 +327,32 @@ func TestInstallPluginWithClaudeCode(t *testing.T) {
 	b, err := os.ReadFile(filepath.Join(cfg, "settings.json"))
 	if err != nil || !strings.Contains(string(b), `"switchboard@switchboard": true`) {
 		t.Fatalf("user settings %s (%v)", b, err)
+	}
+}
+
+// Once: a node launching many sessions installs a version into the same
+// settings folder once; another settings folder, or a failure, runs again.
+func TestInstallPluginOnce(t *testing.T) {
+	dir := t.TempDir()
+	f := &fakeCLI{markets: map[string]string{}}
+	in := newTest(f)
+	in.done = &sync.Map{}
+	o := agent.PluginOptions{Version: "v0.52.0", Dir: dir, Env: []string{configDirEnv + "=/a"}, Once: true}
+	for range 2 {
+		if _, err := in.install(context.Background(), o); err != nil {
+			t.Fatal(err)
+		}
+	}
+	n := len(f.calls)
+	if _, err := in.install(context.Background(), o); err != nil || len(f.calls) != n {
+		t.Fatalf("installed again: %v, %d calls after %d", err, len(f.calls), n)
+	}
+	o.Env = []string{configDirEnv + "=/b"}
+	if _, err := in.install(context.Background(), o); err != nil || len(f.calls) == n {
+		t.Fatalf("another settings folder not installed: %v", err)
+	}
+	o.Once, n = false, len(f.calls)
+	if _, err := in.install(context.Background(), o); err != nil || len(f.calls) == n {
+		t.Fatalf("without Once nothing ran: %v", err)
 	}
 }
