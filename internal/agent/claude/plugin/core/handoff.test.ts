@@ -49,14 +49,15 @@ test('따옴표: 작은따옴표·줄바꿈·heredoc·$·백틱이 셸 인자 �
   expect(shellWords(shellQuote("'"))).toEqual(["'"])
 })
 
-test('백그라운드 Bash: job run --wait --label 앞 60자 -- 셸 -c 원래 명령', () => {
-  const cmd = jobRunCommand('switchboard', 'bash', NASTY)
-  const w = shellWords(cmd)
-  expect(w.slice(0, 5)).toEqual(['switchboard', 'job', 'run', '--wait', '--label'])
-  expect(w[5]).toBe(handoffLabel(NASTY))
-  expect(w[5].length).toBe(60)
-  expect(w[5]).not.toContain('\n')
-  expect(w.slice(6)).toEqual(['--', 'bash', '-c', NASTY])
+test('백그라운드 Bash: 라벨 없으면 --label 없이 job run --wait -- 셸 -c 원래 명령', () => {
+  const w = shellWords(jobRunCommand('switchboard', 'bash', NASTY))
+  expect(w).toEqual(['switchboard', 'job', 'run', '--wait', '--', 'bash', '-c', NASTY])
+  expect(shellWords(jobRunCommand('switchboard', 'bash', 'x', '  '))).not.toContain('--label')
+})
+
+test('백그라운드 Bash: 라벨을 주면 --label 로 넘긴다', () => {
+  const w = shellWords(jobRunCommand('switchboard', 'bash', NASTY, '빌드 \n 돌리기'))
+  expect(w).toEqual(['switchboard', 'job', 'run', '--wait', '--label', '빌드 돌리기', '--', 'bash', '-c', NASTY])
 })
 
 test('Monitor: watch start --attach --no-extend --expires <ms>ms --label 설명 -- 셸 -c 원래 명령', () => {

@@ -138,7 +138,7 @@ export function wireHandoff(on: On): void {
     try {
       if (e.run_in_background === true && typeof e.command === 'string' && !alreadyHanded(e.command)) {
         const r = await ready($, e.agentId)
-        if (r.kind === 'ok') command = jobRunCommand(r.cli, r.shell, e.command)
+        if (r.kind === 'ok') command = jobRunCommand(r.cli, r.shell, e.command, typeof e.description === 'string' ? e.description : undefined)
         else if (r.kind === 'fail') line = notHandedLine(r.why)
       }
     } catch (err) {
