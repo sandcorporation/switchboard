@@ -169,9 +169,10 @@ func classify(name, verb, stderr string, err error) error {
 	switch {
 	case strings.Contains(stderr, "duplicate session"):
 		return fmt.Errorf("%s: %w", name, term.ErrSessionExists)
+	case strings.Contains(stderr, "server exited unexpectedly"):
+		return fmt.Errorf("%s: %w (%w)", name, term.ErrNoSession, errServerGone)
 	case strings.Contains(stderr, "can't find"),
 		strings.Contains(stderr, "no server running"),
-		strings.Contains(stderr, "server exited unexpectedly"),
 		strings.Contains(stderr, "error connecting to"),
 		strings.Contains(stderr, "no current"):
 		return fmt.Errorf("%s: %w", name, term.ErrNoSession)
@@ -181,6 +182,16 @@ func classify(name, verb, stderr string, err error) error {
 	}
 	return fmt.Errorf("tmux %s %s: %s", verb, name, stderr)
 }
+
+// errServerGone marks a command that reached a tmux server on its way down:
+// kill-session of the last session returns before that server has closed its
+// socket, so a client connecting in between joins the dying server and is
+// dropped with it.
+var errServerGone = errors.New("tmux server went down")
+
+// launchTries bounds Launch's retries against a server going down; each
+// later try starts a fresh server once the old one is gone.
+const launchTries = 5
 
 // target is an exact-match tmux target: "sb-1" alone would also match
 // "sb-12" by prefix.
@@ -206,10 +217,23 @@ func (b *Backend) Launch(ctx context.Context, s term.Spec) error {
 	}
 	args = append(args, "--", "exec "+shellQuote(s.Argv),
 		";", "set-option", "-w", "-t", target(s.Name), "window-size", "manual")
-	if _, err := b.run(ctx, s.Name, args...); err != nil {
-		return fmt.Errorf("launch: %w", err)
+	// Forgetting the last session makes the server exit; a Launch right
+	// after it can reach that server before it is gone (#426). The session
+	// went down with the server, so trying again is safe.
+	for try := 1; ; try++ {
+		_, err := b.run(ctx, s.Name, args...)
+		if err == nil {
+			return nil
+		}
+		if !errors.Is(err, errServerGone) || try == launchTries {
+			return fmt.Errorf("launch: %w", err)
+		}
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("launch: %w", ctx.Err())
+		case <-time.After(time.Duration(try) * 20 * time.Millisecond):
+		}
 	}
-	return nil
 }
 
 func shellQuote(argv []string) string {

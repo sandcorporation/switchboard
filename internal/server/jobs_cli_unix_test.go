@@ -217,23 +217,26 @@ func TestJobExpiresAtItsDeadline(t *testing.T) {
 	}
 }
 
-// The runner follows an expiry the server moved forward (auto-extension).
+// The runner follows an expiry the server moved (auto-extension). The job
+// starts with a far expiry and the server brings it near: a short first
+// expiry would race the runner's start, and under load the job expired
+// before the test saw it running (#429).
 func TestJobRunnerFollowsAMovedExpiry(t *testing.T) {
 	t.Parallel()
 	h := jobHarness(t)
-	h.s.admin.ProxyToken = "proxy-secret"
-	out := h.mustRun(fastPoll, "job", "run", "--expires", "2s", "--", "sh", "-c", "sleep 30")
+	out := h.mustRun(fastPoll, "job", "run", "--expires", "1h", "--", "sh", "-c", "sleep 30")
 	id, _ := strconv.ParseInt(out, 10, 64)
 	h.running(id)
-	if _, err := h.s.db.Exec(`UPDATE jobs SET expires_at=? WHERE id=?`, time.Now().Add(time.Hour).UTC().Format(time.RFC3339Nano), id); err != nil {
+	moved := time.Now().Add(time.Second)
+	if _, err := h.s.db.Exec(`UPDATE jobs SET expires_at=? WHERE id=?`, moved.UTC().Format(time.RFC3339Nano), id); err != nil {
 		t.Fatal(err)
 	}
-	time.Sleep(2500 * time.Millisecond)
-	if j, _ := h.s.jobs().Get(id); j.State != wire.JobRunning {
-		t.Fatalf("job ended at its first expiry: %+v", j)
+	j := h.ended(id)
+	if j.State != wire.JobExpired || *j.ExitCode != 128+int(syscall.SIGTERM) {
+		t.Fatalf("job at the moved expiry: %+v", j)
 	}
-	adminWrite(h.s, "POST", "/api/admin/jobs/"+out+"/stop", "")
-	if j := h.ended(id); j.State != wire.JobStopped {
-		t.Fatalf("job: %+v", j)
+	if j.EndedAt.Before(moved) {
+		t.Fatalf("job ended %s, before the moved expiry %s", j.EndedAt, moved)
 	}
+	h.runnerGone(id)
 }

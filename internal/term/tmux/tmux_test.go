@@ -214,6 +214,64 @@ func TestClassifyServerGoingDown(t *testing.T) {
 	}
 }
 
+// goingDown puts a tmux in front of b whose first fails new-session calls
+// meet a server on its way down, as a Launch right after the last Forget
+// can (#426). It returns the file counting new-session calls.
+func goingDown(t *testing.T, b *Backend, fails int) string {
+	t.Helper()
+	dir := t.TempDir()
+	calls := filepath.Join(dir, "calls")
+	script := fmt.Sprintf(`#!/bin/sh
+for a; do
+	if [ "$a" = new-session ]; then
+		echo x >> %[1]q
+		if [ "$(wc -l < %[1]q)" -le %[2]d ]; then
+			echo "server exited unexpectedly" >&2
+			exit 1
+		fi
+		break
+	fi
+done
+exec %[3]q "$@"
+`, calls, fails, b.bin)
+	wrapper := filepath.Join(dir, "tmux")
+	if err := os.WriteFile(wrapper, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	b.bin = wrapper
+	return calls
+}
+
+func newSessionCalls(t *testing.T, calls string) int {
+	t.Helper()
+	b, _ := os.ReadFile(calls)
+	return bytes.Count(b, []byte("\n"))
+}
+
+// A Launch that meets the server on its way down tries again on a fresh
+// one instead of failing with "no such session" (#426).
+func TestLaunchOutlastsAServerGoingDown(t *testing.T) {
+	b := newBackend(t, 0)
+	calls := goingDown(t, b, 2)
+	launch(t, b, term.Spec{Name: "sb-1", Argv: []string{"sleep", "30"}, Cols: 10, Rows: 2})
+	if i, ok := info(t, b, "sb-1"); !ok || !i.Alive {
+		t.Fatalf("sb-1 after launch: %+v (%v)", i, ok)
+	}
+	if n := newSessionCalls(t, calls); n != 3 {
+		t.Errorf("new-session ran %d times, want 3", n)
+	}
+
+	b = newBackend(t, 0)
+	calls = goingDown(t, b, 100)
+	err := b.Launch(ctx(t), term.Spec{Name: "sb-1", Argv: []string{"sleep", "30"}, Cols: 10, Rows: 2})
+	if !errors.Is(err, term.ErrNoSession) {
+		t.Errorf("launch against a server always going down: %v", err)
+	}
+	if n := newSessionCalls(t, calls); n != launchTries {
+		t.Errorf("new-session ran %d times, want %d", n, launchTries)
+	}
+}
+
 func TestNamesMatchExactly(t *testing.T) {
 	b := newBackend(t, 0)
 	launch(t, b, term.Spec{Name: "sb-12", Argv: []string{"sleep", "30"}, Cols: 10, Rows: 2})
