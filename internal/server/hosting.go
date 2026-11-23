@@ -109,6 +109,12 @@ func (s *Server) hostingAdmin(w http.ResponseWriter, r *http.Request, path strin
 		method = "boss"
 	}
 	r = hosting.WithActor(r, hosting.Actor{Admin: who.User, Method: method, Addr: s.adminAuth().ClientIP(r)})
+	if perm := workPerm(path, r.Method); boss == nil && perm != "" && !who.Can(perm) {
+		// A boss role's write is the route table's (boss_write.go); a
+		// login's is its permissions' (#476).
+		refusePerm(w, perm)
+		return
+	}
 	if terminalPath(path) {
 		switch code := s.terminalGate(r); code {
 		case http.StatusNotFound:
@@ -160,6 +166,7 @@ func (s *Server) hostingHub() *hosting.Hub {
 			return who.User, key, ok
 		}
 		a.Origin = s.liveOriginAllowed
+		a.Allowed = s.adminAuth().Allowed
 		a.ClientIP = func(r *http.Request) string { return s.adminAuth().ClientIP(r) }
 		s.nodeHub.SetAdmin(a)
 		bosses := make([]string, 0, len(s.bossRoles))

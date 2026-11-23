@@ -30,6 +30,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -65,7 +66,13 @@ func SignsIn(mode string) bool { return adminModes[strings.TrimSpace(mode)] }
 type Identity struct {
 	User string `json:"user"`
 	Mode string `json:"mode"`
+	// Perms is what the login may do on the work screen (#476), read with
+	// the session.
+	Perms Perms `json:"perms"`
 }
+
+// Can reports whether the login held perm when the request was identified.
+func (i Identity) Can(perm string) bool { return i.Perms.Can(perm) }
 
 // Config is the admin access in force, read at start by Configure.
 // ProxyToken (ADMIN_PROXY_TOKEN) is set by the caller before Configure.
@@ -169,7 +176,7 @@ func (s *Service) Identify(r *http.Request) (Identity, bool) {
 		if len(provided) != len(s.cfg.ProxyToken) || subtle.ConstantTimeCompare([]byte(provided), []byte(s.cfg.ProxyToken)) != 1 {
 			return Identity{}, false
 		}
-		return Identity{User: "proxy", Mode: ModeLegacy}, true
+		return Identity{User: "proxy", Mode: ModeLegacy, Perms: slices.Clone(AllPerms)}, true
 	}
 	c, err := r.Cookie(sessionCookie)
 	if err != nil || c.Value == "" {
@@ -238,15 +245,18 @@ func (s *Service) lookupSession(id string) (Identity, bool) {
 	now := s.now()
 	var who Identity
 	var expires int64
-	err := s.db.QueryRow(`SELECT s.user,s.mode,s.expires_at FROM admin_sessions s
+	var perms sql.NullString
+	err := s.db.QueryRow(`SELECT s.user,s.mode,s.expires_at,p.perms FROM admin_sessions s
 LEFT JOIN admin_users u ON s.mode='builtin' AND u.name=s.user
-WHERE s.id_hash=? AND (s.mode<>'builtin' OR (u.name IS NOT NULL AND u.disabled_at IS NULL))`, h).Scan(&who.User, &who.Mode, &expires)
+LEFT JOIN admin_perms p ON p.name=s.user
+WHERE s.id_hash=? AND (s.mode<>'builtin' OR (u.name IS NOT NULL AND u.disabled_at IS NULL))`, h).Scan(&who.User, &who.Mode, &expires, &perms)
 	if err != nil || expires <= now.Unix() || who.Mode != s.cfg.Mode {
 		return Identity{}, false
 	}
 	if who.Mode == modeOIDC && (s.cfg.oidc == nil || !s.cfg.oidc.allowed(who.User)) {
 		return Identity{}, false
 	}
+	who.Perms = permsOf(perms)
 	next := now.Add(s.sessionTTL()).Unix()
 	if next-expires >= int64(sessionSlide/time.Second) {
 		_, _ = s.db.Exec(`UPDATE admin_sessions SET expires_at=? WHERE id_hash=?`, next, h)

@@ -67,6 +67,11 @@ type Admin struct {
 	Origin func(r *http.Request) bool
 	// ClientIP is r's client address for the log (nil: the peer address).
 	ClientIP func(r *http.Request) string
+	// Allowed reports whether the signed-in admin user may do perm
+	// (wire.Perm*, #476) now; nil allows everything. An input ticket needs
+	// wire.PermType, and so does every input and resize frame of an open
+	// input socket, so a login that loses it stops typing at once.
+	Allowed func(user, perm string) bool
 	// Recheck is how often an open socket re-checks the session (0:
 	// ViewerRecheck). Queue is the viewer queue (0: ViewerQueue).
 	Recheck time.Duration
@@ -333,8 +338,15 @@ func (h *Hub) flushTyped(v *viewer, force bool) {
 	}
 }
 
+// allowed reports whether user may do perm now (Admin.Allowed).
+func (h *Hub) allowed(user, perm string) bool {
+	a := h.adminHooks()
+	return a.Allowed == nil || a.Allowed(user, perm)
+}
+
 // readViewer takes the client frames of v's socket until it closes. Only an
-// input socket is heard; a view socket's frames are read and dropped.
+// input socket is heard; a view socket's frames are read and dropped. Every
+// frame of an input socket needs the type permission at that moment (#476).
 func (h *Hub) readViewer(ctx context.Context, ws *websocket.Conn, v *viewer) {
 	refuse := func(msg string) { v.pushJSON(wire.TerminalMessage{Type: "refused", Error: msg}) }
 	for {
@@ -348,6 +360,10 @@ func (h *Hub) readViewer(ctx context.Context, ws *websocket.Conn, v *viewer) {
 		var m wire.TerminalInput
 		if json.Unmarshal(b, &m) != nil {
 			refuse("invalid json")
+			continue
+		}
+		if !h.allowed(v.user, wire.PermType) {
+			refuse("this login may not type (" + wire.PermType + ")")
 			continue
 		}
 		switch m.Type {
@@ -459,7 +475,7 @@ func (h *Hub) ticketAPI(w http.ResponseWriter, r *http.Request, id string) {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
-	_, key, ok := a.Session(r)
+	user, key, ok := a.Session(r)
 	if !ok {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
@@ -471,6 +487,10 @@ func (h *Hub) ticketAPI(w http.ResponseWriter, r *http.Request, id string) {
 	}
 	if req.Mode != ModeView && req.Mode != ModeInput {
 		http.Error(w, `mode must be "view" or "input"`, http.StatusBadRequest)
+		return
+	}
+	if req.Mode == ModeInput && !h.allowed(user, wire.PermType) {
+		http.Error(w, "forbidden: this login may not type ("+wire.PermType+")", http.StatusForbidden)
 		return
 	}
 	if _, err := h.svc.Get(id); err != nil {

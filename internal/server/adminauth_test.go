@@ -356,7 +356,11 @@ func TestBuiltinLoginRateLimit(t *testing.T) {
 func adminCLI(t *testing.T, stdin string, args ...string) (string, error) {
 	t.Helper()
 	var out, errOut bytes.Buffer
-	_, err := adminauth.CLI(args[0], args[1], slices.Contains(args[2:], "--json"), strings.NewReader(stdin), &out, &errOut)
+	name, arg := args[1], ""
+	if len(args) > 2 && args[2] != "--json" {
+		arg = args[2]
+	}
+	_, err := adminauth.CLI(args[0], name, arg, slices.Contains(args[2:], "--json"), strings.NewReader(stdin), &out, &errOut)
 	return out.String(), err
 }
 

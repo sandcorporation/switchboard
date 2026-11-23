@@ -376,8 +376,8 @@ var commands = []command{
 			{"--restart-sessions", "", "stop every hosted session on this machine at start and relaunch each with resume"},
 			{"--allow-checks", "", "run the prechecks of scheduled runs (host auto add --check) on this machine (default: refuse them; up's own node: SWITCHBOARD_HOSTING_ALLOW_CHECKS=on)"},
 		}},
-	{name: "admin", args: "ACTION [NAME]", nargs: 2, optArgs: true, synopsis: "(ACTION: create | passwd | totp-reset | disable | enable) NAME | list",
-		summary: "Manage built-in dashboard admins in the server database (DB_PATH; run inside the server container); create and passwd read the password from the terminal or the first line of stdin",
+	{name: "admin", args: "ACTION [NAME [PERMS]]", nargs: 3, optArgs: true, synopsis: "(ACTION: create | passwd | totp-reset | disable | enable) NAME | allow NAME PERMS | list",
+		summary: "Manage built-in dashboard admins in the server database (DB_PATH; run inside the server container); create and passwd read the password from the terminal or the first line of stdin; allow sets what a login may do on the work screen (PERMS: view,type,files,sessions,discard, or all, or none)",
 		options: []option{optJSON}},
 	{name: "version", summary: "Show build version; --check compares it with the server's minimum (exit 3 when behind)",
 		options: []option{{"--check", "", "ask the server; print its version, this one and, when behind, the release asset to install"}, optProfile}},
@@ -440,9 +440,10 @@ type HostFunc func(action, id string, add wire.HostedSessionCreate, jsonOut bool
 // show's --runs.
 type HostAutoFunc func(action, ref string, c wire.HostAutoCreate, runs int, jsonOut bool, stdout io.Writer) (int, error)
 
-// AdminFunc runs `admin ACTION NAME [--json]`. Admin users live in the
-// server's database, which the client never opens, so the binary supplies it.
-type AdminFunc func(action, name string, jsonOut bool, stdin io.Reader, stdout, stderr io.Writer) (int, error)
+// AdminFunc runs `admin ACTION NAME [PERMS] [--json]`. Admin users live in
+// the server's database, which the client never opens, so the binary
+// supplies it. arg is the third word (allow's PERMS), "" when none.
+type AdminFunc func(action, name, arg string, jsonOut bool, stdin io.Reader, stdout, stderr io.Writer) (int, error)
 
 // ServeFunc runs `serve`: the server until stopped, or with check only its
 // start-up settings check, returning the exit code.
@@ -637,13 +638,16 @@ func dispatch(args []string) (int, error) {
 		return cliRegister(p)
 	case "admin":
 		if len(p.pos) == 0 {
-			return 0, usagef("admin: ACTION needed (create, passwd, totp-reset, disable, enable, list)")
+			return 0, usagef("admin: ACTION needed (create, passwd, totp-reset, disable, enable, allow, list)")
 		}
-		name := ""
+		name, arg := "", ""
 		if len(p.pos) > 1 {
 			name = p.pos[1]
 		}
-		return admin(p.pos[0], name, p.bool("--json"), os.Stdin, os.Stdout, os.Stderr)
+		if len(p.pos) > 2 {
+			arg = p.pos[2]
+		}
+		return admin(p.pos[0], name, arg, p.bool("--json"), os.Stdin, os.Stdout, os.Stderr)
 	case "serve":
 		if binary.Serve == nil {
 			return 0, usagef("serve is not available in this build")

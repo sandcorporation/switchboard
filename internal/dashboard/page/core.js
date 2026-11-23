@@ -19,12 +19,17 @@ let termAssets=[];
 let editorAssets=[];
 // termRefused is why this address cannot open a terminal ('' when it can).
 let termRefused='';
+// adminPerms is what this login may do on the work screen (#476): view,
+// type, files, sessions, discard. can(p) is whether it holds p.
+let adminPerms=['view','type','files','sessions','discard'];
+function can(p){return adminPerms.includes(p)}
 function signedOut(){if(adminMode&&adminMode!=='legacy')location.reload()}
 async function loadMe(){
   try{
     const r=await fetch('/api/admin/me',{credentials:'same-origin',headers:{'Accept':'application/json'}});
     if(!r.ok)return;
-    const m=await r.json();adminMode=m.mode||'';hostingOn=m.hosting===true;termAssets=Array.isArray(m.terminal_assets)?m.terminal_assets:[];editorAssets=Array.isArray(m.editor_assets)?m.editor_assets:[];termRefused=typeof m.terminal_refused==='string'?m.terminal_refused:'';
+    const m=await r.json();adminMode=m.mode||'';hostingOn=m.hosting===true;termAssets=Array.isArray(m.terminal_assets)?m.terminal_assets:[];editorAssets=Array.isArray(m.editor_assets)?m.editor_assets:[];termRefused=typeof m.terminal_refused==='string'?m.terminal_refused:'';if(Array.isArray(m.perms))adminPerms=m.perms;
+    $('termAddOpen').hidden=!can('sessions');
     if(hostingOn)loadWorkspace(Array.isArray(m.workspace_assets)?m.workspace_assets:[]);
     $('tab-terminals').hidden=!hostingOn;setViewButton('nodes').hidden=!hostingOn;setViewButton('groups').hidden=!hostingOn;
     if(hostingOn&&curTab==='settings')route();

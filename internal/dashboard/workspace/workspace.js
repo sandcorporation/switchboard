@@ -439,7 +439,7 @@ function wsStart(){
   // it has the text last marked (mark()).
   function makeEditor(parent,text,path,cm,changed,save){
     if(cm){
-      const ed=CodeMirror(parent,{value:text,mode:F.modeOf(path),lineNumbers:true,indentUnit:F.modeOf(path)==='go'?8:2,indentWithTabs:F.modeOf(path)==='go',
+      const ed=CodeMirror(parent,{value:text,mode:F.modeOf(path),lineNumbers:true,readOnly:!can('files'),indentUnit:F.modeOf(path)==='go'?8:2,indentWithTabs:F.modeOf(path)==='go',
         tabSize:F.modeOf(path)==='go'?8:4,lineWrapping:false,extraKeys:{'Ctrl-S':save,'Cmd-S':save}});
       let gen=ed.changeGeneration();
       ed.on('changes',changed);
@@ -447,7 +447,7 @@ function wsStart(){
       if(typeof ResizeObserver==='function')new ResizeObserver(()=>ed.refresh()).observe(parent);
       return {clean:()=>ed.isClean(gen),mark:()=>{gen=ed.changeGeneration()},get:()=>ed.getValue(),focus:()=>ed.focus()};
     }
-    const ta=node('textarea','','ws-text ws-edit');ta.value=text;ta.spellcheck=false;ta.setAttribute('aria-label',path);
+    const ta=node('textarea','','ws-text ws-edit');ta.value=text;ta.spellcheck=false;ta.readOnly=!can('files');ta.setAttribute('aria-label',path);
     let saved=text;
     ta.oninput=changed;
     ta.onkeydown=e=>{if((e.ctrlKey||e.metaKey)&&e.key==='s'){e.preventDefault();save()}};
@@ -492,13 +492,14 @@ function wsStart(){
       f.body.replaceChildren();
       f.fp=rd.fp;
       f.ed=makeEditor(f.body,t.text,x.path,cm,()=>fileMarks(p),()=>saveFile(p,false));
-      f.save.hidden=!f.fp;
+      f.save.hidden=!f.fp||!can('files');
       fileMarks(p);
     }catch(e){if(seq===f.seq)f.body.replaceChildren(node('p',e.message,'msg err'))}
   }
   // saveFile writes the editor's text back; anyway saves over a change
   // made elsewhere since the read (그래도 저장).
   async function saveFile(p,anyway){
+    if(!can('files'))return;
     const f=files.get(p),x=F.fileOf(p);if(!f||!x||!f.ed||f.busy||!f.fp)return;
     if(!anyway&&f.ed.clean())return;
     const text=f.ed.get(),seq=f.seq;
