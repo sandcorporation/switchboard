@@ -118,3 +118,36 @@ type ThresholdSeconds struct {
 	ErrorS   int64 `json:"error_s"`
 	BlockedS int64 `json:"blocked_s"`
 }
+
+// HourlyMetrics is GET /api/metrics/hourly (#511): the mail, reports and
+// questions of the last 24 hours in clock-hour slots, and per role over the
+// last hour. Mail from the system sender is not counted.
+type HourlyMetrics struct {
+	From     time.Time    `json:"from"` // start of the oldest slot
+	To       time.Time    `json:"to"`   // now; the newest slot runs to here
+	Hours    []HourCount  `json:"hours"`
+	LastHour HourTotals   `json:"last_hour"` // the 60 minutes ending now
+	Roles    []RoleHourly `json:"roles"`     // the 60 minutes ending now, busiest first
+}
+
+// HourCount is one clock-hour slot, from Start for an hour.
+type HourCount struct {
+	Start time.Time `json:"start"`
+	HourTotals
+}
+
+type HourTotals struct {
+	Mail      int `json:"mail"`
+	Reports   int `json:"reports"`
+	Questions int `json:"questions"`
+}
+
+// RoleHourly is one role's counts: mail it sent and received, reports it
+// wrote and questions it asked. Roles are named as stored, slots included.
+type RoleHourly struct {
+	Role      string `json:"role"`
+	Sent      int    `json:"sent"`
+	Received  int    `json:"received"`
+	Reports   int    `json:"reports"`
+	Questions int    `json:"questions"`
+}

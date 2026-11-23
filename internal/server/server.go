@@ -361,6 +361,10 @@ func (s *Server) serveAPI(w http.ResponseWriter, r *http.Request) {
 		s.insight().MetricsAPI(w, r, s.ids().IsGlobalBoss(who), false)
 		return
 	}
+	if path == "metrics/hourly" {
+		s.insight().HourlyAPI(w, r, s.ids().IsGlobalBoss(who))
+		return
+	}
 	if path == "progress" {
 		s.progressAPI(w, r, s.ids().IsGlobalBoss(who))
 		return
@@ -631,6 +635,8 @@ func (s *Server) adminRoutes(w http.ResponseWriter, r *http.Request, path string
 		s.presence().API(w, r, nil)
 	case "metrics":
 		s.insight().MetricsAPI(w, r, true, true)
+	case "metrics/hourly":
+		s.insight().HourlyAPI(w, r, true)
 	case "progress":
 		s.progressAPI(w, r, true)
 	case "messages":

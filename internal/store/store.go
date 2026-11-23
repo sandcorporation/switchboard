@@ -200,7 +200,18 @@ func Init(db *sql.DB) error {
 	if e = migrateRoleLifecycle(db); e != nil {
 		return e
 	}
-	return migrateRequests(db)
+	if e = migrateRequests(db); e != nil {
+		return e
+	}
+	return migrateHourlyIndexes(db)
+}
+
+// migrateHourlyIndexes adds the created_at indexes the hourly counts read
+// (#511, insight.Hourly): the last 24 hours of mail and reports.
+func migrateHourlyIndexes(db *sql.DB) error {
+	_, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_messages_created ON messages(created_at);
+	CREATE INDEX IF NOT EXISTS idx_reports_created ON reports(created_at);`)
+	return err
 }
 
 // migrateRequests adds the owner's requests (#501, internal/requests), all

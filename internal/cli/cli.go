@@ -207,10 +207,10 @@ var commands = []command{
 	{name: "status", args: "[ROLE]", nargs: 1, optArgs: true,
 		summary: "Show session presence: every session, a base and its numbers, one numbered role, or a prefix ending in *",
 		options: []option{optJSON, optProfile}},
-	{name: "metrics",
-		summary: "Show mail-flow metrics: first-reply time, pending mail, back-and-forth threads, error/blocked session time (boss roles only)",
+	{name: "metrics", args: "[hourly]", nargs: 1, optArgs: true,
+		summary: "Show mail-flow metrics: first-reply time, pending mail, back-and-forth threads, error/blocked session time; hourly: mail, reports and questions per hour over 24 hours and per role over the last hour (boss roles only)",
 		options: []option{
-			{"--days", "N", "window in days ending now, 1-90 (default 7)"},
+			{"--days", "N", "window in days ending now, 1-90 (default 7; not with hourly)"},
 			optJSON, optProfile,
 		}},
 	{name: "progress", args: "[SERVICE]", nargs: 1, optArgs: true,
