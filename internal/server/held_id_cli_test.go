@@ -50,7 +50,7 @@ func TestCLIOldIDOfMovedMail(t *testing.T) {
 	}
 
 	moved(h.run(nil, "reply", "1", "--body", "on it", "--json"), "1", 5)
-	moved(h.run(nil, "complete", "1", "--json"), "1", 5)
+	moved(h.run(nil, "complete", "1", "--left-none", "--json"), "1", 5)
 	c := h.run(nil, "--profile", "a", "close", "1")
 	moved(c, "1", 5)
 	if !strings.HasPrefix(c.stdout, "#5 closed") {

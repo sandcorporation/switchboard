@@ -52,6 +52,13 @@ const NodeFileWriteHeaderName = "Node-File-Write"
 // expected to have, or "*" to save whatever it is now.
 const FileFingerprintHeaderName = "File-Fingerprint"
 
+// LeftHeaderName is HeaderPrefix + this (#470): a CLI that records what an
+// answer ending a directive left undone (--left, --left-none) sends it ("1")
+// on every request. The server refuses such a client's ending answer that
+// says neither; a request without it is an older CLI, whose ending answer is
+// taken and leaves an open "unrecorded" item instead.
+const LeftHeaderName = "Left"
+
 // CLIMinName is SWITCHBOARD_CLI_MIN without the prefix: the minimum client
 // major.minor (#308), read with EnvFrom. Unset or invalid: the server's own.
 const CLIMinName = "CLI_MIN"

@@ -31,10 +31,40 @@ func (s *Service) Close(w http.ResponseWriter, r *http.Request, role string, id 
 		http.Error(w, "not found", http.StatusNotFound)
 		return
 	}
+	// The sender's close of a directive that has not ended ends it (#470):
+	// the closer says what is left. An admin's close (role "") does not ask.
+	note, ok := leftNote(w, r)
+	if !ok {
+		return
+	}
+	claim := claimOf(r, note.Left, note.LeftNone)
+	// leftCheck refuses what the claim cannot be for directive d; ending
+	// reports whether this close ends d.
+	leftCheck := func(d int64) (ending, ok bool) {
+		ending = role != "" && !s.ended(d)
+		if msg := claim.problem(ending, d); msg != "" {
+			http.Error(w, msg, http.StatusBadRequest)
+			return false, false
+		}
+		if len(claim.items) > 0 && !ending {
+			http.Error(w, "--left goes with the close that ends a directive; this one has ended (left add N adds to a directive you ended)", http.StatusBadRequest)
+			return false, false
+		}
+		return ending, true
+	}
 	if d, ok := s.answeredDirective(role, m); ok {
+		ending, ok := leftCheck(d)
+		if !ok {
+			return
+		}
 		err = store.InTx(r.Context(), s.db, func(tx *sql.Tx) error {
 			if _, err := tx.Exec(`UPDATE messages SET no_reply=1 WHERE id=? AND no_reply=0`, d); err != nil {
 				return err
+			}
+			if ending {
+				if err := recordLeft(tx, d, role, claim, s.now()); err != nil {
+					return err
+				}
 			}
 			return markComplete(tx, role, []int64{id}, s.now().UTC())
 		})
@@ -53,12 +83,21 @@ func (s *Service) Close(w http.ResponseWriter, r *http.Request, role string, id 
 		http.Error(w, "not a directive", http.StatusBadRequest)
 		return
 	}
+	ending, ok := leftCheck(id)
+	if !ok {
+		return
+	}
 	var left string
 	var withdrawn bool
 	err = store.InTx(r.Context(), s.db, func(tx *sql.Tx) error {
 		left, withdrawn = "", false
 		if _, err := tx.Exec(`UPDATE messages SET no_reply=1 WHERE id=? AND no_reply=0`, id); err != nil {
 			return err
+		}
+		if ending {
+			if err := recordLeft(tx, id, role, claim, s.now()); err != nil {
+				return err
+			}
 		}
 		var e error
 		left, e = withdraw(tx, id, s.now())

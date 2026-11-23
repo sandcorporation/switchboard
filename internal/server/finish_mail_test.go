@@ -73,7 +73,7 @@ func TestSendCompleteMarksReceivedMail(t *testing.T) {
 		t.Fatalf("marks %d after refused sends, want 0", n)
 	}
 
-	args := []string{"--profile", "b", "send", "--to", "a", "--subject", "done", "--body", "y", "--complete", "1,2", "--idempotency-key", "k1", "--json"}
+	args := []string{"--profile", "b", "send", "--to", "a", "--subject", "done", "--body", "y", "--complete", "1,2", "--idempotency-key", "k1", "--left-none", "--json"}
 	first := h.run(nil, args...)
 	if first.code != 0 {
 		t.Fatalf("send --complete: %+v", first)
@@ -140,7 +140,7 @@ func TestCloseByAnswerClosesDirectiveAndCompletesAnswer(t *testing.T) {
 	if lines := strings.Split(text, "\n"); len(lines) < 3 || lines[2] != cli.DirectiveOpenNote(1, 2) {
 		t.Fatalf("read of the answer:\n%s", text)
 	}
-	out := h.mustRun(nil, "close", "2")
+	out := h.mustRun(nil, "close", "2", "--left-none")
 	if out != "#1 closed; #2 complete" {
 		t.Fatalf("close 2: %q", out)
 	}
@@ -200,7 +200,7 @@ func TestReadTailNamesFinishCommands(t *testing.T) {
 	if note := cli.ReplyOpenNote("1"); !strings.Contains(note, "complete 1") || !strings.Contains(note, "--complete") {
 		t.Fatalf("reply note %q", note)
 	}
-	h.mustRun(nil, "complete", "1")
+	h.mustRun(nil, "complete", "1", "--left-none")
 	if r := h.run(nil, "read", "1"); r.stderr != "" {
 		t.Fatalf("read after complete stderr %q", r.stderr)
 	}

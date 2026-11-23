@@ -399,6 +399,10 @@ func (s *Server) serveAPI(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+	if rest, ok := strings.CutPrefix(path, "left"); ok && (rest == "" || strings.HasPrefix(rest, "/")) {
+		s.mail().LeftAPI(w, r, who, strings.TrimPrefix(rest, "/"))
+		return
+	}
 	if path == "events/poll" && r.Method == "GET" {
 		s.mail().PollEvents(w, r, role)
 		return

@@ -34,7 +34,7 @@ func TestReplyDoneClosesDirectiveOnce(t *testing.T) {
 		t.Fatalf("status after a plain reply %q, want none", st)
 	}
 
-	args := []string{"reply", "1", "--done", "--body", "built", "--idempotency-key", "final-1", "--json"}
+	args := []string{"reply", "1", "--done", "--body", "built", "--idempotency-key", "final-1", "--left-none", "--json"}
 	done := h.run(nil, args...)
 	if done.code != 0 || !strings.Contains(done.stdout, `"directive_state": "done"`) || done.stderr != "" {
 		t.Fatalf("reply --done: %+v", done)

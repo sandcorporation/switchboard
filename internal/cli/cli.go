@@ -63,6 +63,10 @@ var (
 	optSubject = option{"--subject", "TEXT", "message subject"}
 	optUrgent  = option{"--urgent", "", "mark the message urgent (default priority is normal)"}
 	optNoReply = option{"--no-reply", "", "the message needs no answer: never an open directive, never reminded"}
+	// optLeft and optLeftNone go with an answer that ends a directive (#470):
+	// reply --complete, complete and close (and send --complete).
+	optLeft     = option{"--left", "ITEM", "an answer that ends a directive: one thing it left undone (repeatable); the directive's sender raises or passes it on"}
+	optLeftNone = option{"--left-none", "", "an answer that ends a directive: nothing is left undone"}
 )
 
 var commands = []command{
@@ -104,6 +108,7 @@ var commands = []command{
 			{"--task", "ID", "task identifier to attach"},
 			optUrgent, optNoReply,
 			{"--complete", "ID[,ID...]", "mail you received to mark complete with this send (repeatable; one transaction, refused unless every ID is yours)"},
+			optLeft, optLeftNone,
 			{"--idempotency-key", "KEY", "retry-safe key; resending with the same key returns the first message and marks nothing twice"},
 			optJSON, optProfile,
 		}},
@@ -156,12 +161,16 @@ var commands = []command{
 			optUrgent,
 			{"--directive", "", "the reply carries new work: count it as a directive in progress"},
 			optNoReply,
+			optLeft, optLeftNone,
 			{"--idempotency-key", "KEY", "retry-safe key; resending with the same key returns the first reply and marks nothing twice"},
 			optJSON, optProfile,
 		}},
 	{name: "ack", args: "ID", nargs: 1, summary: "Acknowledge a message", options: []option{optJSON, optProfile}},
-	{name: "complete", args: "ID", nargs: 1, summary: "Mark a message complete", options: []option{optJSON, optProfile}},
-	{name: "close", args: "ID", nargs: 1, summary: "Close a directive you sent: it needs no answer (no longer open, never reminded); given an answer's ID, close the directive it answers and complete the answer", options: []option{optJSON, optProfile}},
+	{name: "complete", args: "ID", nargs: 1, summary: "Mark a message complete; completing a directive sent to you ends it, so say what is left (--left or --left-none)", options: []option{optLeft, optLeftNone, optJSON, optProfile}},
+	{name: "close", args: "ID", nargs: 1, summary: "Close a directive you sent: it needs no answer (no longer open, never reminded); given an answer's ID, close the directive it answers and complete the answer. Closing a directive that has not ended ends it: say what is left (--left or --left-none)", options: []option{optLeft, optLeftNone, optJSON, optProfile}},
+	{name: "left", args: "add N TEXT", nargs: 3, optArgs: true,
+		summary: "What an answer that ended a directive left undone: add TEXT to directive N you ended",
+		options: []option{optJSON, optProfile}},
 	{name: "withdraw", args: "ID", nargs: 1, summary: "Take back mail you sent that its recipient has not read (409 once read: close it or send new mail)", options: []option{optJSON, optProfile}},
 	{name: "slots", summary: "List the leased numbered slots under the active role's base",
 		options: []option{optJSON, optProfile}},
@@ -650,12 +659,21 @@ func dispatch(args []string) (int, error) {
 		return cliPermission(c, p)
 	case "question":
 		return cliQuestion(c, p)
+	case "left":
+		return cliLeft(c, p, os.Stdout)
 	case "read", "ack", "complete":
 		method, u := "GET", endpoint(c, "/api/messages/"+p.pos[0])
 		moved := movedMessage(p.pos[0])
 		if name != "read" {
+			note, e := leftNoteOf(p)
+			if e != nil {
+				return 0, e
+			}
 			method, u = "POST", u+"/"+name
-			req, _ := http.NewRequest(method, u, nil)
+			req, _ := http.NewRequest(method, u, noteBody(note))
+			if note != nil {
+				req.Header.Set("Content-Type", "application/json")
+			}
 			return doRequestWith(c, req, p.bool("--json"), moved)
 		}
 		req, _ := http.NewRequest(method, u, nil)
@@ -664,8 +682,15 @@ func dispatch(args []string) (int, error) {
 		}
 		return doRequestWith(c, req, false, both(moved, readNote(c.Role)))
 	case "close":
+		note, e := leftNoteOf(p)
+		if e != nil {
+			return 0, e
+		}
 		if p.bool("--json") {
-			req, _ := http.NewRequest("POST", endpoint(c, "/api/messages/"+p.pos[0]+"/close"), nil)
+			req, _ := http.NewRequest("POST", endpoint(c, "/api/messages/"+p.pos[0]+"/close"), noteBody(note))
+			if note != nil {
+				req.Header.Set("Content-Type", "application/json")
+			}
 			return doRequestWith(c, req, true, func(b []byte) {
 				var out wire.Closed
 				if json.Unmarshal(b, &out) == nil {
@@ -673,7 +698,11 @@ func dispatch(args []string) (int, error) {
 				}
 			})
 		}
-		b, e := slotCall(c, "POST", "/api/messages/"+p.pos[0]+"/close", nil)
+		var body any
+		if note != nil {
+			body = note
+		}
+		b, e := slotCall(c, "POST", "/api/messages/"+p.pos[0]+"/close", body)
 		if e != nil {
 			return 0, e
 		}
@@ -725,6 +754,9 @@ func dispatch(args []string) (int, error) {
 		}
 		if p.bool("--complete") || p.bool("--done") {
 			msg["done"] = true
+		}
+		if e := withLeft(p, msg); e != nil {
+			return 0, e
 		}
 		b, _ := json.Marshal(msg)
 		req, _ := http.NewRequest("POST", endpoint(c, "/api/messages/"+p.pos[0]+"/reply"), bytes.NewReader(b))
@@ -1157,13 +1189,13 @@ func DirectiveOpenNote(directive, answer int64) string {
 
 // ReplyOpenNote is the stderr line of a reply that leaves its directive open.
 func ReplyOpenNote(id string) string {
-	return "directive #" + id + " stays open: complete " + id + " ends it (or next time reply " + id + " --complete)"
+	return "directive #" + id + " stays open: complete " + id + " --left-none (or --left ITEM) ends it (or next time reply " + id + " --complete --left-none)"
 }
 
 // ReadNote is the stderr line of read for its recipient while the mail is
 // not complete (#327).
 func ReadNote(id int64) string {
-	return fmt.Sprintf("reply %d --complete answers and completes; complete %d ends it without an answer", id, id)
+	return fmt.Sprintf("reply %d --complete answers and completes; complete %d ends it without an answer; ending a directive says what is left: --left ITEM or --left-none", id, id)
 }
 
 // MovedNote is the stderr line of a command given mail's old ID when the
@@ -1250,6 +1282,9 @@ func cliSend(c Config, p parsedArgs) (int, error) {
 	if len(ids) > 0 {
 		// Omitted otherwise, so older servers accept the request unchanged.
 		msg["complete"] = ids
+	}
+	if e := withLeft(p, msg); e != nil {
+		return 0, e
 	}
 	b, _ := json.Marshal(msg)
 	req, _ := http.NewRequest("POST", endpoint(c, "/api/messages"), bytes.NewReader(b))
@@ -1362,6 +1397,7 @@ func inputBody(p parsedArgs) (string, error) {
 
 func authorize(c Config, req *http.Request) {
 	setVersionHeader(req)
+	setLeftHeader(req)
 	req.Header.Set("Authorization", "Bearer "+c.Token)
 	req.Header.Set(config.HeaderPrefix+"Role", c.Role)
 }

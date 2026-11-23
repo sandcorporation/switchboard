@@ -33,6 +33,8 @@ type Message struct {
 	RecipientState *RecipientState `json:"recipient_state,omitempty"`
 	Done           bool            `json:"done,omitempty"`            // reply --complete (--done): the reply is the final word and marks the replied-to mail complete (#269, #327)
 	Complete       []int64         `json:"complete,omitempty"`        // send --complete: mail the sender received to mark complete with the send (#327); request only
+	Left           []string        `json:"left,omitempty"`            // request only (#470): what the answer ending a directive left undone (--left, repeatable)
+	LeftNone       bool            `json:"left_none,omitempty"`       // request only (#470): the answer ending a directive left nothing undone (--left-none)
 	DirectiveState string          `json:"directive_state,omitempty"` // reply response: the replied-to directive's state, open or done (#269)
 	IdempotencyKey string          `json:"-"`
 	// AnswersDirective: this mail answers a directive the reader sent, and

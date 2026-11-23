@@ -74,7 +74,7 @@ func TestSenderAndRecipientSeeOneStatus(t *testing.T) {
 	h.configure([]string{"--profile", "b"}, "b")
 
 	done := sendID(t, h, "done", "x")
-	h.mustRun(nil, "--profile", "b", "complete", strconv.FormatInt(done, 10))
+	h.mustRun(nil, "--profile", "b", "complete", strconv.FormatInt(done, 10), "--left-none")
 	wantAll(t, "complete", statusViews(t, h, done, true), "complete")
 
 	seen := sendID(t, h, "seen", "x")

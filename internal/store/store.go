@@ -191,7 +191,10 @@ func Init(db *sql.DB) error {
 	if e = migrateWorkGroups(db); e != nil {
 		return e
 	}
-	return migrateRuleProposals(db)
+	if e = migrateRuleProposals(db); e != nil {
+		return e
+	}
+	return migrateLeftItems(db)
 }
 
 // migrateRuleProposals adds the rules ledger's running gear (#409,
@@ -649,6 +652,21 @@ CREATE INDEX IF NOT EXISTS idx_presence_log_started ON presence_log(started_at);
 func migrateMailboxViews(db *sql.DB) error {
 	_, err := db.Exec(`CREATE TABLE IF NOT EXISTS mailbox_views(id INTEGER PRIMARY KEY AUTOINCREMENT,viewer TEXT NOT NULL,mailbox TEXT NOT NULL,message_id INTEGER NOT NULL DEFAULT 0,viewed_at INTEGER NOT NULL);
 CREATE INDEX IF NOT EXISTS idx_mailbox_views_at ON mailbox_views(viewed_at)`)
+	return err
+}
+
+// migrateLeftItems adds the ledger of what an answer that ended a directive
+// left undone (#470, additive). kind is item (one thing left), none (the
+// answerer said nothing is left; one per directive) or unrecorded (an older
+// CLI ended the directive without saying; one per directive). state is open,
+// issue, passed or dropped for item and unrecorded rows and none for a none
+// row. ended_by, ended_at and value (the issue URL, the directive passed to,
+// or why it was dropped) are set once the row leaves open.
+func migrateLeftItems(db *sql.DB) error {
+	_, err := db.Exec(`CREATE TABLE IF NOT EXISTS left_items(id INTEGER PRIMARY KEY AUTOINCREMENT,directive_id INTEGER NOT NULL,kind TEXT NOT NULL,text TEXT NOT NULL DEFAULT '',recorded_by TEXT NOT NULL,recorded_at TEXT NOT NULL,state TEXT NOT NULL,ended_by TEXT NOT NULL DEFAULT '',ended_at TEXT NOT NULL DEFAULT '',value TEXT NOT NULL DEFAULT '');
+CREATE INDEX IF NOT EXISTS idx_left_items_state ON left_items(state);
+CREATE INDEX IF NOT EXISTS idx_left_items_directive ON left_items(directive_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_left_items_once ON left_items(directive_id,kind) WHERE kind IN ('none','unrecorded')`)
 	return err
 }
 
