@@ -178,7 +178,7 @@ function frameSessionTry(){
 // is marked and the detail closes.
 function frameLeaveMenu(){
   hideDetail();
-  if(curTab)$('panel-'+curTab).hidden=!(ws&&!pageTab(curTab));
+  if(curTab){$('panel-'+curTab).hidden=!(ws&&!pageTab(curTab));if(setListKept(curTab))$('panel-settings').hidden=true}
   frameSplit(false);frameFull(false);
   for(const n of tabNames){const t=$('tab-'+n);t.setAttribute('aria-selected','false');t.tabIndex=n==='requests'?0:-1}
   curTab='';

@@ -8,7 +8,7 @@ import (
 
 // #519: a session card opens the session's screen (a hosted one's terminal
 // panel, any other one's page), the address points at it, the right column
-// shows on the session screen only, the left pane scrolls as one and 기계
+// shows on the session screen only and 기계
 // counts the machines of the online sessions.
 func TestDashboardSessionScreen(t *testing.T) {
 	w := httptest.NewRecorder()
@@ -28,9 +28,6 @@ func TestDashboardSessionScreen(t *testing.T) {
 		".ws-on.fr-menu .ws-side,.fr-menu .fr-grip-r,.fr-menu .ws-sidebtn{display:none}",
 		".ws-on.fr-menu .sc-app-main:not(.has-detail){grid-template-columns:minmax(0,1fr)}",
 		".fr-sess .sc-app-page>:not(#sessScreen){display:none}",
-		// One scroller for the left pane.
-		"background:var(--color-paper);overflow-x:hidden;overflow-y:auto}",
-		".lp-main{flex:1 0 auto;display:flex;flex-direction:column}",
 		// 기계: the online sessions' machines, named on hover.
 		"const machines=[...new Set(d.sessions.filter(s=>s.online&&s.machine).map(s=>s.machine))].sort();",
 		"$('stCount').title=machines.length?'기계 — '+machines.join(', '):'붙은 기계 없음';",

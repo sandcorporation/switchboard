@@ -19,8 +19,13 @@ function listTab(name){return listTabs.includes(name)}
 // (html.fr-full).
 const fullTabs=['metrics','progress','sessions','terminals'];
 function pageTab(name){return listTab(name)||fullTabs.includes(name)}
+// 진행·세션 표·터미널 open beside the 설정 list (#536, html.fr-setv): the
+// list stays with its scroll and its marked row, only another menu closes it.
+function setListKept(name){return name==='settings'||setTabs.includes(name)}
 function frameFull(on){
-  document.documentElement.classList.toggle('fr-full',on);
+  const html=document.documentElement;
+  html.classList.toggle('fr-full',on);
+  html.classList.toggle('fr-setv',on&&setTabs.includes(curTab));
   if(ws&&on)document.querySelector('.sc-app-page').hidden=false;
 }
 // frameSplit turns the list screen layout on or off.
