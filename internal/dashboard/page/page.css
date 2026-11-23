@@ -476,8 +476,19 @@ input:focus,select:focus,textarea:focus{border-color:var(--color-accent);outline
 .fld{display:grid;grid-template-columns:120px minmax(0,300px);gap:6px 12px;align-items:center;margin:0 0 var(--space-3)}
 .fld>label{color:var(--color-muted)}
 .fld input,.fld select{height:24px;min-width:0}
+/* 지켜보기 (#528): the rule form's header rows, checks and test result. */
+.watch-form{grid-template-columns:120px minmax(0,420px)}
+.watch-form [hidden]{display:none}
+.watch-hbox{display:flex;flex-direction:column;gap:4px;align-items:flex-start;min-width:0}
+.watch-hdrs{display:flex;flex-direction:column;gap:4px;width:100%}
+.watch-hdr{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.4fr) auto auto;gap:6px;align-items:center}
+.watch-checks,.watch-acts{display:flex;flex-wrap:wrap;gap:12px;align-items:center}
+.watch-form label.check{display:inline-flex;align-items:center;gap:4px;color:var(--color-text)}
+.watch-test{min-width:0;overflow-wrap:anywhere}
+.watch-subj{color:var(--color-muted);margin-top:4px}
 .dsec{margin:16px 0 4px;font-size:11px;font-weight:600;color:var(--color-muted)}
 .dsec:first-child{margin-top:0}
 @media (max-width:720px){
 .fld{grid-template-columns:minmax(0,1fr)}
+.watch-hdr{grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto auto}
 }

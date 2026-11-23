@@ -587,7 +587,7 @@ func TestDashboardSettingsDetail(t *testing.T) {
 		"host?get(api('nodes')):null,host?get(api('terminals/work-groups')):null",
 		"api('question-refusals')", "api('logins')", "perms.title='바꾸기: switchboard admin allow';",
 		`<dialog id="setAdd" class="sc-drawer" aria-labelledby="setAddTitle">`,
-		"const setViewHash={qsettings:'settings',roles:'settings-roles',nodes:'settings-nodes',groups:'settings-groups',logins:'settings-logins',reminders:'settings-reminders'};",
+		"const setViewHash={qsettings:'settings',roles:'settings-roles',nodes:'settings-nodes',groups:'settings-groups',logins:'settings-logins',watches:'settings-watches',reminders:'settings-reminders'};",
 		"registerDetail('settings',{",
 		"setRow('qs:'+v.target,", "setRow('role:'+v.role,", "setRow('node:'+v.name,", "setRow('login:'+v.name,", "setRow('group:'+g.name,",
 		"back:id=>setViewHash[setKindView[id.slice(0,id.indexOf(':'))]]||'settings',",
@@ -608,6 +608,11 @@ func TestDashboardSettingsDetail(t *testing.T) {
 		"get(api('settings'))",
 		"$('setAdd').addEventListener('keydown',e=>{if(e.key==='Escape'){e.preventDefault();$('setAdd').close()}});",
 		"settings:loadSettingsView,",
+		// #528: 지켜보기, the API watch rules.
+		"setGroup(items,'watches','지켜보기',d.watches,watchRow,", "get(api('watches'))", "if(kind==='watch')return findWatch(key);",
+		"apiSend('POST','watches/test',body)", "apiSend('POST','watches',read())", "apiSend('PUT','watches/'+v.id,read())",
+		"apiSend('DELETE','watches/'+v.id)", "apiSend('POST','watches/'+v.id+'/'+(v.enabled?'off':'on'))",
+		"if(!confirm(v.name+' 규칙을 지울까요? 저장한 키도 지워집니다.'))return;",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("dashboard missing %q", want)

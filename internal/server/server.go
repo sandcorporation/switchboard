@@ -33,6 +33,7 @@ import (
 	"github.com/sandcorporation/switchboard/internal/rules"
 	"github.com/sandcorporation/switchboard/internal/secrets"
 	"github.com/sandcorporation/switchboard/internal/store"
+	"github.com/sandcorporation/switchboard/internal/watch"
 	"github.com/sandcorporation/switchboard/internal/wire"
 )
 
@@ -68,6 +69,7 @@ type Server struct {
 	secretsRaw     []byte        // SWITCHBOARD_SECRETS_KEY parsed; nil: the key file (secrets.go)
 	secretsOnce    sync.Once
 	secrets        *secrets.Key // seals secret values (#525); run loads it, secretsKey reads it
+	watchHooks     watch.Hooks  // API watches (#528): the secret store, the alert mail and (tests) the fetch
 }
 
 // version is the build version /health reports (set by Run).
@@ -143,6 +145,7 @@ func run(v string, ln net.Listener, setupDir string, attach attachFunc) {
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 	stopped := make(chan struct{})
 	waitSweeper := s.startSweeper()
+	waitWatcher := s.startWatcher()
 	if ln == nil {
 		if ln, e = net.Listen("tcp", addr); e != nil {
 			fatal(e)
@@ -219,6 +222,7 @@ func run(v string, ln net.Listener, setupDir string, attach attachFunc) {
 		<-attached
 	}
 	waitSweeper()
+	waitWatcher()
 	_ = db.Close()
 	log.Printf("exit 0: %s", why)
 	_ = os.Stderr.Sync()
@@ -396,6 +400,10 @@ func (s *Server) serveAPI(w http.ResponseWriter, r *http.Request) {
 		s.jobs().API(w, r, who, strings.TrimPrefix(strings.TrimPrefix(path, "jobs"), "/"))
 		return
 	}
+	if path == "watches" {
+		s.watches().API(w, r, s.watchVisible(who))
+		return
+	}
 	if path == "schedules" || strings.HasPrefix(path, "schedules/") {
 		s.jobs().ScheduleAPI(w, r, who, strings.TrimPrefix(strings.TrimPrefix(path, "schedules"), "/"))
 		return
@@ -556,6 +564,15 @@ func (s *Server) adminRoutes(w http.ResponseWriter, r *http.Request, path string
 	}
 	if rest, ok := strings.CutPrefix(path, "jobs"); ok && (rest == "" || strings.HasPrefix(rest, "/")) {
 		s.jobs().AdminAPI(w, r, s.ledgerView(who, boss), strings.TrimPrefix(rest, "/"))
+		return
+	}
+	if rest, ok := strings.CutPrefix(path, "watches"); ok && (rest == "" || strings.HasPrefix(rest, "/")) {
+		// A signed-in login's (#528): a boss role's token reaches no watch.
+		if boss != nil {
+			http.Error(w, "dashboard login only", http.StatusForbidden)
+			return
+		}
+		s.watches().AdminAPI(w, r, strings.TrimPrefix(rest, "/"))
 		return
 	}
 	if rest, ok := strings.CutPrefix(path, "schedules"); ok && (rest == "" || strings.HasPrefix(rest, "/")) {
