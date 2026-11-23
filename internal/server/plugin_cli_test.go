@@ -66,7 +66,7 @@ func TestCLIPluginLineIsStderrAndAFailureRunsTheCommand(t *testing.T) {
 	h := newCLIHarness(t)
 	h.configure(nil, "a")
 	log, lines := pluginLog(t)
-	if err := os.Remove(filepath.Join(h.dir, "plugin-version")); err != nil {
+	if err := os.Remove(filepath.Join(h.dir, "plugin-version")); err != nil && !os.IsNotExist(err) {
 		t.Fatal(err)
 	}
 	r := h.run([]string{"SWITCHBOARD_TEST_PLUGIN_LOG=" + log, "SWITCHBOARD_TEST_PLUGIN_RESULT=changed"}, "inbox", "--json")
@@ -76,7 +76,7 @@ func TestCLIPluginLineIsStderrAndAFailureRunsTheCommand(t *testing.T) {
 	if strings.Count(r.stderr, "\n") != 1 || !strings.Contains(r.stderr, "plugin: fake: installed fake 1.0.0") {
 		t.Fatalf("stderr %q", r.stderr)
 	}
-	if err := os.Remove(filepath.Join(h.dir, "plugin-version")); err != nil {
+	if err := os.Remove(filepath.Join(h.dir, "plugin-version")); err != nil && !os.IsNotExist(err) {
 		t.Fatal(err)
 	}
 	r = h.run([]string{"SWITCHBOARD_TEST_PLUGIN_LOG=" + log, "SWITCHBOARD_TEST_PLUGIN_RESULT=fail"}, "inbox")
@@ -97,7 +97,7 @@ func TestCLIPluginFailureIsTriedAgain(t *testing.T) {
 	h.configure(nil, "a")
 	log, lines := pluginLog(t)
 	marker := filepath.Join(h.dir, "plugin-version")
-	if err := os.Remove(marker); err != nil {
+	if err := os.Remove(marker); err != nil && !os.IsNotExist(err) {
 		t.Fatal(err)
 	}
 	fail := []string{"SWITCHBOARD_TEST_PLUGIN_LOG=" + log, "SWITCHBOARD_TEST_PLUGIN_RESULT=fail"}
@@ -146,7 +146,7 @@ func TestCLIPluginHookCommandsDoNotInstall(t *testing.T) {
 	h := newCLIHarness(t)
 	h.configure(nil, "a")
 	log, lines := pluginLog(t)
-	if err := os.Remove(filepath.Join(h.dir, "plugin-version")); err != nil {
+	if err := os.Remove(filepath.Join(h.dir, "plugin-version")); err != nil && !os.IsNotExist(err) {
 		t.Fatal(err)
 	}
 	env := []string{"SWITCHBOARD_TEST_PLUGIN_LOG=" + log}

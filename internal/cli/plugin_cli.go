@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -58,12 +59,21 @@ func configDir() string {
 }
 
 // pluginAuto reports whether this run may install the plugin on its own.
+// A development build (any version that is not a release tag) never installs
+// on its own: the plugin lives in the user's agent settings whatever
+// SWITCHBOARD_CONFIG_DIR says, so only `plugin install` may replace it (#498).
 func pluginAuto() bool {
-	if binary.PluginInstall == nil || noPluginFlag {
+	if binary.PluginInstall == nil || noPluginFlag || !isReleaseVersion(version) {
 		return false
 	}
 	v, _ := config.EnvFrom(os.Getenv, config.PluginName)
 	return !config.PluginOff(v)
+}
+
+var releaseVersion = regexp.MustCompile(`^v?\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$`)
+
+func isReleaseVersion(v string) bool {
+	return releaseVersion.MatchString(v) && !strings.HasPrefix(strings.TrimPrefix(v, "v"), "0.0.0-dev")
 }
 
 func cliPlugin(p parsedArgs, stdout io.Writer) (int, error) {
