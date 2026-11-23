@@ -117,9 +117,15 @@ export const setup = async (
     compact?: CompactBehavior
     /** 메일함 옵션 덧붙이기(CLI 판 읽기 등). */
     mail?: { cliVersion?: () => Promise<string | undefined> }
+    /** 셸 명령 넘기기 길(기본 있음, #526). */
+    background?: boolean
   } = {},
 ) => {
-  const host = fakeHost({ identity: { isMain: opts.isMain ?? true }, ...(opts.features === undefined ? {} : { features: opts.features }) })
+  const host = fakeHost({
+    identity: { isMain: opts.isMain ?? true },
+    ...(opts.features === undefined ? {} : { features: opts.features }),
+    ...(opts.background === undefined ? {} : { background: opts.background }),
+  })
   if (opts.usage !== undefined) host.setUsage(opts.usage)
   if (opts.compact !== undefined) host.setCompactBehavior(opts.compact)
   if (opts.profile !== null) host.fs.files.set(PROFILE, opts.profile ?? JSON.stringify({ endpoint: `${EP}/`, role: ROLE, token: TOKEN }))
