@@ -60,9 +60,9 @@ const FileFingerprintHeaderName = "File-Fingerprint"
 
 // LeftHeaderName is HeaderPrefix + this (#470): a CLI that records what an
 // answer ending a directive left undone (--left, --left-none) sends it ("1")
-// on every request. The server refuses such a client's ending answer that
-// says neither; a request without it is an older CLI, whose ending answer is
-// taken and leaves an open "unrecorded" item instead.
+// on every request. Since #471 the server refuses any ending answer that says
+// neither --left nor --left-none, so the header no longer changes what it
+// does; older CLIs keep sending nothing and get the 400 how-to.
 const LeftHeaderName = "Left"
 
 // CLIMinName is SWITCHBOARD_CLI_MIN without the prefix: the minimum client

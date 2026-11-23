@@ -177,7 +177,7 @@ func TestRemindStopsOnReplyOrComplete(t *testing.T) {
 		t.Fatalf("first round sent %d, want 3", n)
 	}
 	apiMail(t, s, clock, "team/worker", fmt.Sprintf("/api/messages/%d/reply", replied.ID), map[string]any{"subject": "re", "body": "working on it"})
-	apiMail(t, s, clock, "team/worker", fmt.Sprintf("/api/messages/%d/complete", done.ID), nil)
+	apiMail(t, s, clock, "team/worker", fmt.Sprintf("/api/messages/%d/complete", done.ID), map[string]any{"left_none": true})
 	apiMail(t, s, clock, "team/worker", "/api/messages", map[string]any{"recipient": "hq/boss", "subject": fmt.Sprintf("status, see #%d", mentioned.ID), "task_id": "T-9"})
 	if got := openIDs(t, s); !sameIDs(got, []int64{replied.ID, mentioned.ID}) {
 		t.Fatalf("open %v, want %d and %d (a reply does not close)", got, replied.ID, mentioned.ID)

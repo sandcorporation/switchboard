@@ -176,7 +176,7 @@ func TestReportCountsOpenDirectives(t *testing.T) {
 		t.Fatalf("new: %+v", rp)
 	}
 	workerReply(t, s, open, "started")
-	if w := callAs(s, "POST", "/api/messages/"+itoa(done)+"/reply", reportWorkerToken, reportWorkerRole, map[string]any{"body": "shipped", "done": true}); w.Code != 201 {
+	if w := callAs(s, "POST", "/api/messages/"+itoa(done)+"/reply", reportWorkerToken, reportWorkerRole, map[string]any{"body": "shipped", "done": true, "left_none": true}); w.Code != 201 {
 		t.Fatalf("reply --done: %d %s", w.Code, w.Body)
 	}
 	d := reportDetail(t, s, rp.ID)
@@ -193,7 +193,7 @@ func TestReportCountsOpenDirectives(t *testing.T) {
 		t.Fatalf("list: %+v", l[0])
 	}
 	// The sender closes the open one: 0/2, 완료.
-	if w := callAs(s, "POST", "/api/messages/"+itoa(open)+"/close", reportBossToken, reportBossRole, nil); w.Code >= 300 {
+	if w := callAs(s, "POST", "/api/messages/"+itoa(open)+"/close", reportBossToken, reportBossRole, wire.LeftNote{LeftNone: true}); w.Code >= 300 {
 		t.Fatalf("close: %d %s", w.Code, w.Body)
 	}
 	if l := reportList(t, s); l[0].OpenDirectives != 0 || l[0].Status != wire.ReportDone {

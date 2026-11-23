@@ -38,7 +38,7 @@ func (s *Service) Close(w http.ResponseWriter, r *http.Request, role string, id 
 	if !ok {
 		return
 	}
-	claim := claimOf(r, note.Left, note.LeftNone)
+	claim := claimOf(note.Left, note.LeftNone)
 	// leftCheck refuses what the claim cannot be for directive d; ending
 	// reports whether this close ends d.
 	leftCheck := func(d int64) (ending, ok bool) {

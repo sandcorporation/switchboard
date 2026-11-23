@@ -65,7 +65,7 @@ func directiveTo(t *testing.T, s *Server, clock *fakeClock, subject string) wire
 
 // The three answers that end a directive (#470 T1): reply --complete, the
 // recipient's complete and the sender's close. A new CLI must say what is
-// left; an older one is taken and leaves an open unrecorded row.
+// left; an older one (no header) is refused the same way (#471).
 func TestLeftEndingAnswers(t *testing.T) {
 	t.Parallel()
 	s, clock := slotsWithRoles(t)
@@ -129,10 +129,11 @@ func TestLeftEndingAnswers(t *testing.T) {
 		t.Fatalf("close again: %d %s", w.Code, w.Body)
 	}
 
-	// An older CLI (no header) is never refused: its ending answer leaves
-	// one open unrecorded row, once per directive.
+	// An older CLI (no header) is refused like any other, and no unrecorded
+	// row is made (#471).
 	for i := 0; i < 2; i++ {
-		if w := callAs(s, "POST", fmt.Sprintf("/api/messages/%d/reply", d4.ID), workerToken, "team/worker", map[string]any{"body": "done", "done": true}); w.Code != 201 {
+		w := callAs(s, "POST", fmt.Sprintf("/api/messages/%d/reply", d4.ID), workerToken, "team/worker", map[string]any{"body": "done", "done": true})
+		if w.Code != 400 || !strings.Contains(w.Body.String(), "--left-none") {
 			t.Fatalf("old reply --complete: %d %s", w.Code, w.Body)
 		}
 	}
@@ -158,7 +159,6 @@ func TestLeftEndingAnswers(t *testing.T) {
 		fmt.Sprintf("%d item open team/worker rename", d1.ID),
 		fmt.Sprintf("%d none none team/worker", d2.ID),
 		fmt.Sprintf("%d item open hq/boss permissions per login", d3.ID),
-		fmt.Sprintf("%d unrecorded open team/worker", d4.ID),
 		fmt.Sprintf("%d none none team/worker", d5.ID),
 	)
 
@@ -336,8 +336,12 @@ func TestProgressLeft(t *testing.T) {
 		t.Fatalf("reply: %d %s", w.Code, w.Body)
 	}
 	old := directiveTo(t, s, clock, "old cli")
-	if w := callAs(s, "POST", fmt.Sprintf("/api/messages/%d/complete", old.ID), workerToken, "team/worker", nil); w.Code != 200 {
+	// A row an older CLI left before #471: still listed and endable.
+	if w := callAs(s, "POST", fmt.Sprintf("/api/messages/%d/complete", old.ID), workerToken, "team/worker", nil); w.Code != 400 {
 		t.Fatalf("old complete: %d %s", w.Code, w.Body)
+	}
+	if _, err := s.db.Exec(`INSERT INTO left_items(directive_id,kind,recorded_by,recorded_at,state) VALUES(?,?,?,?,?)`, old.ID, wire.LeftKindUnrecorded, "team/worker", clock.now().UTC().Format("2006-01-02T15:04:05.999999999Z07:00"), wire.LeftOpen); err != nil {
+		t.Fatal(err)
 	}
 	progress := func() wire.ProgressReport {
 		w := adminRequest(s, "GET", "/api/admin/progress", "", nil)

@@ -363,7 +363,7 @@ func TestPersistenceRetryAndStatus(t *testing.T) {
 	if w.Code != 200 || !bytes.Contains(w.Body.Bytes(), []byte("acknowledged")) {
 		t.Fatalf("outbox recipient status: %d %s", w.Code, w.Body)
 	}
-	if w = call(s, "POST", "/api/messages/"+itoa(a.ID)+"/complete", "secret-b", nil, ""); w.Code != 200 {
+	if w = call(s, "POST", "/api/messages/"+itoa(a.ID)+"/complete", "secret-b", wire.LeftNote{LeftNone: true}, ""); w.Code != 200 {
 		t.Fatal(w.Code)
 	}
 	for _, spelling := range []string{"complete", "completed"} {
