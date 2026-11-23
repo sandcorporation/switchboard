@@ -116,7 +116,8 @@ function route(){
     return;
   }
   if(h==='decisions'){showTab('questions');showQuestionView('decisions');return}
-  if(settingsViewOfHash(h)){showSettingsView(settingsViewOfHash(h));showTab('settings');return}
+  // 설정 itself (#settings) leaves a list already on screen where it was (#536).
+  if(settingsViewOfHash(h)){if(h!=='settings'||!setListKept(curTab))showSettingsView(settingsViewOfHash(h));showTab('settings');return}
   if(h==='questions'||h.startsWith('q='))showQuestionView('questions');
   if(h.startsWith('q=')){
     // Old question links (Discord, panel) open the question's detail.

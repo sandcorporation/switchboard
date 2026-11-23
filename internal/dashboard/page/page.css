@@ -377,7 +377,7 @@ html.fr-setv .sc-app-page>:not(#panel-settings,#panel-progress,#panel-sessions,#
 .fr-split .sc-app-page{border-right:0}
 .split-empty{display:none}
 html.fr-setv.fr-full .sc-app-main:not(.detail-wide)>.sc-app-page:not([hidden]){grid-template-columns:minmax(0,1fr)}
-html.fr-setv .sc-app-page>#panel-settings{display:none}
+html.fr-setv .sc-app-page>#panel-settings{grid-column:1;visibility:hidden}
 html.fr-setv .sc-app-page>:is(#panel-progress,#panel-sessions,#panel-terminals){grid-column:1;padding:8px}
 .dc-t th:nth-child(3),.dc-t td:nth-child(3){display:none}
 }

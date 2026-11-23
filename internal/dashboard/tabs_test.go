@@ -41,7 +41,8 @@ func TestDashboardSettingsListKept(t *testing.T) {
 		// 진행·세션 표·터미널 beside the list; below 720px the body alone.
 		"html.fr-setv.fr-full .sc-app-main:not(.detail-wide)>.sc-app-page:not([hidden]){display:grid;grid-template-columns:var(--ls-w,300px) minmax(0,1fr);",
 		"html.fr-setv .sc-app-page>:is(#panel-progress,#panel-sessions,#panel-terminals){grid-column:2;grid-row:1;min-width:0;min-height:0;overflow:auto;",
-		"html.fr-setv .sc-app-page>#panel-settings{display:none}",
+		// The list keeps its scroll under the body (not display:none).
+		"html.fr-setv .sc-app-page>#panel-settings{grid-column:1;visibility:hidden}",
 		"html.classList.toggle('fr-setv',on&&setTabs.includes(curTab));",
 		// The list panel stays shown for 설정 and its 화면 tabs.
 		"$('panel-'+n).hidden=ws&&!pageTab(n)?false:!(on||n==='settings'&&setListKept(name));",
@@ -50,6 +51,7 @@ func TestDashboardSettingsListKept(t *testing.T) {
 		// A pick keeps the scroll: only an out-of-sight row comes into view.
 		"showSettingsView(setKindView[id.slice(0,id.indexOf(':'))],id);",
 		"box.scrollTop=top;markSetViews();",
+		"if(h!=='settings'||!setListKept(curTab))showSettingsView(settingsViewOfHash(h));showTab('settings');return}",
 		"if(row){if(row.scrollIntoView)row.scrollIntoView({block:'nearest'})}",
 		"r.dataset.setView=x[0];",
 	} {
