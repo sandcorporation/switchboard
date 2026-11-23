@@ -1,7 +1,11 @@
 package server
 
 import (
+	"errors"
+	"fmt"
+	"io"
 	"os"
+	"path/filepath"
 	"strconv"
 
 	"github.com/sandcorporation/switchboard/internal/adminauth"
@@ -54,7 +58,39 @@ func binaryCommands() cli.Commands {
 		},
 		NodeInvite:     NodeInviteCLI,
 		NodeStatusLine: NodeStatusLineCLI,
+		// Never the real install: a line per call in SWITCHBOARD_TEST_PLUGIN_LOG.
+		PluginInstall: func(version, dir string, quiet bool, w io.Writer) error {
+			return testPluginCall("install", dir, quiet, w)
+		},
+		PluginStatus: func(version, dir string, jsonOut bool, w io.Writer) error {
+			return testPluginCall("status", dir, jsonOut, w)
+		},
 	}
+}
+
+// testPluginCall records a plugin call for the CLI tests (#477): action,
+// whether the profiles in dir existed then, and the flag; the installer
+// prints a changed line, or fails, as SWITCHBOARD_TEST_PLUGIN_RESULT says.
+func testPluginCall(action, dir string, flag bool, w io.Writer) error {
+	log := os.Getenv("SWITCHBOARD_TEST_PLUGIN_LOG")
+	if log == "" {
+		return nil
+	}
+	profiles, _ := filepath.Glob(filepath.Join(dir, "*.json"))
+	f, err := os.OpenFile(log, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	fmt.Fprintf(f, "%s profiles=%d flag=%v\n", action, len(profiles), flag)
+	switch os.Getenv("SWITCHBOARD_TEST_PLUGIN_RESULT") {
+	case "fail":
+		fmt.Fprintln(w, "plugin: fake: install failed: boom")
+		return errors.New("plugin install: boom")
+	case "changed":
+		fmt.Fprintln(w, "plugin: fake: installed fake 1.0.0 (changed /cfg)")
+	}
+	return nil
 }
 
 // runMain is cmd/switchboard's main: the server without arguments, else the

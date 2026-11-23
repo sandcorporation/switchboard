@@ -85,6 +85,46 @@ jobs:
           bash scripts/ci/test_budget_test.sh
       - run: bash scripts/go_test.sh
         if: steps.scope.outputs.docs_only != 'true'
+  plugin:
+    # The agent plugin the CLI carries (#477, internal/agent/claude/plugin): core, adapter and panel
+    # tests (`claude plugin test`), the MCP server tests (node --test), and the question path e2e
+    # against the server built from this commit. A suite that runs no tests fails.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Scope (docs-only pull requests skip the tests)
+        id: scope
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: bash scripts/ci/docs_only.sh scope
+      - uses: actions/setup-go@v5
+        if: steps.scope.outputs.docs_only != 'true'
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: actions/setup-node@v4
+        if: steps.scope.outputs.docs_only != 'true'
+        with:
+          node-version: 24
+      - name: Plugin test runner
+        if: steps.scope.outputs.docs_only != 'true'
+        run: npm install -g --no-audit --no-fund @anthropic-ai/claude-code@2.1.330
+      - name: Plugin tests (mod)
+        if: steps.scope.outputs.docs_only != 'true'
+        run: bash internal/agent/claude/plugin/e2e/suite.sh mod
+      - name: Plugin tests (MCP server)
+        if: steps.scope.outputs.docs_only != 'true'
+        run: bash internal/agent/claude/plugin/e2e/suite.sh mcp
+      - name: Plugin install through the real CLI (scratch CLAUDE_CONFIG_DIR)
+        if: steps.scope.outputs.docs_only != 'true'
+        env:
+          SWITCHBOARD_TEST_CLAUDE: require
+        run: go test -count=1 -v -run '^TestInstallPluginWithClaudeCode$' ./internal/agent/claude/
+      - name: Plugin question path e2e (this commit's server)
+        if: steps.scope.outputs.docs_only != 'true'
+        run: bash internal/agent/claude/plugin/e2e/run.sh
   windows:
     # ConPTY backend and keeper against real Windows. The ConPTY output of
     # each golden scene is uploaded as the conpty-recordings artifact (the

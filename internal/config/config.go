@@ -63,6 +63,23 @@ const LeftHeaderName = "Left"
 // major.minor (#308), read with EnvFrom. Unset or invalid: the server's own.
 const CLIMinName = "CLI_MIN"
 
+// PluginName is SWITCHBOARD_PLUGIN without the prefix (#477), read with
+// EnvFrom: "off" (or 0, false, no) stops the client and the node from
+// installing the agent plugin the binary carries on their own (join, the
+// first run of a new version, a hosted session's launch). `plugin install`
+// still installs it when asked.
+const PluginName = "PLUGIN"
+
+// PluginOff reports whether a SWITCHBOARD_PLUGIN value turns the automatic
+// plugin install off.
+func PluginOff(v string) bool {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "off", "0", "false", "no":
+		return true
+	}
+	return false
+}
+
 // ProductName is the only place the product name lives (dashboard, login
 // pages, TOTP issuer), so a rename is a one-line change.
 const ProductName = "Switchboard"

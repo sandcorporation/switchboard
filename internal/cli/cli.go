@@ -56,13 +56,15 @@ type command struct {
 }
 
 var (
-	optJSON    = option{"--json", "", "print the server's JSON response"}
-	optProfile = option{"--profile", "NAME", "use the named credential profile (same as SWITCHBOARD_PROFILE)"}
-	optBody    = option{"--body", "TEXT", "message body"}
-	optBodyF   = option{"--body-file", "PATH", "read the message body from a file (stdin is used when neither is given)"}
-	optSubject = option{"--subject", "TEXT", "message subject"}
-	optUrgent  = option{"--urgent", "", "mark the message urgent (default priority is normal)"}
-	optNoReply = option{"--no-reply", "", "the message needs no answer: never an open directive, never reminded"}
+	optJSON = option{"--json", "", "print the server's JSON response"}
+	// optNoPlugin is also a global option, before the command (#477).
+	optNoPlugin = option{"--no-plugin", "", "do not install the agent plugin this binary carries (also SWITCHBOARD_PLUGIN=off)"}
+	optProfile  = option{"--profile", "NAME", "use the named credential profile (same as SWITCHBOARD_PROFILE)"}
+	optBody     = option{"--body", "TEXT", "message body"}
+	optBodyF    = option{"--body-file", "PATH", "read the message body from a file (stdin is used when neither is given)"}
+	optSubject  = option{"--subject", "TEXT", "message subject"}
+	optUrgent   = option{"--urgent", "", "mark the message urgent (default priority is normal)"}
+	optNoReply  = option{"--no-reply", "", "the message needs no answer: never an open directive, never reminded"}
 	// optLeft and optLeftNone go with an answer that ends a directive (#470):
 	// reply --complete, complete and close (and send --complete).
 	optLeft     = option{"--left", "ITEM", "an answer that ends a directive: one thing it left undone (repeatable); the directive's sender raises or passes it on"}
@@ -83,7 +85,11 @@ var commands = []command{
 		options: []option{
 			{"--role", "ROLE", "role to take (a name under the invite's prefix; the invite's role when it names one)"},
 			{"--profile", "NAME", "profile to write (default: from the server host); must not exist yet"},
+			optNoPlugin,
 		}},
+	{name: "plugin", args: "ACTION", nargs: 1, synopsis: "(install | status) [--json]",
+		summary: "Install the agent plugin this binary carries (its version is this CLI's) into the agent's user settings and turn off an older copy installed another way, or show what is installed; join and the first run of a new version install it too",
+		options: []option{{"--json", "", "status: print the state as JSON"}}},
 	{name: "invite", synopsis: "--prefix PREFIX [--role ROLE] [--ttl 72h]",
 		summary: "Create a one-time invite code for a collaborator group (global boss roles only)",
 		options: []option{
@@ -434,18 +440,30 @@ type NodeInviteFunc func(name string, stdout io.Writer) (int, error)
 // reads the agent's status on stdin and prints the status line.
 type NodeStatusLineFunc func(adapter, out string)
 
+// PluginInstallFunc installs the agent plugins the binary carries (#477)
+// under dir (this client's config folder) and writes one line per agent to
+// w; quiet leaves out the agents where everything already matched.
+type PluginInstallFunc func(version, dir string, quiet bool, w io.Writer) error
+
+// PluginStatusFunc prints the carried plugins' state in the agents' settings.
+type PluginStatusFunc func(version, dir string, jsonOut bool, w io.Writer) error
+
 // Commands are the commands the binary supplies because they run the server
 // or open its database.
 type Commands struct {
-	Admin      AdminFunc
-	Host       HostFunc
-	HostAuto   HostAutoFunc
-	HostGrant  HostGrantFunc
-	HostGroup  HostGroupFunc
-	Serve      ServeFunc
-	Up         UpFunc
-	Node       NodeFunc
-	NodeInvite NodeInviteFunc
+	// PluginInstall and PluginStatus are `plugin install|status`; nil (a
+	// build or test without them): no plugin is installed, ever.
+	PluginInstall PluginInstallFunc
+	PluginStatus  PluginStatusFunc
+	Admin         AdminFunc
+	Host          HostFunc
+	HostAuto      HostAutoFunc
+	HostGrant     HostGrantFunc
+	HostGroup     HostGroupFunc
+	Serve         ServeFunc
+	Up            UpFunc
+	Node          NodeFunc
+	NodeInvite    NodeInviteFunc
 	// NodeStatusLine is `node statusline` (#434).
 	NodeStatusLine NodeStatusLineFunc
 }
@@ -510,6 +528,8 @@ func dispatch(args []string) (int, error) {
 			roleFlag, args = args[1], args[2:]
 		case strings.HasPrefix(a, "--role="):
 			roleFlag, args = strings.TrimPrefix(a, "--role="), args[1:]
+		case a == "--no-plugin":
+			noPluginFlag, args = true, args[1:]
 		default:
 			return 0, usagef("unknown option %s", a)
 		}
@@ -566,7 +586,15 @@ func dispatch(args []string) (int, error) {
 	if v, from := config.EnvAliasFrom(os.Getenv, "PROFILE"); profileFlag == "" && v != "" && !validProfile(v) {
 		return 0, usagef("invalid profile name %q in %s", v, from)
 	}
+	if p.bool("--no-plugin") {
+		noPluginFlag = true
+	}
+	if !noAutoPlugin[name] {
+		syncPluginOnce(os.Stderr)
+	}
 	switch name {
+	case "plugin":
+		return cliPlugin(p, os.Stdout)
 	case "version":
 		if !p.bool("--check") {
 			fmt.Println(progName() + " " + version)
@@ -591,7 +619,12 @@ func dispatch(args []string) (int, error) {
 	case "node":
 		return cliNode(p, os.Stdout)
 	case "join":
-		return cliJoin(p, os.Stdout)
+		code, err := cliJoin(p, os.Stdout)
+		if err == nil {
+			// The profile is saved; the plugin follows (#477).
+			installPluginAfterJoin(os.Stderr)
+		}
+		return code, err
 	case "config":
 		if p.pos[0] != "set" {
 			return 0, usagef("config: unknown subcommand %q (only 'set')", p.pos[0])
@@ -848,7 +881,7 @@ func hasHelp(args []string) bool {
 
 func printHelp() {
 	var b strings.Builder
-	b.WriteString("PROG — role addressed durable mailbox\n\nUsage: PROG [--profile NAME] [--role ROLE] <command> [options]\n\nCommands:\n")
+	b.WriteString("PROG — role addressed durable mailbox\n\nUsage: PROG [--profile NAME] [--role ROLE] [--no-plugin] <command> [options]\n\nCommands:\n")
 	for _, c := range commands {
 		label := c.name
 		if c.args != "" {
@@ -871,6 +904,8 @@ Use 'PROG <command> --help' for command options.
 A named profile that has no saved config is an error.
 --role ROLE (before the command) or SWITCHBOARD_ROLE acts as a numbered role of the
 profile's role, e.g. team/worker-2 for a team/worker profile (--role wins over the env).
+The first run of a new version installs the agent plugin this binary carries (see plugin);
+--no-plugin or SWITCHBOARD_PLUGIN=off skips that.
 Every SWITCHBOARD_* variable also answers to its old AGENT_MAIL_* name; the new name wins.
 
 Exit codes: 0 success, 1 error, 2 usage error (unknown command or option), 3 wait or events found no mail.

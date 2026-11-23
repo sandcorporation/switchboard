@@ -394,6 +394,9 @@ const (
 	HostedEventExit    = "exit"    // ended with exit code 0
 	HostedEventRefused = "refused" // the node would not launch the record (a stored role record outside its grant); the first refusal only
 	HostedEventAdopt   = "adopt"   // a node process found the session already running (its keeper or tmux kept it)
+	// The node could not bring the agent's plugin to its version before a
+	// launch (#477); Reason says why. The session launched anyway.
+	HostedEventPluginFailed = "plugin-failed"
 )
 
 // Who asked for a hosted session event, where known.

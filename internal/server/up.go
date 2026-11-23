@@ -267,6 +267,13 @@ func prepareNode(v, name, tokenFile, endpoint, backendDir string) (*nodePart, er
 	}
 	cfg.Endpoint = endpoint
 	cfg.Term = info.term
+	cfg.Version = v
+	// The node brings the carried plugin up before each session (#477).
+	if off, _ := config.EnvFrom(os.Getenv, config.PluginName); !config.PluginOff(off) {
+		if dir, err := node.ClientConfigDir(); err == nil {
+			cfg.PluginDir = filepath.Join(dir, "plugins")
+		}
+	}
 	cfg.Switchboard, cfg.StatusDir = statusPaths(backendDir, tokenFile)
 	if m := cfg.DroppedMarkers(); len(m) > 0 {
 		log.Printf("node: agent session markers not passed to hosted sessions: %s", strings.Join(m, ", "))
