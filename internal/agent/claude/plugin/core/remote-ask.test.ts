@@ -6,7 +6,7 @@ import type { HttpInit } from './host'
 import { EMPTY_GAP_MS } from './mailbox'
 import { answerMailId, createQuestionsApi, isRemoteId, questionMailId, remoteAnswerText } from './remote-questions'
 import type { RemoteAnswer, RemoteQuestion } from './remote-questions'
-import { askRefusedText, localFallbackLine, normalizeRelayTo, remoteAskText, withdrawText } from './remote-ask'
+import { askRefusedText, localFallbackLine, normalizeRelayTo, normalizeRequestId, remoteAskText, withdrawText } from './remote-ask'
 import { createSwitchboard } from './switchboard'
 import { fakeClock, fakeHost, flush } from './testing'
 import type { FakeClock, FakeHost } from './testing'
@@ -279,6 +279,19 @@ test('원격 질문: relay_to 를 주면 요청 본문에 실리고, 안 주거�
   expect('relay_to' in (server.posted[2]!.body as object)).toBe(false)
   expect(normalizeRelayTo([' team/a ', '', 'team/a', 3, ...Array.from({ length: 10 }, (_, i) => `r/${i}`)])).toHaveLength(8)
   expect(normalizeRelayTo(undefined)).toEqual([])
+  await w.board.stop()
+})
+
+test('원격 질문: request_id 를 주면 요청 본문에 실리고, 안 주면 칸이 없다', async () => {
+  const clock = fakeClock()
+  const server = fakeServer()
+  const w = await session(server, clock)
+  await w.board.askRemote(QS, undefined, [], 7)
+  await w.board.askRemote([{ ...QS[0]!, question: '다른 질문 C?' }])
+  expect((server.posted[0]!.body as Record<string, unknown>).request_id).toBe(7)
+  expect('request_id' in (server.posted[1]!.body as object)).toBe(false)
+  expect(normalizeRequestId(3)).toBe(3)
+  for (const bad of [0, -1, 1.5, '3', undefined, null]) expect(normalizeRequestId(bad)).toBeUndefined()
   await w.board.stop()
 })
 

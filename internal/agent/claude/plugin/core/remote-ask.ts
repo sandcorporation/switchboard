@@ -33,7 +33,7 @@ export type RemoteAskResult = { kind: 'remote'; id: string; asker: string; here:
 export type WithdrawResult = { ok: true } | { ok: false; status: number | null; reason: string }
 
 export type RemoteAsk = {
-  ask: (questions: readonly QuestionPanelQuestion[], io?: CallIo, relayTo?: readonly string[]) => Promise<RemoteAskResult>
+  ask: (questions: readonly QuestionPanelQuestion[], io?: CallIo, relayTo?: readonly string[], requestId?: number) => Promise<RemoteAskResult>
   withdraw: (id: string, io?: CallIo) => Promise<WithdrawResult>
   /**
    * 메일함 시스템 통지 가로채기(onNotice 에 단다): 이 역할이 물은 질문의 답 메일이면 넣을 글, 대장 세션의 참조 메일이면
@@ -75,9 +75,9 @@ export const createRemoteAsk = (mail: Pick<Mailbox, 'call' | 'state'>, opts: Rem
 
   const boss = () => (opts.isBoss === undefined ? isBossRole(mail.state().role, opts.bosses ?? []) : opts.isBoss())
 
-  const ask = async (questions: readonly QuestionPanelQuestion[], io?: CallIo, relayTo?: readonly string[]): Promise<RemoteAskResult> => {
+  const ask = async (questions: readonly QuestionPanelQuestion[], io?: CallIo, relayTo?: readonly string[], requestId?: number): Promise<RemoteAskResult> => {
     if (mail.state().status === 'off') return { kind: 'local', reason: null }
-    const r = await api.ask(toRemoteItems(questions), io, relayTo)
+    const r = await api.ask(toRemoteItems(questions), io, relayTo, requestId)
     if (r.ok) {
       remember(r.value.id)
       log(`switchboard 질문: 원격 질문 ${r.value.id} 를 올렸다`)
@@ -180,6 +180,9 @@ export const relayNotDeliveredLine = '중계되지 않음 — relay_to 는 서�
 /** 도구 입력의 relay_to 를 문자열 배열로 고른다: 공백·빈 값·중복을 걷고 8개까지. */
 export const normalizeRelayTo = (v: unknown): string[] =>
   Array.isArray(v) ? [...new Set(v.filter((x): x is string => typeof x === 'string').map(x => x.trim()).filter(x => x !== ''))].slice(0, 8) : []
+
+/** 도구 입력의 request_id(대표 지시 번호, #501)를 고른다: 양의 정수만, 아니면 undefined. */
+export const normalizeRequestId = (v: unknown): number | undefined => (typeof v === 'number' && Number.isSafeInteger(v) && v > 0 ? v : undefined)
 
 /** 질문 거절 사유(서버 403 의 code·ask_via·settings_target). 옛 서버의 평문 403 은 셋 다 null. */
 export type AskRefusal = { askVia: string | null; settingsTarget: string | null; code: string | null }

@@ -47,6 +47,9 @@ func reportRequest(p parsedArgs) (wire.ReportRequest, error) {
 		return q, err
 	}
 	q.Mail = ids
+	if q.RequestID, err = requestIDOption(p); err != nil {
+		return q, err
+	}
 	body, err := inputBody(p)
 	if err != nil {
 		return q, err

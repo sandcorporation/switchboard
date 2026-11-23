@@ -70,6 +70,11 @@ export const ASK = {
         items: { type: 'string' },
         description: '선택. 이 답 원문을 받을 역할들(예: team/coordinator). 답을 그대로 받아야 하는 역할이 따로 있을 때만 쓴다. 서버 질문일 때만 중계되고, 로컬 패널로 떨어지면 중계되지 않는다.',
       },
+      request_id: {
+        type: 'integer',
+        minimum: 1,
+        description: '선택. 이 질문이 딸린 대표 지시 번호(switchboard request list 의 번호). 주면 대시보드 「지시」 탭의 그 지시가 답을 기다리는 것으로 보인다. 서버 질문일 때만 이어진다.',
+      },
     },
     required: ['questions'],
   },

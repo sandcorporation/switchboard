@@ -3,7 +3,10 @@ package server
 import (
 	"encoding/json"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -259,5 +262,67 @@ func TestRequestMigrationIsAdditive(t *testing.T) {
 	}
 	if d := reportDetail(t, s, rp.ID); d.Title != "옛 보고" || d.RequestID != 0 {
 		t.Fatalf("old report: %+v", d)
+	}
+}
+
+func TestRequestCLI(t *testing.T) {
+	t.Parallel()
+	h := newCLIHarnessWith(t, func(s *Server) { s.bossRoles = map[string]bool{"a": true} })
+	if _, err := h.s.db.Exec(`UPDATE question_settings SET can_ask=1 WHERE target='default'`); err != nil {
+		t.Fatal(err)
+	}
+	h.configure(nil, "a")
+	if out := h.mustRun(nil, "request", "add", "--title", "배포 정리", "--text", "배포 정리해줘\n범위는 알아서", "--idem", "k1"); out != "1" {
+		t.Fatalf("add printed %q", out)
+	}
+	if out := h.mustRun(nil, "request", "add", "--title", "배포 정리", "--text", "배포 정리해줘\n범위는 알아서", "--idem", "k1"); out != "1" {
+		t.Fatalf("retry printed %q", out)
+	}
+	if out := h.mustRun(nil, "request", "note", "1", "--text", "문서도"); out != "1" {
+		t.Fatalf("note printed %q", out)
+	}
+	h.mustRun(nil, "send", "--to", "b", "--subject", "정리 맡김", "--body", "x", "--request-id", "1")
+	h.mustRun(nil, "report", "--title", "반쯤", "--body", "x", "--request-id", "#1")
+	file := filepath.Join(h.dir, "q.json")
+	qs, _ := json.Marshal(sampleQuestions())
+	if err := os.WriteFile(file, qs, 0600); err != nil {
+		t.Fatal(err)
+	}
+	h.mustRun(nil, "question", "ask", "--file", file, "--request-id", "1")
+	var l wire.RequestList
+	if err := json.Unmarshal([]byte(h.mustRun(nil, "request", "list", "--json")), &l); err != nil || len(l.Requests) != 1 {
+		t.Fatalf("list --json: %v %+v", err, l)
+	}
+	if r := l.Requests[0]; r.Status != wire.RequestWaiting || r.Notes != 1 || r.Mail != 1 || r.Reports != 1 || r.Questions != 1 {
+		t.Fatalf("listed %+v", r)
+	}
+	if list := h.mustRun(nil, "request", "list"); !strings.HasPrefix(list, "1 waiting ") || !strings.Contains(list, " 배포 정리 — ") || !strings.Contains(list, " question ") {
+		t.Fatalf("list:\n%s", list)
+	}
+	if r := h.run(nil, "request", "done", "1"); r.code == 0 || !strings.Contains(r.stderr, "--result") {
+		t.Fatalf("done without result: %+v", r)
+	}
+	h.mustRun(nil, "request", "done", "1", "--result", "남은 곳 0")
+	show := h.mustRun(nil, "request", "show", "1")
+	for _, want := range []string{"1 waiting ", "배포 정리해줘\n범위는 알아서", "\nnote ", "문서도", "questions\n", "reports\n  R1 ", "mail\n  #1 a → b "} {
+		if !strings.Contains(show, want) {
+			t.Fatalf("show lacks %q:\n%s", want, show)
+		}
+	}
+	if r := h.run(nil, "send", "--to", "b", "--subject", "s", "--body", "x", "--request-id", "x"); r.code == 0 || !strings.Contains(r.stderr, "--request-id") {
+		t.Fatalf("bad id: %+v", r)
+	}
+	if r := h.run(nil, "send", "--to", "b", "--subject", "s", "--body", "x", "--request-id", "7"); r.code == 0 || !strings.Contains(r.stderr, "unknown request 7") {
+		t.Fatalf("unknown id: %+v", r)
+	}
+	if out := h.mustRun(nil, "request", "list", "--status", "checked"); out != "" {
+		t.Fatalf("checked list: %q", out)
+	}
+	h.configure(nil, "b")
+	if r := h.run(nil, "request", "add", "--title", "t", "--text", "x"); r.code == 0 || !strings.Contains(r.stderr, "403") {
+		t.Fatalf("non-boss: %+v", r)
+	}
+	if help := h.mustRun(nil, "help", "request"); !strings.Contains(help, "--result") || !strings.Contains(help, "--title") {
+		t.Fatalf("help: %s", help)
 	}
 }

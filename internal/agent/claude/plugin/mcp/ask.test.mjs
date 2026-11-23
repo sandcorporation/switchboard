@@ -386,3 +386,10 @@ test('sync: Orca 가 원격 카드에 답한 기록의 answers 를 돌려준다(
   assert.deepEqual(out.closed[KEY].answers, [{ selected: ['A'] }, { selected: [], other: '나중에' }])
   assert.equal('answers' in out.closed[other], false)
 })
+
+test('ask 입력에 선택 칸 request_id(양의 정수)가 있고 필수가 아니다', () => {
+  const r = ASK.inputSchema.properties.request_id
+  assert.equal(r.type, 'integer')
+  assert.equal(r.minimum, 1)
+  assert.deepEqual(ASK.inputSchema.required, ['questions'])
+})
