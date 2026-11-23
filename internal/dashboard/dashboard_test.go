@@ -306,7 +306,7 @@ func TestDashboardDesignFrame(t *testing.T) {
 		`id="tab-requests"`, `id="tab-questions"`, `id="tab-permissions"`, `id="tab-rules"`, `id="tab-mail"`, `id="tab-reports"`, `id="tab-jobs"`, `id="tab-metrics"`,
 		`id="sessWait"`, `id="sessList"`, `id="lpFoot"`, `id="tab-settings"`, `id="tab-progress"`, `id="tab-sessions"`, `id="tab-terminals"`, `</aside>`,
 		`id="gripL" role="separator"`, `<div class="sc-app-main" id="appMain">`, `<main class="sc-app-page">`, `id="panel-progress"`, `</main>`,
-		`<footer class="fr-status" id="frStatus" aria-label="상태">`, `id="live"`, `id="stCount"`, `id="stUsage"`, `</footer>`, `<script>`,
+		`<footer class="fr-status" id="frStatus" aria-label="상태">`, `id="live"`, `id="stCount"`, `id="stHour"`, `id="stUsage"`, `</footer>`, `<script>`,
 	}
 	last := -1
 	for _, want := range order {
@@ -901,7 +901,7 @@ func TestDashboardFrame(t *testing.T) {
 		"const paneBounds={l:[180,480,248],r:[200,520,292]};",
 		"function fillTitles(root){",
 		"new MutationObserver(",
-		"$('stCount')", "$('stUsage')",
+		"$('stCount')", "$('stUsage')", "api('metrics/hourly')", "'지난 1시간 메일 '+h.mail+' · 보고 '+h.reports",
 	} {
 		if !strings.Contains(string(frame), want) {
 			t.Errorf("frame.js lacks %q", want)
