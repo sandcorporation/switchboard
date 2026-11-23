@@ -377,6 +377,10 @@ func (s *Server) serveAPI(w http.ResponseWriter, r *http.Request) {
 		s.reports().API(w, r, who, strings.TrimPrefix(strings.TrimPrefix(path, "reports"), "/"))
 		return
 	}
+	if path == "requests" || strings.HasPrefix(path, "requests/") {
+		s.requests().API(w, r, who, strings.TrimPrefix(strings.TrimPrefix(path, "requests"), "/"))
+		return
+	}
 	if path == "jobs" || strings.HasPrefix(path, "jobs/") {
 		s.jobs().API(w, r, who, strings.TrimPrefix(strings.TrimPrefix(path, "jobs"), "/"))
 		return
@@ -531,6 +535,12 @@ func (s *Server) adminRoutes(w http.ResponseWriter, r *http.Request, path string
 	}
 	if rest, ok := strings.CutPrefix(path, "reports"); ok && (rest == "" || strings.HasPrefix(rest, "/")) {
 		s.reports().AdminAPI(w, r, strings.TrimPrefix(rest, "/"))
+		return
+	}
+	if rest, ok := strings.CutPrefix(path, "requests"); ok && (rest == "" || strings.HasPrefix(rest, "/")) {
+		// POST check and uncheck: only a signed-in login (#501), like left's
+		// issue and pass (#470); none of the work screen's permissions (#476).
+		s.requests().AdminAPI(w, r, boss == nil, who.User, strings.TrimPrefix(rest, "/"))
 		return
 	}
 	if rest, ok := strings.CutPrefix(path, "jobs"); ok && (rest == "" || strings.HasPrefix(rest, "/")) {

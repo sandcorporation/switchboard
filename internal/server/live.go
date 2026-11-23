@@ -49,15 +49,17 @@ func liveKinds(path string, admin bool) []string {
 		case "question-settings":
 			return []string{"settings"}
 		case "questions":
-			return []string{"questions", "mail", "progress"}
+			return []string{"questions", "mail", "progress", "requests"}
 		case "permissions":
 			return []string{"permissions", "mail", "progress"}
+		case "requests":
+			return []string{"requests"}
 		case "roles", "groups", "invites":
 			return []string{"settings", "sessions", "progress"}
 		case "terminals", "nodes":
 			return []string{"terminals"}
 		case "messages":
-			return []string{"mail", "progress", "reports"}
+			return []string{"mail", "progress", "reports", "requests"}
 		case "jobs", "schedules":
 			return []string{"jobs"}
 		case "rules":
@@ -69,15 +71,17 @@ func liveKinds(path string, admin bool) []string {
 	case "register", "join":
 		return []string{"sessions", "progress", "settings"}
 	case "messages":
-		return []string{"mail", "progress", "metrics", "reports"}
+		return []string{"mail", "progress", "metrics", "reports", "requests"}
 	case "reports":
-		return []string{"reports"}
+		return []string{"reports", "requests"}
+	case "requests":
+		return []string{"requests"}
 	case "rules":
 		return []string{"rules"}
 	case "permissions":
 		return []string{"permissions", "mail", "progress"}
 	case "questions":
-		return []string{"questions", "mail", "progress"}
+		return []string{"questions", "mail", "progress", "requests"}
 	case "slots", "presence":
 		return []string{"sessions", "progress"}
 	case "host":

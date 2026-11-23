@@ -228,11 +228,11 @@ var commands = []command{
 			optProfile,
 		}},
 	{name: "search", args: "PATTERN", nargs: 1,
-		summary: "Find text in mail (subject, body), reports (title, body), panel questions (question, options, chosen answer) and left items, newest first, 50 at a time; each result is a line naming the record and the command that opens it, then the matched line. PATTERN is a substring, or with --regex a Go regular expression (RE2 syntax: https://github.com/google/re2/wiki/Syntax; no backreferences or lookaround); both ignore case unless --case. A role in a group sees its own group only",
+		summary: "Find text in mail (subject, body), reports (title, body), panel questions (question, options, chosen answer), left items and the owner's requests (title, text, notes), newest first, 50 at a time; each result is a line naming the record and the command that opens it, then the matched line. PATTERN is a substring, or with --regex a Go regular expression (RE2 syntax: https://github.com/google/re2/wiki/Syntax; no backreferences or lookaround); both ignore case unless --case. A role in a group sees its own group only",
 		options: []option{
 			{"--regex", "", "PATTERN is a regular expression (RE2)"},
 			{"--case", "", "match case (the default ignores it)"},
-			{"--kind", "mail|report|question|left", "only this kind (repeatable)"},
+			{"--kind", "mail|report|question|left|request", "only this kind (repeatable)"},
 			{"--role", "ROLE", "a sender or recipient, report author, asker or left item's recorder (a slot or label counts for its base)"},
 			{"--thread", "N", "mail of thread N, the reports linking it and its left items"},
 			{"--since", "DATE|TIME", "on or after this UTC date (YYYY-MM-DD) or RFC 3339 time"},

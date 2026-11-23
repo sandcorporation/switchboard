@@ -8,11 +8,12 @@ const (
 	SearchReport   = "report"
 	SearchQuestion = "question"
 	SearchLeft     = "left"
+	SearchRequest  = "request" // the owner's requests (#501): title, text and notes
 )
 
 // SearchKinds lists the kinds in their tie order (newest first, then this
 // order).
-var SearchKinds = []string{SearchMail, SearchReport, SearchQuestion, SearchLeft}
+var SearchKinds = []string{SearchMail, SearchReport, SearchQuestion, SearchLeft, SearchRequest}
 
 // SearchHit is one match. ID is the record's id as its own command takes it
 // (a message number, a report number, a question id, a left item number);

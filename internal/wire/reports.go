@@ -26,6 +26,8 @@ type ReportRequest struct {
 	Body           string  `json:"body"`
 	Mail           []int64 `json:"mail,omitempty"`
 	IdempotencyKey string  `json:"idempotency_key,omitempty"`
+	// RequestID is the owner's request the report belongs to (#501); 0 for none.
+	RequestID int64 `json:"request_id,omitempty"`
 }
 
 // Check trims the one-line fields and refuses an empty title or body, a
@@ -44,6 +46,8 @@ func (q *ReportRequest) Check() error {
 		return errors.New("request must be one line of at most 500 bytes")
 	case len(q.Mail) > MaxReportMail:
 		return errors.New("at most 100 mail IDs")
+	case q.RequestID < 0:
+		return errors.New("request ID must be positive")
 	}
 	for _, id := range q.Mail {
 		if id <= 0 {
@@ -70,6 +74,8 @@ type Report struct {
 	// rule's Open. Status is open exactly when OpenDirectives > 0 (#275).
 	Directives     int `json:"directives"`
 	OpenDirectives int `json:"open_directives"`
+	// RequestID is the owner's request the report belongs to (#501); omitted for none.
+	RequestID int64 `json:"request_id,omitempty"`
 }
 
 // ReportList is GET /api/admin/reports and GET /api/reports, newest first.

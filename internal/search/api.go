@@ -12,7 +12,7 @@ import (
 
 // API serves GET /api/search and /api/admin/search:
 //
-//	?q=PATTERN [&regex=1] [&case=1] [&kind=mail|report|question|left]…
+//	?q=PATTERN [&regex=1] [&case=1] [&kind=mail|report|question|left|request]…
 //	[&role=R] [&thread=N] [&since=T] [&until=T] [&limit=N] [&after=CURSOR]
 //
 // since and until take RFC 3339 or a date (YYYY-MM-DD, UTC; until is then

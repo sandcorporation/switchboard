@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/sandcorporation/switchboard/internal/identity"
+	"github.com/sandcorporation/switchboard/internal/requests"
 	"github.com/sandcorporation/switchboard/internal/store"
 	"github.com/sandcorporation/switchboard/internal/wire"
 )
@@ -291,6 +292,12 @@ func (s *Service) send(w http.ResponseWriter, r *http.Request, p identity.Princi
 		return
 	}
 	m.Priority = priority
+	if m.RequestID != 0 {
+		if err := requests.Linkable(s.db, s.ids, p, m.RequestID); err != nil {
+			http.Error(w, err.Error(), 400)
+			return
+		}
+	}
 	m.AddressedTo, m.HeldID, m.HeldAt, m.DeliveredAt = "", 0, nil, nil
 	var label labelAddr
 	var ambiguous []wire.LiveSlot
@@ -446,7 +453,7 @@ func (s *Service) send(w http.ResponseWriter, r *http.Request, p identity.Princi
 				m.Status, m.HeldAt, heldAt = statusHeld, &now, now.Format(time.RFC3339Nano)
 			}
 		}
-		res, err := tx.Exec(`INSERT INTO messages(sender,recipient,subject,body,created_at,task_id,thread_id,reply_to,idem,priority,status,addressed_to,held_at,directive,no_reply) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, role, m.Recipient, m.Subject, m.Body, now.Format(time.RFC3339Nano), m.TaskID, nullInt(m.ThreadID), nullInt(m.ReplyTo), nullable(key), m.Priority, m.Status, nullable(m.AddressedTo), heldAt, m.Directive, m.NoReply)
+		res, err := tx.Exec(`INSERT INTO messages(sender,recipient,subject,body,created_at,task_id,thread_id,reply_to,idem,priority,status,addressed_to,held_at,directive,no_reply,request_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, role, m.Recipient, m.Subject, m.Body, now.Format(time.RFC3339Nano), m.TaskID, nullInt(m.ThreadID), nullInt(m.ReplyTo), nullable(key), m.Priority, m.Status, nullable(m.AddressedTo), heldAt, m.Directive, m.NoReply, nullInt(m.RequestID))
 		if err != nil {
 			return err
 		}

@@ -197,7 +197,52 @@ func Init(db *sql.DB) error {
 	if e = migrateLeftItems(db); e != nil {
 		return e
 	}
-	return migrateRoleLifecycle(db)
+	if e = migrateRoleLifecycle(db); e != nil {
+		return e
+	}
+	return migrateRequests(db)
+}
+
+// migrateRequests adds the owner's requests (#501, internal/requests), all
+// additive: requests (one request the owner gave a boss role: its short
+// title and full text, the boss role's result line and when it marked the
+// request done, and when a dashboard login checked it), request_notes (the
+// owner's later words on a request) and request_id on reports, messages and
+// questions (the request a report, a sent mail or a panel question belongs
+// to; null for everything before or outside a request). Times are RFC 3339.
+func migrateRequests(db *sql.DB) error {
+	_, err := db.Exec(`CREATE TABLE IF NOT EXISTS requests(
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		author TEXT NOT NULL,
+		title TEXT NOT NULL,
+		text TEXT NOT NULL,
+		created_at TEXT NOT NULL,
+		result TEXT NOT NULL DEFAULT '',
+		done_at TEXT,
+		checked_at TEXT,
+		checked_by TEXT NOT NULL DEFAULT '',
+		idem TEXT,
+		UNIQUE(author, idem));
+	CREATE TABLE IF NOT EXISTS request_notes(
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		request_id INTEGER NOT NULL REFERENCES requests(id),
+		text TEXT NOT NULL,
+		created_at TEXT NOT NULL);
+	CREATE INDEX IF NOT EXISTS idx_request_notes_request ON request_notes(request_id);`)
+	if err != nil {
+		return err
+	}
+	if err = addColumns(db, []columnAdd{
+		{"reports", "request_id", `INTEGER`},
+		{"messages", "request_id", `INTEGER`},
+		{"questions", "request_id", `INTEGER`},
+	}); err != nil {
+		return err
+	}
+	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_reports_request ON reports(request_id) WHERE request_id IS NOT NULL;
+	CREATE INDEX IF NOT EXISTS idx_messages_request ON messages(request_id) WHERE request_id IS NOT NULL;
+	CREATE INDEX IF NOT EXISTS idx_questions_request ON questions(request_id) WHERE request_id IS NOT NULL;`)
+	return err
 }
 
 // migrateRoleLifecycle adds roles.rotated_at (when an operator last replaced

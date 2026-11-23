@@ -288,7 +288,7 @@ func (sv *Service) Search(ctx context.Context, q Query, see See, scope string) (
 	}
 	for _, k := range kinds {
 		if !slices.Contains(wire.SearchKinds, k) {
-			return wire.SearchResult{}, fmt.Errorf("%w: kind %q (mail, report, question, left)", ErrBadQuery, k)
+			return wire.SearchResult{}, fmt.Errorf("%w: kind %q (mail, report, question, left, request)", ErrBadQuery, k)
 		}
 	}
 	limit := q.Limit
@@ -329,6 +329,8 @@ func (sv *Service) Search(ctx context.Context, q Query, see See, scope string) (
 			got, err = sv.questions(ctx, s)
 		case wire.SearchLeft:
 			got, err = sv.left(ctx, s)
+		case wire.SearchRequest:
+			got, err = sv.requests(ctx, s)
 		}
 		if err != nil {
 			return wire.SearchResult{}, err
@@ -452,6 +454,44 @@ func (sv *Service) reports(ctx context.Context, s *scan) ([]hit, error) {
 		}
 		n := strconv.FormatInt(id, 10)
 		h := hit{SearchHit: wire.SearchHit{Kind: wire.SearchReport, ID: n, At: t, From: author, Title: title, Line: line, Open: "report show R" + n}, rank: 1, key: id}
+		if s.take(&out, h) {
+			break
+		}
+	}
+	return out, rows.Err()
+}
+
+// requests scans the owner's requests (#501): the title, the full text and
+// the notes; a request's author is the boss role that registered it.
+func (sv *Service) requests(ctx context.Context, s *scan) ([]hit, error) {
+	if s.q.Thread > 0 { // requests have no thread
+		return nil, nil
+	}
+	rows, err := sv.db.QueryContext(ctx, `SELECT r.id,r.author,r.title,r.text,COALESCE((SELECT group_concat(n.text, char(10)) FROM request_notes n WHERE n.request_id=r.id),''),r.created_at FROM requests r ORDER BY r.id DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []hit
+	for rows.Next() {
+		if s.stop() {
+			break
+		}
+		var id int64
+		var author, title, text, notes, at string
+		if err := rows.Scan(&id, &author, &title, &text, &notes, &at); err != nil {
+			return nil, err
+		}
+		t := parseText(at)
+		if !s.inTime(t) || !s.visible(author) || !s.roleMatch(author) {
+			continue
+		}
+		line, ok := s.match(title, text, notes)
+		if !ok {
+			continue
+		}
+		n := strconv.FormatInt(id, 10)
+		h := hit{SearchHit: wire.SearchHit{Kind: wire.SearchRequest, ID: n, At: t, From: author, Title: title, Line: line, Open: "request show " + n}, rank: 4, key: id}
 		if s.take(&out, h) {
 			break
 		}
