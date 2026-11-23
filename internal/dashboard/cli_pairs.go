@@ -2,7 +2,7 @@ package dashboard
 
 // CLIPair is one API the dashboard calls and the CLI command that does the
 // same (#399). When a screen or an action is added to the dashboard, its
-// call gets a row here; TestCLIPairs reads every call in dashboardHTML and
+// call gets a row here; TestCLIPairs reads every call in dashboardHTML (all the parts of page/) and
 // fails on one without a row, on a command the CLI does not take, and on an
 // exception without a reason.
 //

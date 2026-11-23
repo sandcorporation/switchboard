@@ -1,0 +1,221 @@
+</style>
+</head>
+<body>
+<div class="sc-app">
+<aside class="sc-sidenav" aria-label="주 메뉴">
+<div class="sc-sidenav-org"><span class="sc-sidenav-mark" aria-hidden="true">{{mark}}</span><div class="sc-sidenav-org-text"><h1>{{header}}</h1></div></div>
+<div id="tabs" class="tabs" role="tablist" aria-label="탭">
+<div class="sc-sidenav-heading" aria-hidden="true">운영</div>
+<button type="button" class="sc-sidenav-item" title="진행" role="tab" id="tab-progress" data-tab="progress" aria-controls="panel-progress" aria-selected="true" tabindex="0"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 8h3l2-5 2 10 2-5h3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="tab-name sc-sidenav-label">진행</span><span class="tab-count sc-sidenav-count"></span></button>
+<button type="button" class="sc-sidenav-item" title="세션" role="tab" id="tab-sessions" data-tab="sessions" aria-controls="panel-sessions" aria-selected="false" tabindex="-1"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 3.5h11v7h-11zM6 13.5h4" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="tab-name sc-sidenav-label">세션</span><span class="tab-count sc-sidenav-count"></span></button>
+<button type="button" class="sc-sidenav-item" title="메일" role="tab" id="tab-mail" data-tab="mail" aria-controls="panel-mail" aria-selected="false" tabindex="-1"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3.5h12v9H2zM2 4l6 5 6-5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="tab-name sc-sidenav-label">메일</span><span class="tab-count sc-sidenav-count"></span></button>
+<button type="button" class="sc-sidenav-item" title="보고" role="tab" id="tab-reports" data-tab="reports" aria-controls="panel-reports" aria-selected="false" tabindex="-1"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 1.5h6l3 3v10h-9zM9.5 1.5v3h3M5.5 8h5M5.5 10.5h5M5.5 13h3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="tab-name sc-sidenav-label">보고</span><span class="tab-count sc-sidenav-count"></span></button>
+<button type="button" class="sc-sidenav-item" title="작업" role="tab" id="tab-jobs" data-tab="jobs" aria-controls="panel-jobs" aria-selected="false" tabindex="-1"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 14.5a6.5 6.5 0 1 0 0-13 6.5 6.5 0 0 0 0 13zM8 4.5V8l2.5 1.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="tab-name sc-sidenav-label">작업</span><span class="tab-count sc-sidenav-count"></span></button>
+<div class="sc-sidenav-heading" aria-hidden="true">응답</div>
+<button type="button" class="sc-sidenav-item" title="질문" data-wait role="tab" id="tab-questions" data-tab="questions" aria-controls="panel-questions" aria-selected="false" tabindex="-1"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 14.5a6.5 6.5 0 1 0 0-13 6.5 6.5 0 0 0 0 13zM6.3 6a1.8 1.8 0 1 1 2.4 1.7c-.5.2-.7.6-.7 1.1v.5M8 11.2v.1" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="tab-name sc-sidenav-label">질문</span><span class="tab-count sc-sidenav-count"></span></button>
+<button type="button" class="sc-sidenav-item" title="권한 요청" data-wait role="tab" id="tab-permissions" data-tab="permissions" aria-controls="panel-permissions" aria-selected="false" tabindex="-1"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5l5.5 2v4c0 3.5-2.5 6-5.5 7-3-1-5.5-3.5-5.5-7v-4z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="tab-name sc-sidenav-label">권한 요청</span><span class="tab-count sc-sidenav-count"></span></button>
+<button type="button" class="sc-sidenav-item" title="규칙" role="tab" id="tab-rules" data-tab="rules" aria-controls="panel-rules" aria-selected="false" tabindex="-1"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4l1.5 1.5L6.5 3M8.5 4.5h5M2.5 9l1.5 1.5L6.5 8M8.5 9.5h5M8.5 13h5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="tab-name sc-sidenav-label">규칙</span><span class="tab-count sc-sidenav-count"></span></button>
+<div class="sc-sidenav-heading" aria-hidden="true">관리</div>
+<button type="button" class="sc-sidenav-item" title="지표" role="tab" id="tab-metrics" data-tab="metrics" aria-controls="panel-metrics" aria-selected="false" tabindex="-1"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 13.5v-4M6.5 13.5v-8M10.5 13.5v-6M14 13.5v-10" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="tab-name sc-sidenav-label">지표</span><span class="tab-count sc-sidenav-count"></span></button>
+<button type="button" class="sc-sidenav-item" title="터미널" role="tab" id="tab-terminals" data-tab="terminals" aria-controls="panel-terminals" aria-selected="false" tabindex="-1" hidden><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3h12v10H2zM4.5 6l2 2-2 2M8 10h3.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="tab-name sc-sidenav-label">터미널</span><span class="tab-count sc-sidenav-count"></span></button>
+<button type="button" class="sc-sidenav-item" title="설정" role="tab" id="tab-settings" data-tab="settings" aria-controls="panel-settings" aria-selected="false" tabindex="-1"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 10.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5zM8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.4 3.4l1.4 1.4M11.2 11.2l1.4 1.4M3.4 12.6l1.4-1.4M11.2 4.8l1.4-1.4" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="tab-name sc-sidenav-label">설정</span><span class="tab-count sc-sidenav-count"></span></button>
+</div>
+</aside>
+<div class="sc-app-main" id="appMain">
+<header class="sc-topbar"><nav aria-label="이동 경로"><ol class="sc-topbar-crumbs"><li>{{name}}</li><li id="crumbTab" aria-current="page">진행</li></ol></nav>
+<div class="topacts"><form class="gsearch" id="gsForm" role="search"><input type="search" id="gsQ" placeholder="검색" aria-label="검색" aria-controls="gsPanel" aria-expanded="false" autocomplete="off" maxlength="500"></form><span class="liveind"><span id="live" class="live" title="실시간 연결 끊김"></span><span id="liveText">끊김</span></span><span class="sc-topbar-account" id="who" hidden><span id="whoMark" class="sc-topbar-avatar" aria-hidden="true"></span><span class="sc-topbar-account-text"><span id="whoName"></span></span></span><button type="button" id="logout" hidden>로그아웃</button></div>
+<div id="gsPanel" class="gspanel" hidden><div class="gshead"><span id="gsCount" role="status"></span><select id="gsKind" aria-label="종류"><option value="">전체</option><option value="mail">메일</option><option value="report">보고</option><option value="question">질문</option><option value="left">남긴 것</option></select><label class="gsre" title="Go 정규식(RE2) · 대소문자 무시"><input type="checkbox" id="gsRe"> 정규식</label></div><ul id="gsList" class="gslist"></ul><button type="button" id="gsMore" class="gsmore" hidden>더 보기</button></div></header>
+<main class="sc-app-page">
+<section id="panel-progress" role="tabpanel" aria-labelledby="tab-progress" tabindex="0" class="card">
+<div class="toolbar"><h2>진행</h2><button id="reloadProgress">새로 고침</button><span id="progressNote" class="muted" role="status" aria-live="polite"></span></div>
+<h3 class="sechead">대기 <span id="waitCount" class="muted"></span></h3>
+<table id="waitTbl" class="stack list cards"><thead><tr><th>종류</th><th>항목</th><th>역할</th><th class="num">지난 시간</th></tr></thead><tbody id="wait"></tbody></table>
+<h3 class="sechead">서비스</h3>
+<div class="listbar"><div class="chips" id="svcChips" role="group" aria-label="서비스 고르기"></div></div>
+<table id="progressTbl" class="stack list cards"><thead><tr><th>서비스</th><th>상태</th><th class="num">세션</th><th class="num">열린 지시</th><th class="num">남긴 것</th><th>마지막 소식</th></tr></thead><tbody id="progress"></tbody></table>
+</section>
+<section id="panel-sessions" role="tabpanel" aria-labelledby="tab-sessions" tabindex="0" class="card" hidden>
+<div class="toolbar"><h2>세션</h2><button id="reloadSessions">새로 고침</button><span id="sessionsNote" class="muted"></span></div>
+<div class="listbar"><div class="chips" id="sessionChips" role="group" aria-label="상태 고르기"></div><input id="sessionsSearch" type="search" aria-label="세션 검색" placeholder="역할·기계·폴더·라벨"></div>
+<table id="sessionsTbl" class="stack list"><thead><tr><th>역할</th><th>상태</th><th class="num">컨텍스트</th><th>마지막 턴</th><th>기계</th><th>판</th><th>라벨</th></tr></thead><tbody id="sessions"></tbody></table>
+</section>
+<section id="panel-metrics" role="tabpanel" aria-labelledby="tab-metrics" tabindex="0" class="card" hidden>
+<div class="toolbar"><h2>지표</h2>
+<div class="viewswitch" role="group" aria-label="기간 고르기"><button type="button" id="metDays7" data-days="7" aria-pressed="true">7일</button><button type="button" id="metDays30" data-days="30" aria-pressed="false">30일</button></div>
+<button id="reloadMetrics">새로 고침</button><span id="metricsNote" class="muted" role="status" aria-live="polite"></span></div>
+<div class="metgrid">
+<div class="mcard full"><h3 title="스레드를 연 메일이 첫 답을 받기까지 걸린 시간">첫 답장</h3>
+<div id="mFirstStats" class="stats"></div>
+<div id="mFirstChart" class="chart"></div>
+<table id="mFirstTbl" class="stack"><thead><tr><th>받는 쪽</th><th class="num">메일</th><th class="num">답 받음</th><th class="num">답 없음</th><th class="num">p50</th><th class="num">p90</th><th class="num">최장</th></tr></thead><tbody id="mFirstByRecipient"></tbody></table>
+</div>
+<div class="mcard"><h3 title="역할별 안 읽힌 메일과 가장 오래된 것">안 읽힌 메일</h3>
+<p id="mPendingNote" class="muted"></p>
+<table id="mPendingTbl" class="stack"><thead><tr><th>역할</th><th class="num">안 읽음</th><th class="num">가장 오래된 것</th></tr></thead><tbody id="mPending"></tbody></table>
+</div>
+<div class="mcard"><h3 title="두 쪽이 두 번 넘게 주고받은 스레드">되물음</h3>
+<p id="mThreadsNote" class="muted"></p>
+<ol id="mThreads" class="mthreads"></ol>
+</div>
+<div class="mcard full"><h3 title="기간 안에 오류·막힘 상태로 있던 시간">세션 상태</h3>
+<p id="mSessionsNote" class="muted"></p>
+<table id="mStateTbl" class="stack"><thead><tr><th>역할</th><th class="num">오류</th><th class="num">막힘</th><th>많았던 상태</th></tr></thead><tbody id="mStates"></tbody></table>
+<h4>지금 오류·막힘</h4>
+<table id="mCurrentTbl" class="stack"><thead><tr><th>역할</th><th>상태</th><th>시작</th><th class="num">지난 시간</th></tr></thead><tbody id="mCurrent"></tbody></table>
+</div>
+</div>
+<p id="mAliases" class="muted"></p>
+</section>
+<section id="panel-mail" role="tabpanel" aria-labelledby="tab-mail" tabindex="0" hidden>
+<div class="card filters">
+<select id="box" aria-label="메일함"><option value="all">모든 메일</option><option value="inbox">받은 메일</option><option value="outbox">보낸 메일</option><option value="held">보관 중(라벨)</option></select>
+<select id="role" aria-label="역할"><option value="">모든 역할</option></select>
+<select id="status" aria-label="상태"><option value="">모든 상태</option><option value="pending">안 읽음</option><option value="read">읽음</option><option value="acknowledged">확인함</option><option value="complete">완료</option></select>
+<input id="search" aria-label="검색" placeholder="내용·역할·task 검색">
+<input id="thread" type="number" min="1" aria-label="스레드 번호" placeholder="스레드 번호">
+<input id="task" aria-label="task id" placeholder="task id" autocomplete="off" autocapitalize="off" spellcheck="false">
+<div class="actions">
+<button id="go" type="submit">검색</button>
+<button id="reset">초기화</button>
+<button id="reloadMail">새로 고침</button>
+<span id="conn">연결 중…</span>
+</div>
+</div>
+<div id="notice" class="muted"></div>
+<table id="mailTbl" class="stack list"><thead><tr><th class="num">#</th><th>제목</th><th>보낸 쪽 → 받는 쪽</th><th>상태</th><th>시각</th></tr></thead><tbody id="list"></tbody></table>
+</section>
+<section id="panel-reports" role="tabpanel" aria-labelledby="tab-reports" tabindex="0" class="card" hidden>
+<div class="toolbar"><h2>보고</h2><button id="reloadReports">새로 고침</button><span id="reportsNote" class="muted" role="status" aria-live="polite"></span></div>
+<div class="listbar"><div class="chips" id="reportChips" role="group" aria-label="상태 고르기"></div></div>
+<table id="reportsTbl" class="stack list"><thead><tr><th>상태</th><th>제목</th><th>보낸 쪽</th><th>시각</th></tr></thead><tbody id="reports"></tbody></table>
+</section>
+<section id="panel-jobs" role="tabpanel" aria-labelledby="tab-jobs" tabindex="0" class="card" hidden>
+<div class="toolbar"><h2>작업</h2><button id="reloadJobs">새로 고침</button><span id="jobsNote" class="muted" role="status" aria-live="polite"></span></div>
+<div class="filters">
+<select id="jobRole" aria-label="역할"><option value="">모든 역할</option></select>
+<select id="jobState" aria-label="상태"><option value="live">진행 중</option><option value="">모든 상태</option><option value="exited">끝남</option><option value="failed">시작 실패</option><option value="stopped">중지됨</option><option value="expired">만료</option><option value="lost">잃음</option></select>
+</div>
+<table id="jobsTbl" class="stack list cards"><thead><tr><th>종류</th><th>이름</th><th>역할</th><th>기계</th><th>상태</th><th>시작</th><th>만료</th><th>마지막 줄</th><th></th></tr></thead><tbody id="jobs"></tbody></table>
+</section>
+<section id="panel-permissions" role="tabpanel" aria-labelledby="tab-permissions" tabindex="0" class="card" hidden>
+<div class="toolbar"><h2>권한 요청</h2><button id="reloadPerms">새로 고침</button><span id="permsNote" class="muted" role="status" aria-live="polite"></span></div>
+<div id="permsMsg" class="msg" role="status" aria-live="polite"></div>
+<h3 class="sechead">대기</h3>
+<table id="permPendingTbl" class="stack list"><thead><tr><th>상태</th><th>도구 · 요약</th><th>요청한 쪽</th><th>요청</th><th>만료</th></tr></thead><tbody id="permPending"></tbody></table>
+<h3 class="sechead">지난 기록</h3>
+<table id="permHistoryTbl" class="stack list"><thead><tr><th>결과</th><th>도구 · 요약</th><th>요청한 쪽</th><th>요청</th><th>답한 쪽</th></tr></thead><tbody id="permHistory"></tbody></table>
+</section>
+<section id="panel-rules" role="tabpanel" aria-labelledby="tab-rules" tabindex="0" class="card" hidden>
+<div class="toolbar"><h2>규칙</h2><button id="reloadRules">새로 고침</button><span id="rulesNote" class="muted" role="status" aria-live="polite"></span></div>
+<div class="listbar"><div class="chips" id="ruleChips" role="group" aria-label="종류 고르기"></div>
+<input id="ruleService" type="search" aria-label="서비스" placeholder="서비스" autocomplete="off" autocapitalize="off" spellcheck="false">
+<select id="ruleTopic" aria-label="주제"><option value="">모든 주제</option></select>
+<label><input type="checkbox" id="ruleAll"> 대체·무효 포함</label>
+<button type="button" id="ruleProposed" class="sc-chip" aria-pressed="false">제안 <span id="ruleProposedN" class="sc-chip-count">0</span></button>
+<span id="ruleUnclassified" class="muted"></span></div>
+<table id="rulesTbl" class="stack list"><thead><tr><th class="num">#</th><th>종류</th><th>주제</th><th>범위</th><th>글</th><th class="num">걸림</th></tr></thead><tbody id="rules"></tbody></table>
+<details id="ruleAdd"><summary>새 줄</summary>
+<form id="ruleForm" class="ruleform">
+<div class="row"><select id="ruleKind" aria-label="종류"><option value="decision">결정</option><option value="tip">요령</option></select>
+<input id="ruleScope" aria-label="범위" placeholder="all · service:NAME · tag:NAME" required autocomplete="off" autocapitalize="off" spellcheck="false">
+<input id="ruleTopicIn" list="ruleTopics" aria-label="주제" placeholder="주제" required autocomplete="off" autocapitalize="off" spellcheck="false"><datalist id="ruleTopics"></datalist>
+<label><input type="checkbox" id="ruleNewTopic"> 새 주제</label>
+<input id="ruleGroup" aria-label="그룹" placeholder="그룹 (all·tag 줄)" autocomplete="off" autocapitalize="off" spellcheck="false"></div>
+<textarea id="ruleText" rows="3" aria-label="글" placeholder="첫 줄: 요약 · 둘째 줄부터: 하위 항목" required></textarea>
+<div class="row"><input id="ruleWhenTool" aria-label="걸림: 도구" placeholder="도구 (Bash, mcp__*)" autocomplete="off" autocapitalize="off" spellcheck="false">
+<input id="ruleWhenCommand" aria-label="걸림: 명령 정규식" placeholder="명령 정규식" autocomplete="off" autocapitalize="off" spellcheck="false">
+<input id="ruleWhenPath" aria-label="걸림: 경로 glob" placeholder="경로 glob (**/x/*.sql)" autocomplete="off" autocapitalize="off" spellcheck="false"></div>
+<input id="ruleSource" aria-label="출처" placeholder="출처: 질문 ID(q_…) 또는 글" required>
+<div class="row"><button type="submit">올리기</button></div>
+<div id="ruleAddMsg" class="msg" role="status" aria-live="polite"></div>
+</form></details>
+</section>
+<section id="panel-questions" role="tabpanel" aria-labelledby="tab-questions" tabindex="0" class="card" hidden>
+<div class="toolbar"><h2>질문</h2>
+<div class="viewswitch" role="group" aria-label="질문 보기 고르기"><button type="button" id="viewQuestions" aria-pressed="true">질문</button><button type="button" id="viewDecisions" aria-pressed="false">결정</button></div>
+<button id="reloadQuestions">새로 고침</button><span id="questionsNote" class="muted"></span></div>
+<div id="questionsView">
+<div id="questionsMsg" class="msg" role="status" aria-live="polite"></div>
+<table id="questionsTbl" class="stack list"><thead><tr><th>상태</th><th>질문</th><th>묻는 쪽</th><th>시각</th></tr></thead><tbody id="questions"></tbody></table>
+</div>
+<div id="decisionsView" hidden>
+<form id="decForm" class="row decfilters">
+<select id="decPeriod" aria-label="기간" title="날짜는 UTC 기준"><option value="7">최근 7일</option><option value="30" selected>최근 30일</option><option value="90">최근 90일</option><option value="all">전체</option><option value="custom">직접 고르기</option></select>
+<input id="decFrom" type="date" aria-label="시작일" title="UTC 기준" hidden>
+<input id="decTo" type="date" aria-label="끝일" title="UTC 기준" hidden>
+<input id="decRole" list="decRoles" aria-label="역할" placeholder="역할 또는 svc/*" autocomplete="off" autocapitalize="off" spellcheck="false">
+<datalist id="decRoles"></datalist>
+<input id="decSearch" type="search" aria-label="검색" placeholder="제목·질문·고른 답 검색">
+<button type="submit">검색</button>
+<a id="decExport" class="button" download href="/api/admin/decisions?format=ndjson">JSON 내보내기</a>
+</form>
+<div id="decisionsNote" class="muted" role="status" aria-live="polite"></div>
+<div id="decisions"></div>
+</div>
+</section>
+<section id="panel-settings" role="tabpanel" aria-labelledby="tab-settings" tabindex="0" class="card" hidden>
+<div class="toolbar"><h2>설정</h2>
+<div class="viewswitch" id="setViews" role="group" aria-label="설정 고르기"><button type="button" data-view="qsettings" aria-pressed="true">질문 설정</button><button type="button" data-view="roles" aria-pressed="false">역할</button><button type="button" data-view="nodes" aria-pressed="false" hidden>노드</button><button type="button" data-view="groups" aria-pressed="false" hidden>묶음</button><button type="button" data-view="reminders" aria-pressed="false">다시 알림</button></div>
+<button id="reloadSettings">새로 고침</button><span id="settingsNote" class="muted"></span></div>
+<div id="settingsMsg" class="msg" role="status" aria-live="polite"></div>
+<div id="setView-qsettings">
+<div class="listbar"><button type="button" id="setAddOpen" aria-haspopup="dialog" aria-controls="setAdd">추가</button></div>
+<table id="settingsTbl" class="stack list cards"><thead><tr><th>대상</th><th>질문 가능</th><th>지켜보는 역할</th><th>디스코드</th><th>바뀐 때</th></tr></thead><tbody id="settingsTable"></tbody></table>
+<h3 class="sechead">최근 거절 <span class="muted" title="can_ask 꺼짐으로 거절된 역할 (24시간)">24시간</span></h3>
+<table id="refusalsTbl" class="stack list cards"><thead><tr><th>역할</th><th>맞은 대상</th><th>대신 물을 역할</th><th class="num">횟수</th><th>마지막 거절</th></tr></thead><tbody id="refusalsTable"></tbody></table>
+</div>
+<div id="setView-roles" hidden>
+<table id="rolesTbl" class="stack list cards"><thead><tr><th>역할</th><th>상태</th><th>등록</th><th>끊은 때</th></tr></thead><tbody id="rolesTable"></tbody></table>
+</div>
+<div id="setView-nodes" hidden>
+<table id="nodesTbl" class="stack list cards"><thead><tr><th>노드</th><th>기계</th><th>OS</th><th>버전</th><th>마지막 접속</th><th>끊은 때</th></tr></thead><tbody id="nodesTable"></tbody></table>
+</div>
+<div id="setView-groups" hidden>
+<form id="groupForm" class="settings-form termform"><label>이름 <input id="groupName" required maxlength="64" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="fast"></label><label title="남은 한도가 이 값(%)보다 작으면 새 일을 받지 않음. 비우면 문턱 없음">문턱 % <input id="groupThreshold" type="number" min="0" max="100" step="1" inputmode="numeric"></label><div class="row"><button type="submit">추가</button></div></form>
+<table id="groupsTbl" class="stack list cards"><thead><tr><th>묶음</th><th>문턱 %</th><th class="num">세션</th><th>바뀐 때</th><th></th></tr></thead><tbody id="groupsTable"></tbody></table>
+</div>
+<div id="setView-reminders" hidden><div id="remindBox"></div></div>
+<dialog id="setAdd" class="sc-drawer" aria-labelledby="setAddTitle"><div class="sc-drawer-head"><h3 id="setAddTitle" class="sc-drawer-title">질문 설정 추가</h3><button type="button" id="setAddClose" class="detail-close" aria-label="닫기">×</button></div><div class="sc-drawer-body">
+<div id="setAddMsg" class="msg" role="status" aria-live="polite"></div>
+<form id="settingsForm" class="settings-form termform">
+<label title="default, 역할(svc/coordinator — svc/coordinator-N 포함), 접두사(svc/*). 정확한 대상 → 가장 긴 접두사 → default 순으로 하나만 적용">대상 <input id="setTarget" required autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="svc/coordinator 또는 svc/*"></label>
+<label class="check"><input type="checkbox" id="setCanAsk"> 질문할 수 있음 (can_ask)</label>
+<label class="check"><input type="checkbox" id="setDiscord"> 디스코드 알림 (discord)</label>
+<label>지켜보는 역할 (쉼표로 구분, 최대 20) <input id="setWatchers" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="team/boss, ops/lead"></label>
+<div class="row"><button type="submit">저장</button><button type="button" id="setClear">비우기</button></div>
+</form>
+</div></dialog>
+</section>
+<section id="panel-terminals" role="tabpanel" aria-labelledby="tab-terminals" tabindex="0" class="card" hidden>
+<div class="toolbar"><h2>터미널</h2><button id="reloadTerminals">새로 고침</button><span id="terminalsNote" class="muted"></span></div>
+<div id="terminalsMsg" class="msg" role="status" aria-live="polite"></div>
+<div id="termLimit" class="toolbar"><span>구독 한도</span><strong id="termLimitText">-</strong><button type="button" id="termLimitBtn" aria-pressed="false">한도 걸기</button></div>
+<div class="listbar"><div class="chips" id="termChips" role="group" aria-label="상태 고르기"></div><button type="button" id="termAddOpen" aria-haspopup="dialog" aria-controls="termAdd">추가</button></div>
+<table id="terminalsTbl" class="stack list"><thead><tr><th>이름</th><th>프로필</th><th>노드</th><th>상태</th><th>권한</th><th class="num">재시작</th><th>마지막 시작</th></tr></thead><tbody id="terminals"></tbody></table>
+<div id="termHold" hidden><div id="termPane" class="termpane"><div class="toolbar termbar"><span id="termStateText" class="muted"></span><span id="termConn" class="muted" role="status" aria-live="polite"></span><button type="button" id="termMode" aria-pressed="false">입력</button><button type="button" id="termWide" aria-pressed="false" title="Esc: 원래 크기">넓히기</button></div><div id="termPaneMsg" class="msg" role="status" aria-live="polite"></div><div id="termScreen"></div></div></div>
+<dialog id="termAdd" class="sc-drawer" aria-labelledby="termAddTitle"><div class="sc-drawer-head"><h3 id="termAddTitle" class="sc-drawer-title">터미널 추가</h3><button type="button" id="termAddClose" class="detail-close" aria-label="닫기">×</button></div><div class="sc-drawer-body">
+<div id="termAddMsg" class="msg" role="status" aria-live="polite"></div>
+<form id="termForm" class="settings-form termform">
+<label>노드 <input id="termNode" required autocomplete="off" autocapitalize="off" spellcheck="false" value="local"></label>
+<label>역할 <input id="termBase" required autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="team/worker"></label>
+<label>프로필 <input id="termProfile" required autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="team-worker"></label>
+<label>폴더 <input id="termDir" required autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="/home/me/work/app"></label>
+<label>라벨 <input id="termLabel" autocomplete="off"></label>
+<label>부모 <input id="termParent" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="team/boss"></label>
+<label>묶음 <select id="termGroup"><option value="">없음</option></select></label>
+<label>어댑터 <select id="termAdapter"><option value="">기본</option></select></label>
+<label>재시작 <select id="termRestart"><option value="always">always</option><option value="on-failure">on-failure</option><option value="never">never</option></select></label>
+<label>권한 <select id="termPerms"><option value="skip">건너뜀</option><option value="ask">물음</option></select></label>
+<label>인자 <input id="termArgs" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="--model opus"></label>
+<div class="row"><button type="submit">추가</button><button type="button" id="termClear">비우기</button></div>
+</form>
+</div></dialog>
+</section>
+</main>
+<aside id="detail" class="detail" aria-labelledby="detailTitle" hidden>
+<div class="detail-head"><button type="button" id="detailBack" class="detail-back"></button><h2 id="detailTitle" tabindex="-1"></h2><span id="detailBadge" class="sc-badge" hidden></span><button type="button" id="detailClose" class="detail-close" aria-label="닫기" title="닫기 (Esc)">×</button></div>
+<nav id="detailTabs" class="sc-tabs" aria-label="상세 보기"></nav>
+<div id="detailBody" class="detail-body"></div>
+</aside>
+</div>
+</div>
