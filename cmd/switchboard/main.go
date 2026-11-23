@@ -45,5 +45,7 @@ func main() {
 		},
 		NodeInvite:     server.NodeInviteCLI,
 		NodeStatusLine: server.NodeStatusLineCLI,
+		PluginInstall:  server.PluginInstallCLI,
+		PluginStatus:   server.PluginStatusCLI,
 	}))
 }

@@ -117,6 +117,11 @@ jobs:
       - name: Plugin tests (MCP server)
         if: steps.scope.outputs.docs_only != 'true'
         run: bash internal/agent/claude/plugin/e2e/suite.sh mcp
+      - name: Plugin install through the real CLI (scratch CLAUDE_CONFIG_DIR)
+        if: steps.scope.outputs.docs_only != 'true'
+        env:
+          SWITCHBOARD_TEST_CLAUDE: require
+        run: go test -count=1 -v -run '^TestInstallPluginWithClaudeCode$' ./internal/agent/claude/
       - name: Plugin question path e2e (this commit's server)
         if: steps.scope.outputs.docs_only != 'true'
         run: bash internal/agent/claude/plugin/e2e/run.sh
