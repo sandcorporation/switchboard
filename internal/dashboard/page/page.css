@@ -235,6 +235,14 @@ td.revoked{color:var(--st-error);font-weight:600}
 .stat b{display:block;font-size:1.2em;font-weight:650;font-variant-numeric:tabular-nums}.stat span{font-size:.78em;color:var(--color-muted)}
 .chart svg{display:block;width:100%;max-width:26rem;height:auto;margin:var(--space-2) 0}
 .chart .bar{fill:var(--color-accent)}.chart .axis{stroke:var(--color-line-strong)}.chart text{font:11px system-ui,sans-serif;fill:var(--color-muted)}
+.hstats{display:flex;flex-wrap:wrap;gap:var(--space-1) var(--space-5);margin:var(--space-1) 0 var(--space-2);font-size:.9em}
+.hstats span{color:var(--color-muted)}.hstats b{margin-left:.35em;color:var(--color-ink);font-variant-numeric:tabular-nums}
+.hchart{display:flex;align-items:stretch;gap:3px;height:120px;border-bottom:1px solid var(--color-line-strong);padding:0 2px}
+.hchart i{flex:1;min-width:0;display:flex;align-items:flex-end}
+.hchart i b{display:block;width:100%;min-height:1px;background:var(--color-accent);opacity:.85}
+.hchart i.now b{background:var(--color-warning)}
+.hchart i:hover b{opacity:1}
+.haxis{display:flex;justify-content:space-between;font-size:11px;color:var(--color-muted);margin:3px 0 0}
 tr.over td{background:var(--st-error-bg)}tr.over td:first-child{box-shadow:inset 3px 0 var(--st-error)}
 td.num,th.num{text-align:right}
 table.stack td.wrap{white-space:normal;overflow-wrap:anywhere}

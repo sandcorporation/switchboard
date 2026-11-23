@@ -1,5 +1,6 @@
 // ---- 지표 ----
-// One GET /api/admin/metrics?days=N fills the four cards. metricsSeq drops a
+// One GET /api/admin/metrics?days=N fills the four cards and GET
+// /api/admin/metrics/hourly the 시간당 메일 card (#511). metricsSeq drops a
 // slow answer for a period the user has already switched away from.
 let metricsDays=7,metricsSeq=0;
 function dur(s){
@@ -98,9 +99,43 @@ function renderAliases(a){
   a=a||{};const e=a.old_env||[];
   $('mAliases').textContent='옛 이름 환경 변수: '+(e.join(', ')||'없음');
 }
+// hourLabel is a slot's local clock hour, e.g. 「14시」.
+function hourLabel(t){return new Date(t).getHours()+'시'}
+// renderHourly fills 시간당 메일 from GET metrics/hourly (#511): 24 clock-hour
+// bars of mail, the newest running to now, and the last hour per role.
+function renderHourly(h){
+  const hours=h.hours||[],lh=h.last_hour||{mail:0,reports:0,questions:0};
+  const total=hours.reduce((n,x)=>n+x.mail,0);
+  let peak=null;for(const x of hours)if(x.mail&&(!peak||x.mail>peak.mail))peak=x;
+  const stat=(label,value,tip)=>{const s=node('span',label);s.title=tip;s.append(node('b',value));return s};
+  $('mHourlyStats').replaceChildren(
+    stat('지난 한 시간',String(lh.mail),'지금까지 60분 동안 오간 메일'),
+    stat('보고',String(lh.reports),'지금까지 60분 동안 올라온 보고'),
+    stat('질문',String(lh.questions),'지금까지 60분 동안 올라온 질문'),
+    stat('24시간',String(total),'지난 24시간 칸에 오간 메일'),
+    stat('가장 많은 때',peak?hourLabel(peak.start)+' · '+peak.mail:'-','24시간 중 메일이 가장 많았던 시간'));
+  const max=Math.max(1,...hours.map(x=>x.mail));
+  const bars=hours.map((x,i)=>{
+    const col=node('i','',i===hours.length-1?'now':''),bar=node('b','');
+    bar.style.height=(x.mail?Math.max(1,Math.round(100*x.mail/max)):0)+'%';
+    col.title=hourLabel(x.start)+(i===hours.length-1?' (지금까지)':'')+' — 메일 '+x.mail+'통 · 보고 '+x.reports+' · 질문 '+x.questions;
+    col.append(bar);return col;
+  });
+  $('mHourlyChart').replaceChildren(...bars);
+  $('mHourlyChart').setAttribute('aria-label','시간당 메일 수: '+hours.map(x=>hourLabel(x.start)+' '+x.mail+'통').join(', '));
+  const ax=hours.length?[0,6,12,18].filter(i=>i<hours.length).map(i=>hourLabel(hours[i].start)).concat(['지금']):[];
+  $('mHourlyAxis').replaceChildren(...ax.map(t=>node('span',t)));
+  const body=$('mHourlyRoles');body.replaceChildren();
+  const labels=['역할','보냄','받음','보고','질문'],num=['','num','num','num','num'];
+  for(const r of h.roles||[])body.append(cells(node('tr',''),labels,[r.role,String(r.sent),String(r.received),String(r.reports),String(r.questions)],num));
+  if(!body.children.length)emptyRow(body,5,'지난 한 시간 오간 것 없음');
+  $('mHourlyNote').textContent='';
+}
 async function loadMetrics(){
   const seq=++metricsSeq;
   $('metricsNote').textContent='불러오는 중…';
+  const hourly=api('metrics/hourly');
+  hourly.catch(()=>{});
   try{
     const m=await api('metrics?days='+metricsDays);
     if(seq!==metricsSeq)return;
@@ -109,6 +144,8 @@ async function loadMetrics(){
     const n=metricsBreaches(m);setTabCount('metrics',n||null);
     $('metricsNote').textContent='최근 '+m.window.days+'일 · '+when(m.window.from)+' ~ '+when(m.window.to)+(n?' · 문턱 넘은 것 '+n+'개':'');
   }catch(e){if(seq===metricsSeq)$('metricsNote').textContent=e.message}
+  try{const h=await hourly;if(seq===metricsSeq)renderHourly(h)}
+  catch(e){if(seq===metricsSeq)$('mHourlyNote').textContent=e.message}
 }
 // refreshMetricsCount fills the tab number before the tab is first opened.
 async function refreshMetricsCount(){

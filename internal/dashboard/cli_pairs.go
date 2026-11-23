@@ -33,6 +33,7 @@ var CLIPairs = []CLIPair{
 	{Method: "GET", Path: "messages", CLI: "mail list"},
 	{Method: "POST", Path: "messages/{}/close", CLI: "mail close"},
 	{Method: "GET", Path: "metrics", CLI: "metrics"},
+	{Method: "GET", Path: "metrics/hourly", CLI: "metrics hourly"},
 	{Method: "GET", Path: "requests", CLI: "request list"},
 	{Method: "GET", Path: "requests/{}", CLI: "request show"},
 	{Method: "POST", Path: "requests/{}/check", Why: "the owner's check that a done request was seen (#501) is a signed-in login's, not a role's"},

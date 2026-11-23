@@ -13,6 +13,15 @@ import (
 
 // cliMetrics prints GET /api/metrics as a compact summary.
 func cliMetrics(c Config, p parsedArgs) (int, error) {
+	if len(p.pos) > 0 {
+		if p.pos[0] != "hourly" {
+			return 0, usagef("unknown metrics view %q (want hourly)", p.pos[0])
+		}
+		if _, ok := p.values["--days"]; ok {
+			return 0, usagef("--days does not apply to metrics hourly")
+		}
+		return cliMetricsHourly(c, p)
+	}
 	path := "/api/metrics"
 	if v, ok := p.values["--days"]; ok {
 		if _, err := wire.ParseMetricsDays(v); err != nil || v == "" {
@@ -98,4 +107,34 @@ func plural(n int, word string) string {
 		return "1 " + word
 	}
 	return fmt.Sprintf("%d %ss", n, word)
+}
+
+// cliMetricsHourly prints GET /api/metrics/hourly: the last hour's totals,
+// one line per hour slot, and the per-role counts of the last hour.
+func cliMetricsHourly(c Config, p parsedArgs) (int, error) {
+	b, err := slotCall(c, "GET", "/api/metrics/hourly", nil)
+	if err != nil {
+		return 0, err
+	}
+	var m wire.HourlyMetrics
+	if err = json.Unmarshal(b, &m); err != nil {
+		return 0, fmt.Errorf("unexpected response from server: %v", err)
+	}
+	if p.bool("--json") {
+		fmt.Println(strings.TrimSpace(string(b)))
+		return ExitOK, nil
+	}
+	tw := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	fmt.Fprintf(tw, "last hour\t%d mail, %d reports, %d questions\n", m.LastHour.Mail, m.LastHour.Reports, m.LastHour.Questions)
+	fmt.Fprintln(tw, "hour\tmail\treports\tquestions")
+	for _, h := range m.Hours {
+		fmt.Fprintf(tw, "%s\t%d\t%d\t%d\n", h.Start.Local().Format("01-02 15:04"), h.Mail, h.Reports, h.Questions)
+	}
+	if len(m.Roles) > 0 {
+		fmt.Fprintln(tw, "role (last hour)\tsent\treceived\treports\tquestions")
+		for _, r := range m.Roles {
+			fmt.Fprintf(tw, "%s\t%d\t%d\t%d\t%d\n", r.Role, r.Sent, r.Received, r.Reports, r.Questions)
+		}
+	}
+	return ExitOK, tw.Flush()
 }

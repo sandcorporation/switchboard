@@ -294,7 +294,7 @@ func TestReportGroupBossScope(t *testing.T) {
 
 func TestReportLiveKinds(t *testing.T) {
 	t.Parallel()
-	if got := liveKinds("reports", false); !slices.Equal(got, []string{"reports", "requests"}) {
+	if got := liveKinds("reports", false); !slices.Equal(got, []string{"reports", "requests", "metrics"}) {
 		t.Fatalf("POST /api/reports: %v", got)
 	}
 	for _, admin := range []bool{false, true} {
