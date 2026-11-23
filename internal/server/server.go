@@ -314,6 +314,11 @@ func (s *Server) serveAPI(w http.ResponseWriter, r *http.Request) {
 	role := who.Role
 	w.Header().Set("Content-Type", "application/json")
 	path := strings.TrimPrefix(r.URL.Path, "/api/")
+	if path != "slots" && !strings.HasPrefix(path, "slots/") {
+		// The plugin's slot requests carry its own claim (applyPresence);
+		// any other request with the version header is the CLI (#500).
+		s.presence().NoteCLIVersion(r, who)
+	}
 	if s.hosting && hostingRolePath(path) {
 		// A numbered slot acts for its base role: grants and parents name
 		// roles, not slots.

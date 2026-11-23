@@ -267,7 +267,8 @@ func (s *Service) Progress(pending time.Duration, base func(string) string) (wir
 	}
 	for _, v := range live {
 		p := get(v.Base)
-		p.Sessions = append(p.Sessions, wire.ProgressSession{Role: v.Role(), Directory: v.Directory, State: v.State, Subagents: v.Subagents, Since: v.Since, LastSeen: v.LastSeen})
+		p.Sessions = append(p.Sessions, wire.ProgressSession{Role: v.Role(), Directory: v.Directory, State: v.State, Subagents: v.Subagents, Since: v.Since, LastSeen: v.LastSeen,
+			CLIVersion: v.CLIVersion, CLIVersionSeenAt: v.CLISeenAt, CLIVersionSource: v.CLISource})
 	}
 
 	// Last activity: the newest mail of every sender.

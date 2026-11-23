@@ -235,3 +235,73 @@ func TestCLIBehindNoneWithoutMinimum(t *testing.T) {
 		t.Fatalf("cli_behind: %+v", b)
 	}
 }
+
+// cliDo is a CLI request (GET /api/whoami) acting as role with
+// X-Switchboard-Version set to version.
+func cliDo(t *testing.T, s *Server, role, version string) {
+	t.Helper()
+	r := httptest.NewRequest("GET", "/api/whoami", nil)
+	r.Header.Set("Authorization", "Bearer "+workerToken)
+	r.Header.Set("X-Switchboard-Role", role)
+	r.Header.Set("X-Switchboard-Version", version)
+	w := httptest.NewRecorder()
+	s.api(w, r)
+	if w.Code != 200 {
+		t.Fatalf("cli %s: %d %s", role, w.Code, w.Body)
+	}
+}
+
+// A session whose plugin read the CLI version once at start keeps sending
+// that version on every heartbeat (#500). The session's own CLI requests,
+// acting as its numbered role, record the version it runs now, and a
+// heartbeat repeating its unchanged claim does not put the old one back.
+func TestCLIRequestRecordsSlotVersion(t *testing.T) {
+	t.Parallel()
+	s, clock := cliServer(t)
+	slotDoVersion(t, s, "register", "v0.26.0", ident("machine-a", "/w"))
+	slotDoVersion(t, s, "register", "v0.26.0", ident("machine-a", "/x"))
+	v := adminPresence(t, s)["team/worker-1"]
+	if v.CLIVersionSource != wire.CLISourceHeartbeat || v.CLIVersionSeenAt == nil {
+		t.Fatalf("after register: %+v", v)
+	}
+	registered := *v.CLIVersionSeenAt
+
+	clock.add(time.Minute)
+	cliDo(t, s, "team/worker-1", "v0.27.0")
+	v = adminPresence(t, s)["team/worker-1"]
+	if v.CLIVersion != "v0.27.0" || v.CLIVersionSource != wire.CLISourceCLI || v.CLIVersionSeenAt == nil || !v.CLIVersionSeenAt.After(registered) {
+		t.Fatalf("after CLI request: %+v", v)
+	}
+	if o := adminPresence(t, s)["team/worker-2"]; o.CLIVersion != "v0.26.0" {
+		t.Fatalf("another slot changed: %+v", o)
+	}
+
+	// The stale plugin repeats its claim: the CLI's value stays.
+	clock.add(time.Minute)
+	slotDoVersion(t, s, "heartbeat", "v0.26.0", ident("machine-a", "/w"))
+	if v = adminPresence(t, s)["team/worker-1"]; v.CLIVersion != "v0.27.0" || v.CLIVersionSource != wire.CLISourceCLI {
+		t.Fatalf("unchanged claim replaced the CLI's version: %+v", v)
+	}
+
+	// The base role itself (a shell outside the session) names no slot.
+	cliDo(t, s, "team/worker", "v0.99.0")
+	if v = adminPresence(t, s)["team/worker-1"]; v.CLIVersion != "v0.27.0" {
+		t.Fatalf("base role request changed slot 1: %+v", v)
+	}
+
+	// A plugin that reads again reports a new version: it wins.
+	clock.add(time.Minute)
+	slotDoVersion(t, s, "heartbeat", "v0.28.0", ident("machine-a", "/w"))
+	if v = adminPresence(t, s)["team/worker-1"]; v.CLIVersion != "v0.28.0" || v.CLIVersionSource != wire.CLISourceHeartbeat || !v.CLIVersionSeenAt.Equal(clock.now().UTC().Truncate(time.Millisecond)) {
+		t.Fatalf("changed claim: %+v (now %s)", v, clock.now())
+	}
+
+	// Progress shows the version and when it was seen.
+	for _, svc := range adminProgress(t, s).Services {
+		for _, ps := range svc.Sessions {
+			if ps.Role == "team/worker-1" && (ps.CLIVersion != "v0.28.0" || ps.CLIVersionSeenAt == nil || ps.CLIVersionSource != wire.CLISourceHeartbeat) {
+				t.Fatalf("progress session: %+v", ps)
+			}
+		}
+	}
+}

@@ -17,6 +17,14 @@ import (
 // header; a later heartbeat without it keeps the recorded version (#319).
 const CLIUnknown = "unknown"
 
+// Where a slot's CLI version was last observed (#500): the session's own CLI
+// request acting as the slot's numbered role, or the plugin's slot header
+// (which an old plugin read once per session).
+const (
+	CLISourceCLI       = "cli"
+	CLISourceHeartbeat = "heartbeat"
+)
+
 // CLI states of a recorded version against the server's minimum.
 const (
 	CLICurrent = "current" // at or above the minimum
