@@ -824,3 +824,30 @@ func TestWorkspaceLayout(t *testing.T) {
 		t.Fatalf("node --test workspace/layout.test.cjs side.test.cjs nodes.test.cjs: %v\n%s", err, out)
 	}
 }
+
+// The search box sits in the top bar with its result list (#481), calls the
+// admin search API and puts every server string in as text.
+func TestDashboardSearchBox(t *testing.T) {
+	head := dashboardHTML[strings.Index(dashboardHTML, `<header class="sc-topbar">`):]
+	head = head[:strings.Index(head, "</header>")]
+	for _, want := range []string{`id="gsQ"`, `role="search"`, `id="gsPanel"`, `id="gsList"`, `id="gsMore"`} {
+		if !strings.Contains(head, want) {
+			t.Errorf("top bar lacks %s", want)
+		}
+	}
+	js := dashboardHTML[strings.Index(dashboardHTML, "// ---- 검색 (#481) ----"):]
+	js = js[:strings.Index(js, "\n// ---- ")]
+	for _, want := range []string{"fetch('/api/admin/search?'", "node('span',h.line,'gsline')", "openMessage(h.id)", "openMessage(String(h.directive))", "openDetail('reports',h.id)", "openDetail('questions',h.id)"} {
+		if !strings.Contains(js, want) {
+			t.Errorf("search script lacks %s", want)
+		}
+	}
+	for _, bad := range []string{"innerHTML", "insertAdjacentHTML", "outerHTML"} {
+		if strings.Contains(js, bad) {
+			t.Errorf("search script uses %s", bad)
+		}
+	}
+	if strings.Contains(dashboardHTML, `id="panel-search"`) {
+		t.Error("search has no tab of its own")
+	}
+}

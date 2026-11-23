@@ -223,6 +223,21 @@ var commands = []command{
 			{"--json", "", "print the stored report as JSON"},
 			optProfile,
 		}},
+	{name: "search", args: "PATTERN", nargs: 1,
+		summary: "Find text in mail (subject, body), reports (title, body), panel questions (question, options, chosen answer) and left items, newest first, 50 at a time; each result is a line naming the record and the command that opens it, then the matched line. PATTERN is a substring, or with --regex a Go regular expression (RE2 syntax: https://github.com/google/re2/wiki/Syntax; no backreferences or lookaround); both ignore case unless --case. A role in a group sees its own group only",
+		options: []option{
+			{"--regex", "", "PATTERN is a regular expression (RE2)"},
+			{"--case", "", "match case (the default ignores it)"},
+			{"--kind", "mail|report|question|left", "only this kind (repeatable)"},
+			{"--role", "ROLE", "a sender or recipient, report author, asker or left item's recorder (a slot or label counts for its base)"},
+			{"--thread", "N", "mail of thread N, the reports linking it and its left items"},
+			{"--since", "DATE|TIME", "on or after this UTC date (YYYY-MM-DD) or RFC 3339 time"},
+			{"--until", "DATE|TIME", "up to this UTC date (inclusive) or RFC 3339 time"},
+			{"--limit", "N", "results per page (default 50, at most 200)"},
+			{"--after", "CURSOR", "the next page: the cursor the previous page printed"},
+			{"--json", "", "print the server's JSON response"},
+			optProfile,
+		}},
 	{name: "decisions",
 		summary: "Show the decision ledger (answered questions), newest first; a boss role sees all, other roles their own base",
 		options: []option{
@@ -673,6 +688,8 @@ func dispatch(args []string) (int, error) {
 		return cliMetrics(c, p)
 	case "decisions":
 		return cliDecisions(c, p)
+	case "search":
+		return cliSearch(c, p, os.Stdout)
 	case "progress":
 		return cliProgress(c, p)
 	case "report":
