@@ -462,8 +462,11 @@ a.button{display:block;text-align:center;text-decoration:none;font:inherit;paddi
 const oidcLoginHTML = loginHead + `<body>
 <main class="box">
 <h1>` + config.ProductName + `</h1>
-<a class="button" href="/auth/login">로그인</a>
+<a class="button" id="login" href="/auth/login">로그인</a>
 </main>
+<script>
+document.getElementById('login').href='/auth/login?next='+encodeURIComponent(location.pathname+location.search+location.hash);
+</script>
 </body>
 </html>
 `

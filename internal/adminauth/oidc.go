@@ -23,6 +23,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"html"
 	"io"
 	"log"
 	"net/http"
@@ -60,6 +61,7 @@ type oidcLogin struct {
 	clientID     string
 	clientSecret string
 	redirectURL  string
+	publicURL    string // SWITCHBOARD_PUBLIC_URL without the trailing slash
 	scopes       []string
 	emails       map[string]bool // lower-cased
 	subs         map[string]bool
@@ -146,6 +148,7 @@ func configureOIDC(getenv func(string) string) (*oidcLogin, error) {
 		return nil, errors.New(config.EnvPrefix + "ADMIN_AUTH=oidc: invalid " + strings.Join(invalid, ", "))
 	}
 	o.redirectURL = public + oidcCallbackPath
+	o.publicURL = public
 	o.flowKey = make([]byte, 32)
 	if _, err := rand.Read(o.flowKey); err != nil {
 		return nil, err
@@ -201,6 +204,7 @@ type oidcFlow struct {
 	Nonce    string `json:"n"`
 	Verifier string `json:"v"`
 	Expires  int64  `json:"e"`
+	Next     string `json:"r,omitempty"` // local path the done page moves on to
 }
 
 func (o *oidcLogin) sealFlow(f oidcFlow) (string, error) {
@@ -261,6 +265,12 @@ func (s *Service) oidcAuth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	o := s.cfg.oidc
+	if to, ok := o.toPublic(r); ok {
+		// The flow cookie lands on the host that serves /auth/login, and the
+		// provider always returns to the public URL (#519). Start there.
+		http.Redirect(w, r, to, http.StatusFound)
+		return
+	}
 	p, err := o.discover()
 	if err != nil {
 		log.Printf("oidc: discovery failed: %v", err)
@@ -273,7 +283,7 @@ func (s *Service) oidcAuth(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "login unavailable", http.StatusInternalServerError)
 		return
 	}
-	f := oidcFlow{State: state, Nonce: nonce, Verifier: oauth2.GenerateVerifier(), Expires: s.now().Add(oidcFlowTTL).Unix()}
+	f := oidcFlow{State: state, Nonce: nonce, Verifier: oauth2.GenerateVerifier(), Expires: s.now().Add(oidcFlowTTL).Unix(), Next: localNext(r.URL.Query().Get("next"))}
 	sealed, err := o.sealFlow(f)
 	if err != nil {
 		http.Error(w, "login unavailable", http.StatusInternalServerError)
@@ -394,7 +404,38 @@ func (s *Service) oidcCallback(w http.ResponseWriter, r *http.Request) {
 	// cross-site redirect chain, so the browser would not send it on a
 	// redirect to /. A same-site page that moves on does.
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_, _ = io.WriteString(w, oidcDoneHTML)
+	next := f.Next
+	if next == "" {
+		next = "/"
+	}
+	_, _ = io.WriteString(w, strings.ReplaceAll(oidcDoneHTML, "{{next}}", html.EscapeString(next)))
+}
+
+// oidcHopParam marks a /auth/login that was already sent to the public URL,
+// so a proxy that rewrites Host cannot turn the hop into a loop.
+const oidcHopParam = "hop"
+
+// toPublic is the public URL's /auth/login (same query) when the request came
+// to another host, as through an internal address.
+func (o *oidcLogin) toPublic(r *http.Request) (string, bool) {
+	u, err := url.Parse(o.publicURL)
+	if err != nil || strings.EqualFold(u.Host, r.Host) {
+		return "", false
+	}
+	q := r.URL.Query()
+	if q.Get(oidcHopParam) != "" {
+		return "", false
+	}
+	q.Set(oidcHopParam, "1")
+	return o.publicURL + "/auth/login?" + q.Encode(), true
+}
+
+// localNext keeps a return path only when it stays on this origin.
+func localNext(v string) string {
+	if len(v) > 512 || !strings.HasPrefix(v, "/") || strings.HasPrefix(v, "//") || strings.ContainsAny(v, "\\\r\n") {
+		return ""
+	}
+	return v
 }
 
 func truncate(v string, n int) string {
@@ -405,6 +446,6 @@ func truncate(v string, n int) string {
 }
 
 const oidcDoneHTML = `<!doctype html>
-<html lang="ko"><head><meta charset="utf-8"><meta http-equiv="refresh" content="0;url=/"><title>` + config.ProductName + `</title></head>
-<body><a href="/">` + config.ProductName + `</a></body></html>
+<html lang="ko"><head><meta charset="utf-8"><meta http-equiv="refresh" content="0;url={{next}}"><title>` + config.ProductName + `</title></head>
+<body><a href="{{next}}">` + config.ProductName + `</a></body></html>
 `

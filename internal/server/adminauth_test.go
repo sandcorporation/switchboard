@@ -32,10 +32,14 @@ type authReq struct {
 	cookie             *http.Cookie
 	headers            map[string]string
 	ip                 string
+	host               string // Host of the request; httptest's default when empty
 }
 
 func doAuth(s *Server, q authReq) *httptest.ResponseRecorder {
 	r := httptest.NewRequest(q.method, q.path, strings.NewReader(q.body))
+	if q.host != "" {
+		r.Host = q.host
+	}
 	if q.ip != "" {
 		r.RemoteAddr = q.ip + ":4000"
 	}
