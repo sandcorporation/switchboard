@@ -188,6 +188,9 @@ func (s *Server) sweep(ctx context.Context) (sweepResult, error) {
 			return out, err
 		}
 	}
+	if _, err = s.asks().PrunePermissions(ctx); err != nil {
+		return out, err
+	}
 	if _, err = presence.PruneLog(s.db, s.now()); err != nil {
 		return out, err
 	}

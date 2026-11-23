@@ -1,8 +1,11 @@
 package server
 
 import (
+	"bytes"
+	"context"
 	"database/sql"
 	"encoding/json"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -489,4 +492,66 @@ func TestGlobalRoleOptionActsAsNumberedRole(t *testing.T) {
 			t.Fatalf("%v %v: %d %s", c.env, c.args, r.code, r.stderr)
 		}
 	}
+}
+
+func askKeyed(s *Server, token, role, key string) *httptest.ResponseRecorder {
+	b, _ := json.Marshal(map[string]string{"tool": "Bash", "summary": "rm -rf build/"})
+	r := httptest.NewRequest("POST", "/api/permissions", bytes.NewReader(b))
+	r.Header.Set("Authorization", "Bearer "+token)
+	r.Header.Set("X-Switchboard-Role", role)
+	r.Header.Set("Idempotency-Key", key)
+	w := httptest.NewRecorder()
+	s.api(w, r)
+	return w
+}
+
+func TestPermissionRequestIsIdempotent(t *testing.T) {
+	t.Parallel()
+	s, _ := permissionServer(t)
+	registerWorker(t, s, "/w", "a")
+	first := askKeyed(s, workerToken, "team/worker-1", "k1")
+	again := askKeyed(s, workerToken, "team/worker-1", "k1")
+	other := askKeyed(s, workerToken, "team/worker-1", "k2")
+	if first.Code != 201 || again.Code != 200 || other.Code != 201 {
+		t.Fatalf("codes %d %d %d", first.Code, again.Code, other.Code)
+	}
+	var a, b, c wire.PermissionView
+	_ = json.Unmarshal(first.Body.Bytes(), &a)
+	_ = json.Unmarshal(again.Body.Bytes(), &b)
+	_ = json.Unmarshal(other.Body.Bytes(), &c)
+	if a.ID != b.ID || a.ID == c.ID {
+		t.Fatalf("ids %s %s %s", a.ID, b.ID, c.ID)
+	}
+	var rows, mails int
+	_ = s.db.QueryRow(`SELECT COUNT(*) FROM permissions`).Scan(&rows)
+	_ = s.db.QueryRow(`SELECT COUNT(*) FROM messages WHERE task_id=?`, a.ID).Scan(&mails)
+	if rows != 2 || mails == 0 {
+		t.Fatalf("rows=%d mails for first=%d", rows, mails)
+	}
+	var once int
+	_ = s.db.QueryRow(`SELECT COUNT(*) FROM messages WHERE task_id=? AND recipient='sandcorp/boss'`, a.ID).Scan(&once)
+	if once != 1 {
+		t.Fatalf("boss mails for retried request = %d", once)
+	}
+}
+
+func TestSweepPrunesLongExpiredPermissions(t *testing.T) {
+	t.Parallel()
+	s, clock := permissionServer(t)
+	s.asksCfg.PermissionTTL = time.Minute
+	registerWorker(t, s, "/w", "a")
+	old := askAs(t, s, workerToken, "team/worker-1", 201)
+	answerAs(t, s, bossToken, "sandcorp/boss", old.ID, "allow", 200)
+	clock.add(6 * 24 * time.Hour)
+	fresh := askAs(t, s, workerToken, "team/worker-1", 201)
+	if _, err := s.sweep(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	showAs(t, s, workerToken, "team/worker-1", old.ID, 200)
+	clock.add(2 * 24 * time.Hour)
+	if _, err := s.sweep(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	showAs(t, s, workerToken, "team/worker-1", old.ID, 404)
+	showAs(t, s, workerToken, "team/worker-1", fresh.ID, 200)
 }

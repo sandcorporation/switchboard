@@ -740,6 +740,20 @@ func migratePermissions(db *sql.DB) error {
 	_, err := db.Exec(`CREATE TABLE IF NOT EXISTS permissions(id TEXT PRIMARY KEY,requester TEXT NOT NULL,requester_base TEXT NOT NULL,tool TEXT NOT NULL,summary TEXT NOT NULL,declared_parent TEXT NOT NULL DEFAULT '',parent TEXT NOT NULL DEFAULT '',parent_base TEXT NOT NULL DEFAULT '',created_at INTEGER NOT NULL,expires_at INTEGER NOT NULL,decision TEXT NOT NULL DEFAULT '',note TEXT NOT NULL DEFAULT '',answered_by TEXT NOT NULL DEFAULT '',answered_at INTEGER NOT NULL DEFAULT 0);
 CREATE INDEX IF NOT EXISTS idx_permissions_requester ON permissions(requester_base,created_at);
 CREATE INDEX IF NOT EXISTS idx_permissions_parent ON permissions(parent_base,created_at);`)
+	if err != nil {
+		return err
+	}
+	// idem (#32): the Idempotency-Key of the request, '' when none was sent.
+	has, err := HasColumn(db, "permissions", "idem")
+	if err != nil {
+		return err
+	}
+	if !has {
+		if _, err = db.Exec(`ALTER TABLE permissions ADD COLUMN idem TEXT NOT NULL DEFAULT ''`); err != nil {
+			return err
+		}
+	}
+	_, err = db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_permissions_idem ON permissions(requester,idem) WHERE idem<>''`)
 	return err
 }
 

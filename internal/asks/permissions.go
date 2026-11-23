@@ -51,8 +51,22 @@ const (
 	defaultPermissionTTL = 10 * time.Minute
 	maxPermissionTool    = 128 // bytes
 	maxPermissionText    = 500 // bytes, for summary and note
+	maxPermissionIdem    = 200 // bytes, for the Idempotency-Key
 	permissionIDPrefix   = "perm_"
+	// permissionKept is how long a request stays after it expired; the
+	// sweep deletes older rows (answered or not).
+	permissionKept = 7 * 24 * time.Hour
 )
+
+// PrunePermissions deletes the requests that expired more than
+// permissionKept ago and returns how many went.
+func (s *Service) PrunePermissions(ctx context.Context) (int64, error) {
+	res, err := s.db.ExecContext(ctx, `DELETE FROM permissions WHERE expires_at<?`, ms(s.now().Add(-permissionKept)))
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}
 
 // PermissionTTL is how long a permission request stays open.
 func (s *Service) PermissionTTL() time.Duration {
@@ -157,6 +171,11 @@ func (s *Service) requestPermission(w http.ResponseWriter, r *http.Request, p id
 		http.Error(w, fmt.Sprintf("tool (1-%d bytes) and summary (1-%d bytes) required", maxPermissionTool, maxPermissionText), 400)
 		return
 	}
+	idem := r.Header.Get("Idempotency-Key")
+	if len(idem) > maxPermissionIdem {
+		http.Error(w, fmt.Sprintf("Idempotency-Key at most %d bytes", maxPermissionIdem), 400)
+		return
+	}
 	id, err := newPermissionID()
 	if err != nil {
 		http.Error(w, "could not create request", 500)
@@ -166,8 +185,24 @@ func (s *Service) requestPermission(w http.ResponseWriter, r *http.Request, p id
 	expires := now.Add(s.PermissionTTL())
 	var v wire.PermissionView
 	var notify []string
+	replay := false
 	errNobody := errors.New("nobody")
 	err = s.inTx(r.Context(), func(tx *sql.Tx) error {
+		// A repeated key returns the stored request: no second row, no
+		// second mail.
+		if idem != "" {
+			var old string
+			e := tx.QueryRow(`SELECT id FROM permissions WHERE requester=? AND idem=?`, p.Role, idem).Scan(&old)
+			if e == nil {
+				var e2 error
+				v, e2 = scanPermission(tx.QueryRow(`SELECT `+permissionCols()+` FROM permissions WHERE id=?`, old), now)
+				replay = true
+				return e2
+			}
+			if !errors.Is(e, sql.ErrNoRows) {
+				return e
+			}
+		}
 		// The parent comes from the requester's active slot, read now and
 		// fixed on the request.
 		number := p.Number
@@ -203,8 +238,8 @@ func (s *Service) requestPermission(w http.ResponseWriter, r *http.Request, p id
 				inform = []string{parent}
 			}
 		}
-		if _, e := tx.Exec(`INSERT INTO permissions(id,requester,requester_base,tool,summary,declared_parent,parent,parent_base,created_at,expires_at) VALUES(?,?,?,?,?,?,?,?,?,?)`,
-			id, p.Role, p.Base, req.Tool, req.Summary, declared, parent, parentBase, ms(now), ms(expires)); e != nil {
+		if _, e := tx.Exec(`INSERT INTO permissions(id,requester,requester_base,tool,summary,declared_parent,parent,parent_base,created_at,expires_at,idem) VALUES(?,?,?,?,?,?,?,?,?,?,?)`,
+			id, p.Role, p.Base, req.Tool, req.Summary, declared, parent, parentBase, ms(now), ms(expires), idem); e != nil {
 			return e
 		}
 		subject := "permission: " + req.Tool + " for " + p.Role
@@ -238,6 +273,10 @@ func (s *Service) requestPermission(w http.ResponseWriter, r *http.Request, p id
 	}
 	for _, box := range notify {
 		s.hub.Publish(box)
+	}
+	if replay {
+		writeJSON(w, v)
+		return
 	}
 	w.WriteHeader(201)
 	writeJSON(w, v)
