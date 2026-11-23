@@ -18,7 +18,7 @@ function settingsViewOfHash(h){for(const [v,x] of Object.entries(setViewHash))if
 async function loadSettingsView(){
   if(!setData)$('settingsNote').textContent='불러오는 중…';
   const host=hostingOn,get=p=>p.catch(e=>({err:e.message}));
-  const [qs,ref,roles,logins,nodes,groups,srv,watches,hooks]=await Promise.all([get(api('question-settings')),get(api('question-refusals')),get(api('roles')),get(api('logins')),host?get(api('nodes')):null,host?get(api('terminals/work-groups')):null,get(api('settings')),get(api('watches')),get(api('hooks'))]);
+  const [qs,ref,roles,logins,nodes,groups,srv,watches,hooks]=await Promise.all([get(api('question-settings')),get(api('question-refusals')),get(api('roles')),get(api('logins')),host?get(api('nodes')):null,host?get(api('terminals/work-groups')):null,get(api('settings')),can('view')?get(api('watches')):[],get(api('hooks'))]);
   if(host!==hostingOn)return loadSettingsView();
   setData={qs:qs,ref:ref,roles:roles,logins:logins,nodes:nodes,groups:groups,srv:srv,watches:watches,hooks:hooks};
   $('settingsNote').textContent='';
@@ -70,7 +70,7 @@ function drawSettings(){
   setGroup(items,'groups','묶음',d.groups,g=>setRow('group:'+g.name,[g.threshold===null||g.threshold===undefined?'문턱 없음':'문턱 '+g.threshold+'%','세션 '+g.sessions],g.name),'묶음 없음',setAddButton('묶음 추가',()=>openDetail('settings','group:+','edit')));
   setGroup(items,'logins','로그인',d.logins,v=>setRow('login:'+v.name,[v.kind==='builtin'?'내장':'외부',v.perms.length?v.perms.map(p=>permName[p]||p).join(' · '):'권한 없음'],v.name,v.disabled?['꺼짐','danger']:null),'로그인 없음');
   setGroup(items,'qsettings','질문 설정',d.qs,v=>setRow('qs:'+v.target,[v.can_ask?'질문 가능':'질문 불가',v.discord?'디스코드':'',v.watchers.length?'지켜봄 '+v.watchers.length:''],v.target),'설정 없음',setAddButton('질문 설정 추가',openSetAdd),Array.isArray(d.ref)?[setRow('refusals:24h',['24시간'],'최근 거절',d.ref.length?[d.ref.length+'건','warning']:null)]:[]);
-  setGroup(items,'watches','지켜보기',d.watches,watchRow,'규칙 없음',setAddButton('지켜보기 추가',()=>openDetail('settings','watch:+','edit')));
+  setGroup(items,'watches','지켜보기',d.watches,watchRow,'규칙 없음',can('sessions')?setAddButton('지켜보기 추가',()=>openDetail('settings','watch:+','edit')):null);
   setGroup(items,'hooks','웹훅',d.hooks,hookRow,'웹훅 없음',setAddButton('웹훅 추가',()=>openDetail('settings','hook:+','edit')));
   const views=[['progress','진행','서비스별 세션·지시·남긴 것'],['sessions','세션 표','상태·컨텍스트·기계·판']];
   if(hostingOn)views.push(['terminals','터미널','호스트된 세션·구독 한도']);

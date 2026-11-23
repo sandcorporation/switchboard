@@ -103,7 +103,7 @@ func TestWatchDashboardFlowAndMail(t *testing.T) {
 
 	// The key is in no response and no mail.
 	all := adminRequest(s, "GET", "/api/admin/watches", "", nil).Body.String() + w.Body.String() + mails[0].Body
-	if strings.Contains(all, watchKey) || !strings.Contains(all, `"set":true`) {
+	if strings.Contains(all, watchKey) || strings.Contains(all, watchKey[len(watchKey)-4:]) || strings.Contains(all, `"hint"`) || !strings.Contains(all, `"set":true`) {
 		t.Fatalf("key shown or not marked: %s", all)
 	}
 

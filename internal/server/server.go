@@ -580,8 +580,14 @@ func (s *Server) adminRoutes(w http.ResponseWriter, r *http.Request, path string
 	}
 	if rest, ok := strings.CutPrefix(path, "watches"); ok && (rest == "" || strings.HasPrefix(rest, "/")) {
 		// A signed-in login's (#528): a boss role's token reaches no watch.
+		// Reading takes view; every write — and the test fetch, which sends
+		// a request out — takes sessions, as the webhooks (#527).
 		if boss != nil {
 			http.Error(w, "dashboard login only", http.StatusForbidden)
+			return
+		}
+		if perm := watchPerm(r.Method); !who.Can(perm) {
+			refusePerm(w, perm)
 			return
 		}
 		s.watches().AdminAPI(w, r, strings.TrimPrefix(rest, "/"))

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log"
+	"net/http"
 	"sync"
 	"time"
 
@@ -35,6 +36,15 @@ func (s *Server) watches() *watch.Service {
 		}
 	}
 	return watch.New(s.db, s.now, watch.DefaultLimits, h)
+}
+
+// watchPerm is the login permission a /api/admin/watches request needs:
+// view to read, sessions for the rest (writes and the test fetch).
+func watchPerm(method string) string {
+	if method == http.MethodGet {
+		return wire.PermView
+	}
+	return wire.PermSessions
 }
 
 // watchSecrets is watch.Secrets over internal/secrets: a value is sealed

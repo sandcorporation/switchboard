@@ -14,8 +14,8 @@ const (
 var WatchOps = []string{"eq", "ne", "gt", "lt", "exists", "missing", "contains"}
 
 // WatchHeader is one request header. A secret header's value is written
-// once and never read back: a read carries Set (a value is stored), SetAt,
-// Hint and Unreadable instead. A write of a secret header with an empty Value keeps the stored
+// once and never shown again, not even in part: a read carries Set (a value
+// is stored), SetAt and Unreadable instead. A write of a secret header with an empty Value keeps the stored
 // one.
 type WatchHeader struct {
 	Name   string `json:"name"`
@@ -23,11 +23,9 @@ type WatchHeader struct {
 	Secret bool   `json:"secret,omitempty"`
 	Set    bool   `json:"set,omitempty"`
 	SetAt  string `json:"set_at,omitempty"`
-	// Hint is the stored value's trace ("…abcd", empty for a short value)
-	// and Unreadable that the server's secrets key no longer opens it: it
-	// must be written again (#525).
-	Hint       string `json:"hint,omitempty"`
-	Unreadable bool   `json:"unreadable,omitempty"`
+	// Unreadable: the server's secrets key no longer opens the stored
+	// value; it must be written again (#525).
+	Unreadable bool `json:"unreadable,omitempty"`
 }
 
 // WatchCond is a rule's condition. Value: Path, Op and Value (unused by

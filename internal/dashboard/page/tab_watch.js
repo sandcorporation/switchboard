@@ -28,7 +28,7 @@ function watchHeaderRow(h,list){
   const r=node('div','','watch-hdr');
   const name=watchInput(h.name,'머리글 이름',{maxlength:'100',placeholder:'X-Api-Key'});
   const val=watchInput('',h.secret?(h.set?'새 값을 적으면 바꿈 · 비우면 그대로':'키 값'):'머리글 값',{maxlength:'4096'});
-  if(h.secret){val.type='password';val.placeholder=h.unreadable?'다시 적어야 함':h.set?('등록됨 '+(h.hint||'')).trim():'키 값';if(h.unreadable)val.title='서버 키가 바뀌어 저장한 값을 열 수 없음 · 다시 적기';else if(h.set&&h.set_at)val.title+=' · 등록 '+shortWhen(h.set_at)}else val.value=h.value||'';
+  if(h.secret){val.type='password';val.placeholder=h.unreadable?'다시 적어야 함':h.set?'등록됨':'키 값';if(h.unreadable)val.title='서버 키가 바뀌어 저장한 값을 열 수 없음 · 다시 적기';else if(h.set&&h.set_at)val.title+=' · 등록 '+shortWhen(h.set_at)}else val.value=h.value||'';
   const [sl,secret]=watchCheck('비밀',!!h.secret,'값을 비밀로 보관 · 다시 보이지 않음');
   secret.onchange=()=>{if(secret.checked){val.type='password'}else{val.type='text'}};
   const rm=node('button','×','fr-ib');rm.type='button';rm.title='이 머리글 빼기';rm.setAttribute('aria-label','머리글 빼기');rm.onclick=()=>r.remove();
@@ -116,12 +116,13 @@ function watchForm(v){
     }catch(err){setNote(key,err.message,'err')}
     loadSettingsView();drawDetail();
   };
+  if(!can('sessions')){acts.hidden=true;for(const el of f.elements)el.disabled=true}
   setForms.set(key,{stamp:v.updated_at||'',form:f});
   return f;
 }
 function drawWatch(v,box){
   const id='watch:'+(v.fresh?'+':v.id);
-  if(!v.fresh){
+  if(!v.fresh&&can('sessions')){
     const acts=node('div','','detail-acts');
     acts.append(setButton(v.enabled?'끄기':'켜기','',async()=>{
       try{await apiSend('POST','watches/'+v.id+'/'+(v.enabled?'off':'on'));setForms.delete(id);setNote(id,v.enabled?'껐음':'켰음','ok')}

@@ -4,12 +4,12 @@ The server GETs an address on a period and mails a role when a rule says so (`in
 
 ## Register a rule
 
-On the dashboard: 설정 › 지켜보기 › `+`.
+On the dashboard: 설정 › 지켜보기 › `+`. A login needs `view` to see the rules and `sessions` to add, change, turn off, remove or test-fetch one (`switchboard admin allow`), as for webhooks.
 
 1. 이름: a name for the rule, unique (it is also the mail's source, `watch:<name>`).
 2. 받는 역할: the role that gets the mail, for example `team/boss`.
 3. 주소: the address to GET, `https://api.example/v1/orders`. Do not put a key in the address; put it in a header. An address with a user and password is refused.
-4. 머리글 › `+ 머리글`: one row per header. For the API key, write the header name (`Authorization`, `X-Api-Key` …), the value, and tick 비밀. A secret value is sealed in the server's secret store and never shown again: the rule then shows only that it is set, its last four characters for a long value (`등록됨 …abcd`) and, on hover, when. If the server's secrets key changes, the field reads `다시 적어야 함` and the rule fails until the value is written again. To replace it, write a new value; leaving it empty keeps the stored one.
+4. 머리글 › `+ 머리글`: one row per header. For the API key, write the header name (`Authorization`, `X-Api-Key` …), the value, and tick 비밀. A secret value is sealed in the server's secret store and never shown again: the rule then shows only that it is set, (`등록됨`) and, on hover, when. If the server's secrets key changes, the field reads `다시 적어야 함` and the rule fails until the value is written again. To replace it, write a new value; leaving it empty keeps the stored one.
 5. 주기(분): how often to fetch, 1 minute at least.
 6. 조건: 값 조건 or 새 항목 (below).
 7. 제목 틀 (optional): the mail subject, with `{path}` for a value. Empty uses `[지켜보기] <name>` (a new item: `[지켜보기] <name> 새 항목 <key>`).

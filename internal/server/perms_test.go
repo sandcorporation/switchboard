@@ -67,6 +67,11 @@ func TestLoginPermsReachOpenSocketsAndRoutes(t *testing.T) {
 		{"POST", "/api/admin/left/1/drop", `{"reason":"x"}`, wire.PermDiscard},
 		{"POST", "/api/admin/roles/team/worker/rotate", `{"generate":true}`, wire.PermSessions},
 		{"POST", "/api/admin/roles/team/worker/retire?force=1", ``, wire.PermSessions},
+		{"POST", "/api/admin/watches", `{}`, wire.PermSessions},
+		{"POST", "/api/admin/watches/test", `{}`, wire.PermSessions},
+		{"PUT", "/api/admin/watches/1", `{}`, wire.PermSessions},
+		{"DELETE", "/api/admin/watches/1", ``, wire.PermSessions},
+		{"POST", "/api/admin/watches/1/off", ``, wire.PermSessions},
 	} {
 		got := r.call(t, r.base, c.method, c.path, c.body)
 		if got.code != http.StatusForbidden || !strings.Contains(got.body, "("+c.perm+")") {
@@ -79,11 +84,17 @@ func TestLoginPermsReachOpenSocketsAndRoutes(t *testing.T) {
 	if got := r.call(t, r.base, "GET", "/api/admin/terminals", ""); got.code != http.StatusOK {
 		t.Errorf("terminal list = %d", got.code)
 	}
+	if got := r.call(t, r.base, "GET", "/api/admin/watches", ""); got.code != http.StatusOK {
+		t.Errorf("watch list with view = %d %s", got.code, got.body)
+	}
 
 	// Without view, not even a view ticket.
 	allowLogin(t, r.s, "alice", "none")
 	if got := r.call(t, r.base, "POST", "/api/admin/terminals/"+r.id+"/ticket", `{"mode":"view"}`); got.code != http.StatusForbidden {
 		t.Errorf("view ticket without view = %d %s", got.code, got.body)
+	}
+	if got := r.call(t, r.base, "GET", "/api/admin/watches", ""); got.code != http.StatusForbidden || !strings.Contains(got.body, "("+wire.PermView+")") {
+		t.Errorf("watch list without view = %d %s", got.code, got.body)
 	}
 
 	// Given back, the same socket types again.
