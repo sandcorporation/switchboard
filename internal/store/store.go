@@ -636,6 +636,14 @@ var presenceColumns = []struct{ name, def string }{
 	// heartbeat without it keeps the value, #319), '' when the slot has not
 	// reported since.
 	{"cli_version", `TEXT NOT NULL DEFAULT ''`},
+	// cli_version_seen_at is when cli_version was last observed (Unix ms, 0:
+	// never), cli_version_source where from ("cli": the session's own CLI
+	// request, "heartbeat": the plugin's header) and cli_version_claim the
+	// header of the last register or heartbeat (#500): an unchanged claim
+	// does not replace a version the CLI itself sent.
+	{"cli_version_seen_at", `INTEGER NOT NULL DEFAULT 0`},
+	{"cli_version_source", `TEXT NOT NULL DEFAULT ''`},
+	{"cli_version_claim", `TEXT NOT NULL DEFAULT ''`},
 }
 
 func migratePresence(db *sql.DB) error {

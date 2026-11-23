@@ -38,6 +38,11 @@ type ProgressSession struct {
 	Directory string    `json:"directory"`
 	LastSeen  time.Time `json:"last_seen"`
 	Subagents int64     `json:"subagents,omitempty"` // running background sub-agents
+	// CLIVersion, CLIVersionSeenAt and CLIVersionSource are the slot's as in
+	// PresenceView (#500).
+	CLIVersion       string     `json:"cli_version,omitempty"`
+	CLIVersionSeenAt *time.Time `json:"cli_version_seen_at,omitempty"`
+	CLIVersionSource string     `json:"cli_version_source,omitempty"`
 }
 
 type ProgressMail struct {

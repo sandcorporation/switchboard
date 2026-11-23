@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"sort"
 	"strings"
+	"time"
 	"unicode"
 
 	"github.com/sandcorporation/switchboard/internal/config"
@@ -98,4 +99,30 @@ func lowerCLI(a, b string) string {
 		return b
 	}
 	return a
+}
+
+// seenAt is a cli_version_seen_at value: nil when never seen.
+func seenAt(v int64) *time.Time {
+	if v <= 0 {
+		return nil
+	}
+	t := fromMS(v)
+	return &t
+}
+
+// NoteCLIVersion records the X-Switchboard-Version of a CLI request on the
+// live slot it acts as (#500): a session's shells carry its numbered role
+// (SWITCHBOARD_ROLE), so the CLI the session runs now is seen directly,
+// whatever the plugin last claimed. A request naming the base role itself
+// (Number 0) is not tied to a session and records nothing; neither does one
+// without the header (an older CLI). Slot requests are the plugin's and go
+// through applyPresence instead. Failures are ignored: the request goes on.
+func (s *Service) NoteCLIVersion(r *http.Request, p identity.Principal) {
+	v := cliVersionHeader(r)
+	if v == "" || p.Number <= 0 {
+		return
+	}
+	now := ms(s.now())
+	_, _ = s.db.Exec(`UPDATE slots SET cli_version=?,cli_version_seen_at=?,cli_version_source=? WHERE base=? AND number=? AND lease_until>?`,
+		v, now, wire.CLISourceCLI, p.Base, p.Number, now)
 }

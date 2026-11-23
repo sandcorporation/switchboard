@@ -162,14 +162,30 @@ func applyPresence(tx *sql.Tx, base string, number int, req wire.SlotRequest, no
 		set += `,state='',context_tokens=-1,last_turn_at=0`
 	}
 	// A heartbeat without the version header keeps the recorded one: the
-	// plugin leaves it out when it could not ask the CLI (#319).
+	// plugin leaves it out when it could not ask the CLI (#319). A header
+	// that repeats the plugin's last claim keeps a version the session's CLI
+	// sent itself since (#500): a plugin that read the version once at start
+	// repeats it for the whole session.
 	switch {
-	case req.CLIVersion != "":
-		set += `,cli_version=?`
-		args = append(args, req.CLIVersion)
-	case fresh:
-		set += `,cli_version=?`
+	case fresh && req.CLIVersion == "":
+		set += `,cli_version=?,cli_version_seen_at=0,cli_version_source='',cli_version_claim=''`
 		args = append(args, wire.CLIUnknown)
+	case fresh:
+		set += `,cli_version=?,cli_version_seen_at=?,cli_version_source=?,cli_version_claim=?`
+		args = append(args, req.CLIVersion, ms(now), wire.CLISourceHeartbeat, req.CLIVersion)
+	case req.CLIVersion != "":
+		// Stale is an unchanged claim under a version the CLI sent: keep
+		// the version, and its time unless the claim agrees with it.
+		stale := `cli_version_source=? AND cli_version_claim=?`
+		set += `,cli_version=CASE WHEN ` + stale + ` THEN cli_version ELSE ? END` +
+			`,cli_version_seen_at=CASE WHEN ` + stale + ` AND cli_version<>? THEN cli_version_seen_at ELSE ? END` +
+			`,cli_version_source=CASE WHEN ` + stale + ` THEN cli_version_source ELSE ? END` +
+			`,cli_version_claim=?`
+		args = append(args,
+			wire.CLISourceCLI, req.CLIVersion, req.CLIVersion,
+			wire.CLISourceCLI, req.CLIVersion, req.CLIVersion, ms(now),
+			wire.CLISourceCLI, req.CLIVersion, wire.CLISourceHeartbeat,
+			req.CLIVersion)
 	}
 	if req.State != "" {
 		set += `,state=?`
@@ -190,13 +206,14 @@ func applyPresence(tx *sql.Tx, base string, number int, req wire.SlotRequest, no
 }
 
 func presenceCols() string {
-	return slotCols() + `,state,context_tokens,last_turn_at,reported_at,subagents,cli_version,` + stretchStartSQL
+	return slotCols() + `,state,context_tokens,last_turn_at,reported_at,subagents,cli_version,cli_version_seen_at,cli_version_source,` + stretchStartSQL
 }
 
 func scanPresence(sc interface{ Scan(...any) error }, now time.Time) (wire.PresenceView, error) {
 	var v wire.PresenceView
-	var reg, until, tokens, last, reported, subagents, started int64
-	err := sc.Scan(&v.Base, &v.Number, &v.Machine, &v.Directory, &v.SessionID, &v.Label, &v.Parent, &reg, &until, &v.State, &tokens, &last, &reported, &subagents, &v.CLIVersion, &started)
+	var reg, until, tokens, last, reported, subagents, seen, started int64
+	err := sc.Scan(&v.Base, &v.Number, &v.Machine, &v.Directory, &v.SessionID, &v.Label, &v.Parent, &reg, &until, &v.State, &tokens, &last, &reported, &subagents, &v.CLIVersion, &seen, &v.CLIVersionSource, &started)
+	v.CLIVersionSeenAt = seenAt(seen)
 	v.Role = identity.SlotRole(v.Base, v.Number)
 	v.RegisteredAt, v.LeaseExpiresAt = fromMS(reg), fromMS(until)
 	v.Online = until > ms(now)

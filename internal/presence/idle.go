@@ -40,6 +40,8 @@ type liveSession struct {
 	Number                 int
 	Subagents              int64
 	Since, LastSeen        time.Time
+	CLIVersion, CLISource  string
+	CLISeenAt              *time.Time
 }
 
 func (v liveSession) Role() string { return identity.SlotRole(v.Base, v.Number) }
@@ -56,7 +58,7 @@ func (v liveSession) Mailbox() string {
 // liveSessions lists the live slots with the start of their current
 // presence_log stretch, by base and number.
 func (s *Service) liveSessions(now time.Time) ([]liveSession, error) {
-	rows, err := s.db.Query(`SELECT s.base,s.number,s.directory,s.state,s.subagents,s.registered_at,s.reported_at,`+stretchStartSQL+` FROM slots s WHERE s.lease_until>? ORDER BY s.base,s.number`, ms(now))
+	rows, err := s.db.Query(`SELECT s.base,s.number,s.directory,s.state,s.subagents,s.registered_at,s.reported_at,s.cli_version,s.cli_version_seen_at,s.cli_version_source,`+stretchStartSQL+` FROM slots s WHERE s.lease_until>? ORDER BY s.base,s.number`, ms(now))
 	if err != nil {
 		return nil, err
 	}
@@ -64,10 +66,11 @@ func (s *Service) liveSessions(now time.Time) ([]liveSession, error) {
 	var out []liveSession
 	for rows.Next() {
 		var v liveSession
-		var reg, reported, since int64
-		if err = rows.Scan(&v.Base, &v.Number, &v.Directory, &v.State, &v.Subagents, &reg, &reported, &since); err != nil {
+		var reg, reported, seen, since int64
+		if err = rows.Scan(&v.Base, &v.Number, &v.Directory, &v.State, &v.Subagents, &reg, &reported, &v.CLIVersion, &seen, &v.CLISource, &since); err != nil {
 			return nil, err
 		}
+		v.CLISeenAt = seenAt(seen)
 		if v.State == "" {
 			v.State = presenceUnknown
 		}

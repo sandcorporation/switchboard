@@ -105,6 +105,11 @@ type PresenceView struct {
 	// CLIVersion is the version the session's CLI last sent (#308): a tag,
 	// "dev", or CLIUnknown (no header); empty when not reported since #308.
 	CLIVersion string `json:"cli_version"`
+	// CLIVersionSeenAt is when CLIVersion was last observed (#500); absent
+	// when never. CLIVersionSource is where from: CLISourceCLI or
+	// CLISourceHeartbeat.
+	CLIVersionSeenAt *time.Time `json:"cli_version_seen_at,omitempty"`
+	CLIVersionSource string     `json:"cli_version_source,omitempty"`
 	// CLI is CLIVersion against the server minimum: current, old (옛 판) or
 	// unknown (판 모름).
 	CLI string `json:"cli"`
