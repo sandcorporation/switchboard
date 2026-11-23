@@ -19,30 +19,36 @@ function load(curTab, ws) {
       querySelector: () => page,
     },
     $: () => ({ hidden: true }),
-    loadRequests() {}, loadSessions() {}, loadReports() {}, loadJobs() {}, initMail() {}, loadRules() {},
+    setChrome() {}, loadRequests() {}, loadSessions() {}, loadReports() {}, loadJobs() {}, initMail() {}, loadRules() {},
   };
   vm.createContext(ctx);
   vm.runInContext(fs.readFileSync(path.join(__dirname, 'page', 'tabs.js'), 'utf8') + '\n;this.frameFull=frameFull;this.setListKept=setListKept;this.pageTab=pageTab;', ctx);
   return { ctx, cls, page };
 }
 
-test('the 설정 list stays for 설정 and its 화면 tabs only (#536)', () => {
+test('the 설정 screen is 설정 and its 화면 tabs only (#536, #538)', () => {
   const { ctx } = load('');
   for (const n of ['settings', 'progress', 'sessions', 'terminals']) assert.equal(ctx.setListKept(n), true, n);
   for (const n of ['requests', 'questions', 'mail', 'reports', 'jobs', 'metrics', 'rules']) assert.equal(ctx.setListKept(n), false, n);
 });
 
-test('진행·세션 표·터미널 open beside the list, 지표 stays full (#536)', () => {
-  for (const n of ['progress', 'sessions', 'terminals']) {
+test('설정 and 진행·세션 표·터미널 are the 설정 screen, 지표 stays full (#538)', () => {
+  for (const n of ['settings', 'progress', 'sessions', 'terminals']) {
     const { ctx, cls } = load(n);
     ctx.frameFull(true);
-    assert.ok(cls.has('fr-full') && cls.has('fr-setv'), n);
+    assert.ok(cls.has('fr-full') && cls.has('fr-set'), n);
     ctx.frameFull(false);
-    assert.ok(!cls.has('fr-full') && !cls.has('fr-setv'), n + ' off');
+    assert.ok(!cls.has('fr-full') && !cls.has('fr-set'), n + ' off');
   }
   const { ctx, cls } = load('metrics');
   ctx.frameFull(true);
-  assert.ok(cls.has('fr-full') && !cls.has('fr-setv'));
+  assert.ok(cls.has('fr-full') && !cls.has('fr-set'));
+});
+
+test('설정 is no list screen: no list column (#538)', () => {
+  const { ctx } = load('');
+  assert.equal(vm.runInContext("listTab('settings')", ctx), false);
+  assert.equal(vm.runInContext("fullTabs.includes('settings')", ctx), true);
 });
 
 test('the 화면 tabs stay page tabs, so the workspace never takes them (#523)', () => {

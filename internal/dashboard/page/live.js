@@ -50,7 +50,6 @@ function liveRetry(){
 let curTab='';
 function showTab(name){
   if(name!=='terminals'&&$('termAdd').open)$('termAdd').close();
-  if(name!=='settings'&&$('setAdd').open)$('setAdd').close();
   curTab=name;
   // 권한 요청 and 규칙 sit in 답이 필요함 (#514), 진행·세션 표·터미널 in 설정
   // (#515): that row stays marked.
@@ -61,14 +60,14 @@ function showTab(name){
     t.tabIndex=n===mark?0:-1;
     // In the workspace every section shows wherever its panel is, except a
     // list screen's (listTab), which stays in the page.
-    $('panel-'+n).hidden=ws&&!pageTab(n)?false:!(on||n==='settings'&&setListKept(name));
+    $('panel-'+n).hidden=ws&&!pageTab(n)?false:!on;
     if(n===mark)$('crumbTab').textContent=t.querySelector('.tab-name').textContent;
   }
   frameSplit(listTab(name)&&!(name==='questions'&&questionView==='decisions'));
   // A menu is on screen (#519): no session screen, no right column.
   frameScreen('menu');
   frameFull(fullTabs.includes(name));
-  if(setListKept(name)){loadTab('settings');markSetViews()}
+  if(setListKept(name))loadTab('settings');
   loadTab(name);
   if(ws&&!pageTab(name))ws.showMenu(name);
 }
@@ -94,9 +93,8 @@ function route(){
   if(parts.length>1&&details[parts[0]]&&visibleTabs().includes(parts[0])&&parts[1]){
     let id=parts[1];try{id=decodeURIComponent(id)}catch(e){}
     if(parts[0]==='questions')showQuestionView('questions');
-    // Picking an item keeps the list's scroll (#536): only a row out of
-    // sight (an address opened anew) is brought into view.
-    if(parts[0]==='settings')showSettingsView(setKindView[id.slice(0,id.indexOf(':'))],id);
+    // The 설정 menu marks the item's category (#538).
+    if(parts[0]==='settings')showSettingsView(setKindView[id.slice(0,id.indexOf(':'))]);
     showTab(parts[0]);showDetail(parts[0],id,parts[2]||'');
     return;
   }
@@ -117,7 +115,7 @@ function route(){
   }
   if(h==='decisions'){showTab('questions');showQuestionView('decisions');return}
   // 설정 itself (#settings) leaves a list already on screen where it was (#536).
-  if(settingsViewOfHash(h)){if(h!=='settings'||!setListKept(curTab))showSettingsView(settingsViewOfHash(h));showTab('settings');return}
+  if(settingsViewOfHash(h)){showSettingsView(settingsViewOfHash(h));showTab('settings');return}
   if(h==='questions'||h.startsWith('q='))showQuestionView('questions');
   if(h.startsWith('q=')){
     // Old question links (Discord, panel) open the question's detail.

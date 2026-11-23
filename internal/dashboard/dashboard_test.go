@@ -576,25 +576,27 @@ func TestDashboardSettingsDetail(t *testing.T) {
 	Page(w, httptest.NewRequest("GET", "/", nil))
 	body := w.Body.String()
 	for _, want := range []string{
-		// #515: one list column of groups beside the item's detail; every
-		// earlier action stays in the detail.
-		`<section id="panel-settings" role="tabpanel" aria-labelledby="tab-settings" tabindex="0" class="lsec" hidden>`,
-		`<div class="ls-h"><h2>설정</h2>`, `<div id="settingsList" class="ls-list"></div>`,
-		"setGroup(items,'roles','역할',d.roles,", "setGroup(items,'nodes','기계',d.nodes,", "setGroup(items,'groups','묶음',d.groups,",
-		"setGroup(items,'logins','로그인',d.logins,", "setGroup(items,'hooks','웹훅',d.hooks,hookRow,", "setGroup(items,'qsettings','질문 설정',d.qs,", "setGroup(items,'reminders','다시 알림',",
+		// #538: the category's body (its items one per line) beside the
+		// settings menu; every earlier action stays in the item's body.
+		`<section id="panel-settings" role="tabpanel" aria-labelledby="tab-settings" tabindex="0" class="sb" hidden>`,
+		`<h1 id="setTitle" class="sb-t"></h1>`, `<div id="setItems" class="sb-list"></div>`, `<div id="setMenu" class="sn-menu"></div>`,
+		"{v:'logins',name:'로그인',grp:'일반'},", "{v:'qsettings',name:'질문 설정',grp:'일반',add:'qs:+'},", "{v:'reminders',name:'다시 알림',grp:'일반',one:'server:now'},",
+		"{v:'nodes',name:'기계',grp:'연결',host:true},", "{v:'groups',name:'묶음',grp:'연결',host:true,add:'group:+'},", "{v:'hooks',name:'웹훅',grp:'연결',add:'hook:+'},",
+		"{v:'watches',name:'지켜보기',grp:'연결',add:'watch:+',addPerm:'sessions'},", "{v:'roles',name:'역할',grp:'역할'},",
+		"roles:[d.roles,v=>setRow('role:'+v.role,", "nodes:[d.nodes,v=>setRow('node:'+v.name,", "groups:[d.groups,g=>setRow('group:'+g.name,",
+		"logins:[d.logins,v=>setRow('login:'+v.name,", "hooks:[d.hooks,hookRow],", "qsettings:[d.qs,v=>setRow('qs:'+v.target,", "watches:[d.watches,watchRow],",
 		"setRow('refusals:24h',['24시간'],'최근 거절',",
-		"const listTabs=['requests','questions','mail','reports','jobs','settings'];", "const fullTabs=['metrics','progress','sessions','terminals'];",
+		"const listTabs=['requests','questions','mail','reports','jobs'];", "const fullTabs=['metrics','settings','progress','sessions','terminals'];",
+		// 질문 설정's + is a blank form in the body.
+		"if(kind==='qs')return key==='+'?{fresh:true,",
 		"host?get(api('nodes')):null,host?get(api('terminals/work-groups')):null",
 		"api('question-refusals')", "api('logins')", "perms.title='바꾸기: switchboard admin allow';",
-		`<dialog id="setAdd" class="sc-drawer" aria-labelledby="setAddTitle">`,
 		"const setViewHash={qsettings:'settings',roles:'settings-roles',nodes:'settings-nodes',groups:'settings-groups',logins:'settings-logins',watches:'settings-watches',hooks:'settings-hooks',reminders:'settings-reminders'};",
 		"registerDetail('settings',{",
-		"setRow('qs:'+v.target,", "setRow('role:'+v.role,", "setRow('node:'+v.name,", "setRow('login:'+v.name,", "setRow('group:'+g.name,",
 		"back:id=>setViewHash[setKindView[id.slice(0,id.indexOf(':'))]]||'settings',",
 		"function closeDetail(){if(detailCur){const b=details[detailCur.tab].back;location.hash=b?b(detailCur.id):detailCur.tab}}",
-		"if(parts[0]==='settings')showSettingsView(setKindView[id.slice(0,id.indexOf(':'))],id);",
-		"apiSend('PUT','question-settings/'+targetPath(v.target),{can_ask:canAsk.checked,watchers:watchers,discord:discord.checked})",
-		"apiSend('PUT','question-settings/'+targetPath(target),{can_ask:$('setCanAsk').checked,watchers:watchers,discord:$('setDiscord').checked})",
+		"if(parts[0]==='settings')showSettingsView(setKindView[id.slice(0,id.indexOf(':'))]);",
+		"apiSend('PUT','question-settings/'+targetPath(target),{can_ask:canAsk.checked,watchers:watchers,discord:discord.checked})",
 		"if(!confirm(v.target+' 설정을 지울까요?'))return;",
 		"apiSend('DELETE','question-settings/'+targetPath(v.target))",
 		"if(v.target!=='default'){",
@@ -606,10 +608,9 @@ func TestDashboardSettingsDetail(t *testing.T) {
 		"apiSend('PUT','terminals/work-groups/'+encodeURIComponent(g.name),{threshold:thresholdOf(th)})",
 		"if(!confirm(g.name+' 묶음을 지울까요?'))return;",
 		"get(api('settings'))",
-		"$('setAdd').addEventListener('keydown',e=>{if(e.key==='Escape'){e.preventDefault();$('setAdd').close()}});",
 		"settings:loadSettingsView,",
 		// #528: 지켜보기, the API watch rules.
-		"setGroup(items,'watches','지켜보기',d.watches,watchRow,", "get(api('watches'))", "if(kind==='watch')return findWatch(key);",
+		"get(api('watches'))", "if(kind==='watch')return findWatch(key);",
 		"apiSend('POST','watches/test',body)", "apiSend('POST','watches',read())", "apiSend('PUT','watches/'+v.id,read())",
 		"apiSend('DELETE','watches/'+v.id)", "apiSend('POST','watches/'+v.id+'/'+(v.enabled?'off':'on'))",
 		"if(!confirm(v.name+' 규칙을 지울까요? 저장한 키도 지워집니다.'))return;",
@@ -618,7 +619,7 @@ func TestDashboardSettingsDetail(t *testing.T) {
 			t.Errorf("dashboard missing %q", want)
 		}
 	}
-	for _, gone := range []string{`id="nodesBox"`, `id="rolesMsg"`, `id="nodesMsg"`, `function loadSettings(`, `id="setViews"`, `id="groupForm"`} {
+	for _, gone := range []string{`id="nodesBox"`, `id="rolesMsg"`, `id="nodesMsg"`, `function loadSettings(`, `id="setViews"`, `id="groupForm"`, `id="settingsList"`, `id="setAdd"`, `id="settingsForm"`} {
 		if strings.Contains(body, gone) {
 			t.Errorf("dashboard still has %q", gone)
 		}
@@ -761,7 +762,7 @@ func TestDashboardWorkspaceLoadsWithHosting(t *testing.T) {
 	for _, want := range []string{
 		"if(hostingOn)loadWorkspace(Array.isArray(m.workspace_assets)?m.workspace_assets:[]);",
 		// A list screen (#514) stays in the page; the others are panels.
-		"$('panel-'+n).hidden=ws&&!pageTab(n)?false:!(on||n==='settings'&&setListKept(name));",
+		"$('panel-'+n).hidden=ws&&!pageTab(n)?false:!on;",
 		"frameFull(fullTabs.includes(name));", "if(ws&&!pageTab(name))ws.showMenu(name);",
 		"frameSplit(listTab(name)&&!(name==='questions'&&questionView==='decisions'));",
 		// With hosting on, the list column shows only the list screen, and
@@ -984,9 +985,9 @@ func TestDashboardSettingsHoldsViews(t *testing.T) {
 		`const setTabs=['progress','sessions','terminals'];`,
 		`setTabs.includes(name)?'settings':name;`,
 		`filter(n=>!$('tab-'+n).hidden&&!setTabs.includes(n))`,
-		`setGroup(items,'views','화면',views,setViewRow);`,
-		`const go=()=>{location.hash=x[0]};`,
-		`if(ws&&ws.nodes)views.push(['nodes','노드','노드 → 세션',true]);`,
+		`for(const [k,name,href] of setScreens()){`,
+		`const s=[['progress','진행','#progress'],['sessions','세션 표','#sessions']];`,
+		`if(ws&&ws.nodes)s.push(['view:nodes','노드',detailHash('settings','view:nodes','')]);`,
 		`view:(v,box)=>{const n=ws.nodes();box.append(n.el);n.show()}`,
 	} {
 		if !strings.Contains(body, want) {

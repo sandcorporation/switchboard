@@ -70,7 +70,7 @@ function hideDetail(){
   detailCur=null;detailSeq++;
   $('detail').hidden=true;$('appMain').classList.remove('has-detail');
   $('detailBody').replaceChildren();termGc();
-  markDetailRows();splitEmptyShow();
+  markDetailRows();splitEmptyShow();setChrome();
   const tr=detailRowFor(c.tab,c.id);
   if(back&&tr&&curTab===c.tab)tr.focus();
 }
@@ -107,6 +107,7 @@ async function drawDetail(){
   const top=$('detail').scrollTop;
   $('detailBody').replaceChildren(...box.childNodes);
   $('detail').scrollTop=top;
+  setChrome();
   if(inBody&&$('detailBody').contains(act))act.focus({preventScroll:true});
   else if(inBody||(onTab&&!nav.contains(document.activeElement)))$('detailTitle').focus({preventScroll:true});
   termGc();
