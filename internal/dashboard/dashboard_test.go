@@ -483,7 +483,7 @@ func TestDashboardWaitAndDetails(t *testing.T) {
 		`<h3 class="sechead">대기 <span id="waitCount"`,
 		`<table id="waitTbl" class="stack list cards"><thead><tr><th>종류</th><th>항목</th><th>역할</th><th class="num">지난 시간</th></tr></thead><tbody id="wait"></tbody></table>`,
 		`<h3 class="sechead">서비스</h3>`, `id="svcChips"`,
-		`<table id="progressTbl" class="stack list cards"><thead><tr><th>서비스</th><th>상태</th><th class="num">세션</th><th class="num">열린 지시</th><th>마지막 소식</th></tr></thead><tbody id="progress"></tbody></table>`,
+		`<table id="progressTbl" class="stack list cards"><thead><tr><th>서비스</th><th>상태</th><th class="num">세션</th><th class="num">열린 지시</th><th class="num">남긴 것</th><th>마지막 소식</th></tr></thead><tbody id="progress"></tbody></table>`,
 		`id="panel-sessions"`,
 	}
 	last := -1
@@ -496,7 +496,7 @@ func TestDashboardWaitAndDetails(t *testing.T) {
 	}
 	for _, want := range []string{
 		// 대기: kinds in order, oldest first, the counts the menu shows.
-		"const waitKinds=[['q','질문','warning'],['p','권한','info'],['s','오류','danger'],['d','지시','neutral'],['m','멈춤','warning'],['v','옛 판','warning']];",
+		"const waitKinds=[['q','질문','warning'],['p','권한','info'],['s','오류','danger'],['d','지시','neutral'],['m','멈춤','warning'],['l','남긴 것','warning'],['v','옛 판','warning']];",
 		"for(const x of p.stalled||[])by.m.push(",
 		"for(const [k,label,tone] of waitKinds)for(const x of by[k].sort((a,b)=>(b.age||0)-(a.age||0)))",
 		"api('questions?status=pending&limit=500'),api('permissions?status=pending')",
@@ -523,6 +523,17 @@ func TestDashboardWaitAndDetails(t *testing.T) {
 		"api('permissions/'+encodeURIComponent(id))",
 		"detailRow(tr,'permissions',v.id);",
 		"if(v.status==='pending'&&v.can_answer)box.append(permAnswerForm(v));",
+		// 남긴 것 (#470): a 대기 row per open item, its second line the
+		// directive and [이슈] [새 지시] [버림]; a column in the service table.
+		"for(const x of d.r.left||[])by.l.push(",
+		"item:x.kind==='unrecorded'?'적지 않음':x.text",
+		"if(x.left)it.append(leftLine(x.left));",
+		"setButton('지시 #'+v.directive,'linkish',()=>openMessage(v.directive))",
+		"end('이슈',b=>apiSend('POST','left/'+id+'/issue',b)",
+		"end('새 지시',b=>apiSend('POST','left/'+id+'/pass',b)",
+		"end('버림',b=>apiSend('POST','left/'+id+'/drop',b)",
+		"const svcCols=['서비스','상태','세션','열린 지시','남긴 것','마지막 소식'];",
+		"cell(String(p.left||0),'남긴 것','num nowrap')",
 		// Below 600px 대기 and service rows are two-line cards.
 		"table.cards td.cardbr{display:block;flex-basis:100%;height:0}",
 	} {
@@ -635,7 +646,7 @@ func TestDashboardShowsCLIVersion(t *testing.T) {
 		"if(v.cli==='old'){tr.children[5].classList.add('cli-old');tr.children[5].append(' ',badge('옛 판','warning'))}",
 		"['v','옛 판','warning']",
 		"for(const x of d.r.cli_behind||[])by.v.push({id:x.machine,",
-		"if(x.kind!=='v')detailRow(tr,'progress',x.kind+':'+x.id);",
+		"if(x.kind!=='v'&&x.kind!=='l')detailRow(tr,'progress',x.kind+':'+x.id);",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("dashboard missing %q", want)

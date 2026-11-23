@@ -10,6 +10,10 @@ type ProgressReport struct {
 	// CLIBehind is one row per machine with an old CLI (#308),
 	// the 옛 판 rows of 진행 대기.
 	CLIBehind []CLIBehind `json:"cli_behind"`
+	// Left is every open item of the 남긴 것 ledger (#470), oldest first:
+	// what answers that ended directives left undone, and the unrecorded
+	// rows of older CLIs. The 남긴 것 rows of 진행 대기.
+	Left []LeftItem `json:"left"`
 }
 
 type ServiceProgress struct {
@@ -23,6 +27,8 @@ type ServiceProgress struct {
 	// recipient's sessions have been idle since for SWITCHBOARD_REMIND_IDLE
 	// (#268), the 대기 멈춤 rows.
 	Stalled []ProgressStall `json:"stalled"`
+	// Left counts the open 남긴 것 items the service's roles recorded (#470).
+	Left int `json:"left"`
 }
 
 type ProgressSession struct {

@@ -399,6 +399,10 @@ func (s *Server) serveAPI(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+	if rest, ok := strings.CutPrefix(path, "left"); ok && (rest == "" || strings.HasPrefix(rest, "/")) {
+		s.mail().LeftAPI(w, r, who, strings.TrimPrefix(rest, "/"))
+		return
+	}
 	if path == "events/poll" && r.Method == "GET" {
 		s.mail().PollEvents(w, r, role)
 		return
@@ -534,6 +538,11 @@ func (s *Server) adminRoutes(w http.ResponseWriter, r *http.Request, path string
 	}
 	if rest, ok := strings.CutPrefix(path, "invites"); ok && (rest == "" || strings.HasPrefix(rest, "/")) {
 		s.ids().AdminInvitesAPI(w, r, who.User, strings.TrimPrefix(rest, "/"))
+		return
+	}
+	if rest, ok := strings.CutPrefix(path, "left/"); ok {
+		// POST /api/admin/left/{id}/{issue,pass,drop}: only a signed-in admin (#470).
+		s.mail().AdminLeftAPI(w, r, boss == nil, who.User, rest)
 		return
 	}
 	if rest, ok := strings.CutPrefix(path, "messages/"); ok && r.Method == http.MethodPost {

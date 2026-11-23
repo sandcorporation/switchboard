@@ -43,3 +43,20 @@ func TestProgressSessionShowsSubagents(t *testing.T) {
 		t.Fatalf("progress text:\n%s", out)
 	}
 }
+
+// The 남긴 것 items (#470): a count in the service block and a list after.
+func TestProgressLeft(t *testing.T) {
+	now := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	out := formatProgress([]wire.ServiceProgress{{Service: "team", Badge: "idle", Left: 2}}, now) + formatLeft([]wire.LeftItem{
+		{ID: 7, Directive: 3, Kind: wire.LeftKindItem, Text: "rename the files", RecordedBy: "team/worker", RecordedAt: now.Add(-2 * time.Hour)},
+		{ID: 8, Directive: 4, Kind: wire.LeftKindUnrecorded, RecordedBy: "team/worker", RecordedAt: now},
+	}, now)
+	for _, want := range []string{"  남긴 것 2\n", "\n남긴 것 2\n", "  #7 지시 #3 team/worker 2시간 전 — rename the files\n", "  #8 지시 #4 team/worker 방금 — (적지 않음)\n"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("progress text missing %q:\n%s", want, out)
+		}
+	}
+	if formatLeft(nil, now) != "" {
+		t.Fatal("no items, want no section")
+	}
+}

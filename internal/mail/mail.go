@@ -319,6 +319,9 @@ func (s *Service) send(w http.ResponseWriter, r *http.Request, p identity.Princi
 	// otherwise nothing is stored.
 	complete := m.Complete
 	m.Complete = nil
+	claim := claimOf(r, m.Left, m.LeftNone)
+	m.Left, m.LeftNone = nil, false
+	var ending []int64 // directives the send ends (#470)
 	for i, id := range complete {
 		id = CurrentID(s.db, id) // held mail handed to a session has a new ID (#392)
 		complete[i] = id
@@ -331,12 +334,36 @@ func (s *Service) send(w http.ResponseWriter, r *http.Request, p identity.Princi
 			http.Error(w, fmt.Sprintf("complete: message %d was not sent to %s", id, role), 400)
 			return
 		}
+		if isDirectiveMail(got) {
+			ending = append(ending, id)
+		}
+	}
+	var first int64
+	if len(ending) > 0 {
+		first = ending[0]
+	}
+	if msg := claim.problem(len(ending) > 0, first); msg != "" {
+		http.Error(w, msg, 400)
+		return
+	}
+	switch {
+	case len(claim.items) > 0 && len(ending) == 0:
+		http.Error(w, "--left goes with an answer that ends a directive (--complete ID of a directive), or left add", 400)
+		return
+	case len(claim.items) > 0 && len(ending) > 1:
+		http.Error(w, "--left: end one directive at a time when saying what is left, or use left add", 400)
+		return
 	}
 	if len(complete) > 0 {
 		then := inTx
 		inTx = func(tx *sql.Tx, now time.Time) error {
 			if err := markComplete(tx, role, complete, now); err != nil {
 				return err
+			}
+			for _, d := range ending {
+				if err := recordLeft(tx, d, role, claim, now); err != nil {
+					return err
+				}
 			}
 			if then == nil {
 				return nil
@@ -630,7 +657,35 @@ func (s *Service) Status(w http.ResponseWriter, r *http.Request, role string, id
 		http.Error(w, "not found", 404)
 		return
 	}
-	_, e = s.db.Exec(`INSERT INTO role_states(role,message_id,status,updated_at) VALUES(?,?,?,?) ON CONFLICT(role,message_id) DO UPDATE SET status=excluded.status,updated_at=excluded.updated_at`, role, id, status, time.Now().UTC().Format(time.RFC3339Nano))
+	// complete of a directive that has not ended ends it (#470): it says
+	// what is left.
+	var claim leftClaim
+	ending := false
+	if status == "complete" {
+		note, ok := leftNote(w, r)
+		if !ok {
+			return
+		}
+		claim = claimOf(r, note.Left, note.LeftNone)
+		ending = isDirectiveMail(m) && !s.ended(id)
+		if msg := claim.problem(ending, id); msg != "" {
+			http.Error(w, msg, 400)
+			return
+		}
+		if len(claim.items) > 0 && !ending {
+			http.Error(w, "--left goes with the complete that ends a directive; this one has ended or is not a directive (left add N adds to a directive you ended)", 400)
+			return
+		}
+	}
+	e = store.InTx(r.Context(), s.db, func(tx *sql.Tx) error {
+		if _, err := tx.Exec(`INSERT INTO role_states(role,message_id,status,updated_at) VALUES(?,?,?,?) ON CONFLICT(role,message_id) DO UPDATE SET status=excluded.status,updated_at=excluded.updated_at`, role, id, status, time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
+			return err
+		}
+		if !ending {
+			return nil
+		}
+		return recordLeft(tx, id, role, claim, s.now())
+	})
 	if e != nil {
 		http.Error(w, "update failed", 500)
 		return
@@ -667,6 +722,18 @@ func (s *Service) Reply(w http.ResponseWriter, r *http.Request, p identity.Princ
 	}
 	done := m.Done
 	m.Done = false
+	// reply --complete to a directive ends it (#470): it says what is left.
+	claim := claimOf(r, m.Left, m.LeftNone)
+	m.Left, m.LeftNone = nil, false
+	ending := done && isDirectiveMail(orig)
+	if msg := claim.problem(ending, id); msg != "" {
+		http.Error(w, msg, 400)
+		return
+	}
+	if len(claim.items) > 0 && !ending {
+		http.Error(w, "--left goes with reply --complete to a directive, or left add", 400)
+		return
+	}
 	b, _ := json.Marshal(m)
 	r.Body = io.NopCloser(bytes.NewReader(b))
 	var inTx func(*sql.Tx, time.Time) error
@@ -674,7 +741,13 @@ func (s *Service) Reply(w http.ResponseWriter, r *http.Request, p identity.Princ
 		// reply --complete (--done): the reply and the complete mark commit
 		// together (#269), for any mail, directive or not (#327).
 		inTx = func(tx *sql.Tx, now time.Time) error {
-			return markComplete(tx, orig.Recipient, []int64{id}, now)
+			if err := markComplete(tx, orig.Recipient, []int64{id}, now); err != nil {
+				return err
+			}
+			if !ending {
+				return nil
+			}
+			return recordLeft(tx, id, orig.Recipient, claim, now)
 		}
 	}
 	var respond func(*wire.Message)

@@ -63,7 +63,7 @@ func TestReadShowsAnsweredDirectiveOpenToSender(t *testing.T) {
 	}
 
 	// Done: the state is done and no line is printed.
-	h.mustRun(nil, "reply", "1", "--done", "--body", "built") // #3
+	h.mustRun(nil, "reply", "1", "--done", "--left-none", "--body", "built") // #3
 	h.configure(nil, "a")
 	for _, id := range []string{"2", "3"} {
 		if text := h.mustRun(nil, "read", id); strings.Contains(text, "still open") {
@@ -82,7 +82,7 @@ func TestReadShowsAnsweredDirectiveOpenToSender(t *testing.T) {
 	if m := readJSON(t, h, "5"); m.AnswersDirective == nil || m.AnswersDirective.State != "open" || m.AnswersDirective.ID != 4 {
 		t.Fatalf("before close: %+v", m.AnswersDirective)
 	}
-	h.mustRun(nil, "close", "4")
+	h.mustRun(nil, "close", "4", "--left-none")
 	if text := h.mustRun(nil, "read", "5"); strings.Contains(text, "still open") {
 		t.Fatalf("read after close:\n%s", text)
 	}

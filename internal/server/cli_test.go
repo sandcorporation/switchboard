@@ -184,7 +184,7 @@ func TestInboxStatusFilter(t *testing.T) {
 	if !strings.Contains(read, "first") || strings.Contains(read, "second") {
 		t.Fatalf("read filter: %s", read)
 	}
-	h.mustRun(nil, "complete", "2")
+	h.mustRun(nil, "complete", "2", "--left-none")
 	for _, spelling := range []string{"complete", "completed"} {
 		done := h.mustRun(nil, "inbox", "--status", spelling, "--json")
 		if !strings.Contains(done, "second") || !strings.Contains(done, `"status": "complete"`) || strings.Contains(done, "first") {

@@ -342,6 +342,15 @@ func (s *Service) Progress(pending time.Duration, base func(string) string) (wir
 		return out, err
 	}
 
+	// What answers that ended directives left undone (#470): every open item,
+	// counted on the service of the role that recorded it.
+	if out.Left, err = mail.OpenLeft(s.db); err != nil {
+		return out, err
+	}
+	for _, it := range out.Left {
+		get(it.RecordedBy).Left++
+	}
+
 	for _, p := range svcs {
 		p.Badge = progressBadge(p.Sessions)
 		sort.SliceStable(p.OpenDirectives, func(i, j int) bool { return p.OpenDirectives[i].AgeS > p.OpenDirectives[j].AgeS })

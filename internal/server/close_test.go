@@ -140,7 +140,7 @@ func TestCLIClose(t *testing.T) {
 	h.configure([]string{"--profile", "a"}, "a")
 	h.configure(nil, "b")
 	h.mustRun(nil, "--profile", "a", "send", "--to", "b", "--subject", "work", "--body", "x")
-	if out := h.mustRun(nil, "--profile", "a", "close", "1"); out != "#1 closed; withdrawn (the recipient had not read it)" {
+	if out := h.mustRun(nil, "--profile", "a", "close", "1", "--left-none"); out != "#1 closed; withdrawn (the recipient had not read it)" {
 		t.Fatalf("close: %q", out)
 	}
 	var got wire.Closed

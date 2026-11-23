@@ -221,6 +221,9 @@ tr.focus td{background:var(--color-accent-tint)}
 .sechead{margin:var(--space-4) 0 var(--space-2)}
 .sechead .muted{font-weight:400;font-size:.85em}
 table.list td.strong,table.list td.witem{font-weight:650}
+.wsub{display:flex;flex-wrap:wrap;gap:var(--space-2);align-items:center;margin-top:var(--space-1);font-weight:400;font-size:.9em}
+.wsub button{font-size:.92em}
+.wsub button.linkish{background:none;border:0;padding:0;color:var(--color-accent);text-decoration:underline;cursor:pointer}
 table.list td.mono{font-family:var(--font-mono);font-size:.92em}
 table.list td.over{color:var(--st-error);font-weight:650}
 table.list tr.done td{color:var(--color-muted)}
@@ -350,7 +353,7 @@ table.cards td.cardhide{display:none}
 <table id="waitTbl" class="stack list cards"><thead><tr><th>종류</th><th>항목</th><th>역할</th><th class="num">지난 시간</th></tr></thead><tbody id="wait"></tbody></table>
 <h3 class="sechead">서비스</h3>
 <div class="listbar"><div class="chips" id="svcChips" role="group" aria-label="서비스 고르기"></div></div>
-<table id="progressTbl" class="stack list cards"><thead><tr><th>서비스</th><th>상태</th><th class="num">세션</th><th class="num">열린 지시</th><th>마지막 소식</th></tr></thead><tbody id="progress"></tbody></table>
+<table id="progressTbl" class="stack list cards"><thead><tr><th>서비스</th><th>상태</th><th class="num">세션</th><th class="num">열린 지시</th><th class="num">남긴 것</th><th>마지막 소식</th></tr></thead><tbody id="progress"></tbody></table>
 </section>
 <section id="panel-sessions" role="tabpanel" aria-labelledby="tab-sessions" tabindex="0" class="card" hidden>
 <div class="toolbar"><h2>세션</h2><button id="reloadSessions">새로 고침</button><span id="sessionsNote" class="muted"></span></div>
@@ -1054,18 +1057,19 @@ function openMessage(id){openMail({id:id})}
 // One load reads GET /api/admin/progress with the pending questions and
 // permission requests. The list is 대기 (questions, permission requests,
 // sessions in error or blocked, directives over the pending alert threshold,
-// directives answered but not completed whose sessions sit idle (멈춤), in
-// that order of kind, oldest first within a kind) and then a row per
-// service. Rows open in the detail panel under #progress/<kind>:<id>:
+// directives answered but not completed whose sessions sit idle (멈춤),
+// what answers that ended directives left undone (남긴 것, #470: a second
+// line with the directive and [이슈] [새 지시] [버림]), in that order of
+// kind, oldest first within a kind) and then a row per service. Rows open in the detail panel under #progress/<kind>:<id>:
 // q: 질문, p: 권한, s: 세션, d: 지시, m: 멈춤 (the directive), svc: 서비스. The tab number is the
 // open directives older than the pending alert threshold (0 hides it).
 const badgeLabel={error:'오류',blocked:'막힘',busy:'바쁨',compacting:'compact 중',idle:'유휴',none:'세션 없음'};
 const badgeTone={error:'danger',blocked:'warning',busy:'info',compacting:'info',idle:'success',none:'neutral'};
 function rel(now,t){if(!t)return '-';const s=Math.max(0,Math.round((new Date(now)-new Date(t))/1000));return s<60?'방금':dur(s)+' 전'}
 function secsSince(now,t){return Math.max(0,Math.round((new Date(now)-new Date(t))/1000))}
-const waitKinds=[['q','질문','warning'],['p','권한','info'],['s','오류','danger'],['d','지시','neutral'],['m','멈춤','warning'],['v','옛 판','warning']];
+const waitKinds=[['q','질문','warning'],['p','권한','info'],['s','오류','danger'],['d','지시','neutral'],['m','멈춤','warning'],['l','남긴 것','warning'],['v','옛 판','warning']];
 const waitCols=['종류','항목','역할','지난 시간'];
-const svcCols=['서비스','상태','세션','열린 지시','마지막 소식'];
+const svcCols=['서비스','상태','세션','열린 지시','남긴 것','마지막 소식'];
 // recipLabel is an open directive's recipient state: offline apart from idle (#269).
 const recipLabel={offline:'오프라인',none:'오프라인'};
 function recipWho(x){const l=recipLabel[x.recipient_state]||badgeLabel[x.recipient_state];return x.to+(l&&x.recipient_state!=='busy'?' · '+l:'')}
@@ -1073,7 +1077,8 @@ const svcChips=[['all','전체',()=>true],['problem','문제 있음',p=>/^(error
 let progressSeq=0,progressData=null,svcFilter='all';
 // waitItems builds the 대기 rows: {kind,id,item,role,age} with age in seconds.
 function waitItems(d){
-  const now=d.r.generated_at,by={q:[],p:[],s:[],d:[],m:[],v:[]};
+  const now=d.r.generated_at,by={q:[],p:[],s:[],d:[],m:[],l:[],v:[]};
+  for(const x of d.r.left||[])by.l.push({id:String(x.id),item:x.kind==='unrecorded'?'적지 않음':x.text,role:x.recorded_by,age:secsSince(now,x.recorded_at),left:x});
   for(const x of d.r.cli_behind||[])by.v.push({id:x.machine,item:x.machine+' · '+(x.version==='unknown'?'판 모름':x.version),role:x.roles.join(', '),age:null});
   for(const q of d.questions)by.q.push({id:q.id,item:q.questions.map(x=>x.header).join(' · '),role:q.asker,age:secsSince(now,q.created_at)});
   for(const v of d.perms)by.p.push({id:v.id,item:v.tool+(v.summary?' · '+v.summary:''),role:v.requester,age:secsSince(now,v.created_at)});
@@ -1110,8 +1115,10 @@ function drawProgress(){
     for(const x of items){
       const tr=node('tr','','w-'+x.kind);
       const k=cell('');k.append(badge(x.label,x.tone));
-      tr.append(k,cell(x.item,'','witem'),cardBreak(),cell(x.role,'','mono'),cell(x.age==null?'-':dur(x.age),'','num nowrap'));
-      if(x.kind!=='v')detailRow(tr,'progress',x.kind+':'+x.id);
+      const it=cell(x.item,'','witem');
+      if(x.left)it.append(leftLine(x.left));
+      tr.append(k,it,cardBreak(),cell(x.role,'','mono'),cell(x.age==null?'-':dur(x.age),'','num nowrap'));
+      if(x.kind!=='v'&&x.kind!=='l')detailRow(tr,'progress',x.kind+':'+x.id);
       wait.append(tr);
     }
     if(!items.length)emptyRow(wait,waitCols.length,'대기 없음');
@@ -1139,7 +1146,7 @@ function drawProgress(){
       const rep=p.last_report;
       const news=cell(rep?(rep.subject||'(제목 없음)')+' · '+rel(now,rep.at):p.last_activity_at?'보고 없음 · 마지막 활동 '+rel(now,p.last_activity_at):'소식 없음','마지막 소식','muted');
       if(rep)news.title=rep.from+' → '+rep.to+' · '+when(rep.at);
-      tr.append(cell(p.service,'','strong'),st,cardBreak(),cell(String(p.sessions.length),'세션','num nowrap'),dirs,news);
+      tr.append(cell(p.service,'','strong'),st,cardBreak(),cell(String(p.sessions.length),'세션','num nowrap'),dirs,cell(String(p.left||0),'남긴 것','num nowrap'),news);
       detailRow(tr,'progress','svc:'+p.service);
       body.append(tr);
     }
@@ -1148,6 +1155,28 @@ function drawProgress(){
   setTabCount('progress',over||null);
   $('progressNote').textContent='대기 '+items.length+' · '+r.services.length+'개 서비스'+(over?' · 오래된 지시 '+over+'개':'');
   $('progressNote').title=when(r.generated_at);
+}
+// leftLine is the second line of a 남긴 것 row (#470): the directive it came
+// from and its three ends. 이슈 and 새 지시 do what the directive's sender
+// does with left issue and left pass; 버림 is the admin's alone, with a reason.
+function leftLine(v){
+  const box=node('div','','wsub'),msg=node('span','','msg');msg.setAttribute('role','status');
+  const dir=setButton('지시 #'+v.directive,'linkish',()=>openMessage(v.directive));
+  if(v.directive_subject)dir.title=v.directive_subject;
+  const id=encodeURIComponent(v.id);
+  const end=(label,send,ask,body)=>setButton(label,'',async e=>{
+    const a=prompt(ask,'');if(a===null)return;
+    const sent=body(a.trim());if(!sent){setMsg(msg,ask,'err');return}
+    e.target.disabled=true;setMsg(msg,'보내는 중…');
+    try{await send(sent);loadProgress()}
+    catch(err){e.target.disabled=false;setMsg(msg,err.message,'err')}
+  });
+  box.append(dir,
+    end('이슈',b=>apiSend('POST','left/'+id+'/issue',b),'#'+v.id+' 이슈 주소',a=>/^https?:\/\/\S+$/.test(a)?{url:a}:null),
+    end('새 지시',b=>apiSend('POST','left/'+id+'/pass',b),'#'+v.id+'을(를) 넘길 지시 번호 ('+v.directive_from+'이(가) 보낸 지시)',a=>/^[1-9][0-9]*$/.test(a)?{directive:Number(a)}:null),
+    end('버림',b=>apiSend('POST','left/'+id+'/drop',b),'#'+v.id+' 버리는 까닭',a=>a?{reason:a}:null),
+    msg);
+  return box;
 }
 // The 진행 detail hands each kind to its own spec: q to 질문, p to 권한 요청,
 // s to 세션, d (지시: the mail thread, with 닫기) and svc (서비스) are here.
