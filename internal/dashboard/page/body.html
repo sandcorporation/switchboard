@@ -49,6 +49,14 @@
 <div class="viewswitch" role="group" aria-label="기간 고르기"><button type="button" id="metDays7" data-days="7" aria-pressed="true">7일</button><button type="button" id="metDays30" data-days="30" aria-pressed="false">30일</button></div>
 <button id="reloadMetrics">새로 고침</button><span id="metricsNote" class="muted" role="status" aria-live="polite"></span></div>
 <div class="metgrid">
+<div class="mcard full"><h3 title="지난 24시간, 한 시간 칸마다 오간 메일 수 (시스템 알림 빼고)">시간당 메일</h3>
+<p id="mHourlyNote" class="muted"></p>
+<div id="mHourlyStats" class="hstats"></div>
+<div id="mHourlyChart" class="hchart" role="img" aria-label="시간당 메일 수"></div>
+<div id="mHourlyAxis" class="haxis"></div>
+<h4 title="지금까지 60분 동안 역할마다 보내고 받은 메일, 쓴 보고, 낸 질문">역할별 — 지난 한 시간</h4>
+<table id="mHourlyTbl" class="stack"><thead><tr><th>역할</th><th class="num">보냄</th><th class="num">받음</th><th class="num">보고</th><th class="num">질문</th></tr></thead><tbody id="mHourlyRoles"></tbody></table>
+</div>
 <div class="mcard full"><h3 title="스레드를 연 메일이 첫 답을 받기까지 걸린 시간">첫 답장</h3>
 <div id="mFirstStats" class="stats"></div>
 <div id="mFirstChart" class="chart"></div>
