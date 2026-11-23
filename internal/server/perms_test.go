@@ -65,6 +65,8 @@ func TestLoginPermsReachOpenSocketsAndRoutes(t *testing.T) {
 		{"DELETE", "/api/admin/terminals/" + r.id, ``, wire.PermSessions},
 		{"POST", "/api/admin/terminals", newRecord, wire.PermSessions},
 		{"POST", "/api/admin/left/1/drop", `{"reason":"x"}`, wire.PermDiscard},
+		{"POST", "/api/admin/roles/team/worker/rotate", `{"generate":true}`, wire.PermSessions},
+		{"POST", "/api/admin/roles/team/worker/retire?force=1", ``, wire.PermSessions},
 	} {
 		got := r.call(t, r.base, c.method, c.path, c.body)
 		if got.code != http.StatusForbidden || !strings.Contains(got.body, "("+c.perm+")") {

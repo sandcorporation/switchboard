@@ -164,6 +164,7 @@ func (s *Service) SetRevoked(ctx context.Context, role string, revoke bool) (Rol
 //	POST /api/admin/roles/{role}/restore
 //	POST /api/admin/roles/{role}/rename   {"to": NEW}
 //	POST /api/admin/roles/{role}/rotate   {"credential": NEW}
+//	POST /api/admin/roles/{role}/rotate   {"generate": true} -> RoleView + "token" (once)
 //	POST /api/admin/roles/{role}/retire[?force=1]
 //
 // Role names keep their slashes as path separators.

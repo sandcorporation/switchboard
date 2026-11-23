@@ -134,7 +134,7 @@ async function loadRoles(){
       body.replaceChildren();
       for(const v of rows){
         const tr=node('tr','',v.revoked_at?'done':'');
-        const st=cell('');st.append(badge(v.revoked_at?'끊김':'사용 중',v.revoked_at?'danger':'success'));
+        const st=cell('');st.append(badge(...roleBadge(v)));
         const at=cardText(cell(shortWhen(v.created_at),roleCols[2],'nowrap'),'등록 ');at.title=when(v.created_at);
         const off=cardText(cell(v.revoked_at?shortWhen(v.revoked_at):'-',roleCols[3],v.revoked_at?'nowrap revoked':'nowrap cardhide'),'끊음 ');if(v.revoked_at)off.title=when(v.revoked_at);
         tr.append(cell(v.role,'','strong mono'),st,cardBreak(),at,off);
@@ -143,22 +143,64 @@ async function loadRoles(){
       }
       if(!rows.length)emptyRow(body,roleCols.length,'역할 없음');
     });
-    const off=rows.filter(v=>v.revoked_at).length;
-    $('settingsNote').textContent=rows.length+'개'+(off?' · 끊김 '+off:'');
+    const off=rows.filter(v=>v.revoked_at&&!v.retired_at).length,gone=rows.filter(v=>v.retired_at).length;
+    $('settingsNote').textContent=rows.length+'개'+(off?' · 끊김 '+off:'')+(gone?' · 은퇴 '+gone:'');
   }catch(e){if(setView==='roles')$('settingsNote').textContent=e.message}
+}
+function roleBadge(v){return v.retired_at?['은퇴','neutral']:v.revoked_at?['끊김','danger']:['사용 중','success']}
+// roleToken is the token a rotate just made (#499): shown in that role's
+// detail until the detail is left, then gone for good.
+let roleToken=null;
+addEventListener('hashchange',()=>{if(roleToken&&!decodeURIComponent(location.hash).includes(roleToken.id))roleToken=null});
+// roleSessions counts the sessions on role now: the role and its numbered
+// slots (<role>-N), online.
+async function roleSessions(role){
+  const p=await api('presence');
+  return p.sessions.filter(s=>s.online&&(s.role===role||(s.role.startsWith(role+'-')&&/^[1-9][0-9]{0,2}$/.test(s.role.slice(role.length+1))))).length;
+}
+function drawRoleToken(box,t){
+  const row=node('div','','detail-acts'),field=document.createElement('input');
+  field.type='text';field.readOnly=true;field.value=t.token;field.className='mono';field.setAttribute('aria-label','새 토큰');
+  field.style.cssText='flex:1 1 16em;min-width:0';
+  const copy=setButton('복사','',async()=>{
+    try{await navigator.clipboard.writeText(t.token)}
+    catch(e){field.select();document.execCommand('copy')}
+    copy.textContent='복사됨';
+  });
+  row.append(field,copy);box.append(row);
 }
 function drawRole(v,box){
   const id='role:'+v.role,revoke=!v.revoked_at,acts=node('div','','detail-acts');
-  acts.append(setButton(revoke?'끊기':'되살리기','',async()=>{
-    const used=revoke&&v.last_used_at&&Date.now()-new Date(v.last_used_at).getTime()<864e5;
-    if(!confirm(revoke?v.role+' 역할을 끊을까요? 이 토큰으로 접속한 세션이 모두 끊깁니다.'+(used?'\n최근 사용: '+when(v.last_used_at)+(v.last_machine?' · '+v.last_machine:''):''):v.role+' 역할을 되살릴까요?'))return;
-    try{await apiSend('POST','roles/'+targetPath(v.role)+(revoke?'/revoke?force=1':'/restore'));setNote(id,v.role+(revoke?' 역할을 끊었습니다.':' 역할을 되살렸습니다.'),'ok')}
-    catch(e){setNote(id,e.message,'err')}
-    loadRoles();drawDetail();
-  }));
-  box.append(acts);
+  if(!v.retired_at){
+    acts.append(setButton(revoke?'끊기':'되살리기','',async()=>{
+      const used=revoke&&v.last_used_at&&Date.now()-new Date(v.last_used_at).getTime()<864e5;
+      if(!confirm(revoke?v.role+' 역할을 끊을까요? 이 토큰으로 접속한 세션이 모두 끊깁니다.'+(used?'\n최근 사용: '+when(v.last_used_at)+(v.last_machine?' · '+v.last_machine:''):''):v.role+' 역할을 되살릴까요?'))return;
+      try{await apiSend('POST','roles/'+targetPath(v.role)+(revoke?'/revoke?force=1':'/restore'));setNote(id,v.role+(revoke?' 역할을 끊었습니다.':' 역할을 되살렸습니다.'),'ok')}
+      catch(e){setNote(id,e.message,'err')}
+      loadRoles();drawDetail();
+    }));
+    acts.append(setButton('토큰 바꾸기','',async()=>{
+      if(!confirm(v.role+' 토큰을 바꿀까요? 지금 토큰은 바로 못 쓰게 됩니다.'))return;
+      try{const r=await apiSend('POST','roles/'+targetPath(v.role)+'/rotate',{generate:true});roleToken={id:id,token:r.token};setNote(id,v.role+' 토큰을 바꿨습니다.','ok')}
+      catch(e){setNote(id,e.message,'err')}
+      loadRoles();drawDetail();
+    }));
+    const retire=setButton('은퇴','danger',async()=>{
+      let n='?';try{n=String(await roleSessions(v.role))}catch(e){}
+      if(!confirm(v.role+' 역할을 은퇴할까요? 되돌릴 수 없습니다. 같은 이름으로 다시 등록할 수 없습니다.\n지금 붙어 있는 세션: '+n))return;
+      try{await apiSend('POST','roles/'+targetPath(v.role)+'/retire?force=1');roleToken=null;setNote(id,v.role+' 역할을 은퇴했습니다.','ok')}
+      catch(e){setNote(id,e.message,'err')}
+      loadRoles();drawDetail();
+    });
+    retire.style.cssText='background:var(--st-error);border-color:var(--st-error);color:var(--color-on-accent)';
+    acts.append(retire);
+    box.append(acts);
+  }
   drawSetNote(box,id);
-  box.append(dl([['역할',v.role],['등록',when(v.created_at)],['끊은 때',v.revoked_at?when(v.revoked_at):'-']]));
+  if(roleToken&&roleToken.id===id&&!v.retired_at)drawRoleToken(box,roleToken);
+  const rows=[['역할',v.role],['등록',when(v.created_at)],['바꾼 때',v.rotated_at?when(v.rotated_at):'-'],['끊은 때',v.revoked_at?when(v.revoked_at):'-']];
+  if(v.retired_at)rows.push(['은퇴한 때',when(v.retired_at)]);
+  box.append(dl(rows));
 }
 // 노드 (hosting)
 const nodeCols=['노드','기계','OS','버전','마지막 접속','끊은 때'];
@@ -306,7 +348,7 @@ registerDetail('settings',{
     return v?{k:k,v:v}:null;
   },
   head:x=>x.k==='qs'?{title:x.v.target,badge:x.v.can_ask?['질문 가능','success']:['질문 불가','neutral']}
-    :x.k==='role'?{title:x.v.role,badge:x.v.revoked_at?['끊김','danger']:['사용 중','success']}
+    :x.k==='role'?{title:x.v.role,badge:roleBadge(x.v)}
     :{title:x.v.name,badge:x.v.revoked_at?['끊김','danger']:null},
   subs:x=>x.k==='qs'?[['edit','설정']]:[['info','정보']],
   draw:(x,sub,box)=>x.k==='qs'?drawQS(x.v,box):x.k==='role'?drawRole(x.v,box):drawNode(x.v,box)

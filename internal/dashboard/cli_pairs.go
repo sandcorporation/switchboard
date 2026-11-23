@@ -88,6 +88,8 @@ var CLIPairs = []CLIPair{
 	{Method: "DELETE", Path: "question-settings/{}", CLI: "settings rm"},
 	{Method: "POST", Path: "roles/{}/revoke", CLI: "roles revoke"},
 	{Method: "POST", Path: "roles/{}/restore", CLI: "roles restore"},
+	{Method: "POST", Path: "roles/{}/rotate", CLI: "roles rotate"},
+	{Method: "POST", Path: "roles/{}/retire", CLI: "roles retire"},
 	{Method: "GET", Path: "nodes", CLI: "host nodes"},
 	{Method: "DELETE", Path: "nodes/{}", CLI: "host revoke-node"},
 	{Method: "GET", Path: "host-grants", CLI: "host grant list"},

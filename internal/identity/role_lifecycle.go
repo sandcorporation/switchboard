@@ -1,7 +1,8 @@
 package identity
 
 // Role rotation and retirement (#7). Rotation replaces the role's own token
-// (roles.token) with one the operator brings; the old token stops working at
+// (roles.token) with one the operator brings, or with one the server makes
+// and answers once (generate, #499: the dashboard); the old token stops working at
 // once, and the role's slots, mail and role credentials (#343, issued per
 // hosted record) stay as they are. Retirement is the end of a role: it is
 // revoked as by SetRevoked and marked retired, so it can no longer be
@@ -11,8 +12,10 @@ package identity
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/subtle"
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -124,13 +127,22 @@ func (s *Service) lifecycleAPI(w http.ResponseWriter, r *http.Request, rest stri
 	}
 	var v RoleView
 	var err error
+	var token string // a generated credential, answered once
 	if rotate {
 		var req struct {
 			Credential string `json:"credential"`
+			Generate   bool   `json:"generate"`
 		}
-		if json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&req) != nil || req.Credential == "" {
-			http.Error(w, "credential required", 400)
+		if json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&req) != nil || (req.Credential == "") == !req.Generate {
+			http.Error(w, "credential or generate required (not both)", 400)
 			return true
+		}
+		if req.Generate {
+			if req.Credential, err = newCredential(); err != nil {
+				http.Error(w, "update failed", 500)
+				return true
+			}
+			token = req.Credential
 		}
 		if e := config.EnvAlias("ENROLLMENT_TOKEN"); e != "" && len(e) == len(req.Credential) && subtle.ConstantTimeCompare([]byte(e), []byte(req.Credential)) == 1 {
 			http.Error(w, "role credential must differ from enrollment credential", 400)
@@ -158,7 +170,28 @@ func (s *Service) lifecycleAPI(w http.ResponseWriter, r *http.Request, rest stri
 		if g, ok := s.GroupOf(v.Role); ok {
 			v.Group = g.Prefix
 		}
+		if token != "" {
+			// The only place the new token is ever written.
+			writeJSON(w, rotatedView{RoleView: v, Token: token})
+			return true
+		}
 		writeJSON(w, v)
 	}
 	return true
+}
+
+// rotatedView answers a generated rotation: the role and its new token, which
+// the server keeps only as a hash and never writes anywhere else.
+type rotatedView struct {
+	RoleView
+	Token string `json:"token"`
+}
+
+// newCredential is a random role credential, as `roles rotate` makes one.
+func newCredential() (string, error) {
+	raw := make([]byte, 32)
+	if _, err := rand.Read(raw); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(raw), nil
 }
