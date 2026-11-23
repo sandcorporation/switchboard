@@ -283,6 +283,11 @@ table.cards td.cardhide{display:none}
 .fr-split .sc-app-page>[hidden],.fr-split .sc-app-page>:not(.lsec){display:none}
 .fr-split .detail{grid-column:2;border-left:0}
 .split-empty{grid-column:2;grid-row:1;display:grid;place-items:center;min-width:0}
+/* 진행·세션 표·터미널 beside the 설정 list (#536): html.fr-setv lays the page out as the list column and the tab's body. */
+html.fr-setv.fr-full .sc-app-main:not(.detail-wide)>.sc-app-page:not([hidden]){display:grid;grid-template-columns:var(--ls-w,300px) minmax(0,1fr);grid-template-rows:minmax(0,1fr);padding:0;overflow:hidden}
+html.fr-setv .sc-app-page>#panel-settings{grid-column:1;grid-row:1;border-right:1px solid var(--color-line);background:var(--color-paper)}
+html.fr-setv .sc-app-page>:is(#panel-progress,#panel-sessions,#panel-terminals){grid-column:2;grid-row:1;min-width:0;min-height:0;overflow:auto;margin:0;padding:12px 16px}
+html.fr-setv .sc-app-page>:not(#panel-settings,#panel-progress,#panel-sessions,#panel-terminals){display:none}
 /* 세션 화면 (#519): html.fr-sess holds the page of a session that is not hosted; html.fr-menu (a menu on screen) has no right column. */
 .ss{padding:12px 18px 24px;min-width:0}
 .ss[hidden]{display:none}
@@ -371,6 +376,9 @@ table.cards td.cardhide{display:none}
 .fr-split #appMain,.fr-split #appMain.has-detail{grid-template-columns:minmax(0,1fr)}
 .fr-split .sc-app-page{border-right:0}
 .split-empty{display:none}
+html.fr-setv.fr-full .sc-app-main:not(.detail-wide)>.sc-app-page:not([hidden]){grid-template-columns:minmax(0,1fr)}
+html.fr-setv .sc-app-page>#panel-settings{display:none}
+html.fr-setv .sc-app-page>:is(#panel-progress,#panel-sessions,#panel-terminals){grid-column:1;padding:8px}
 .dc-t th:nth-child(3),.dc-t td:nth-child(3){display:none}
 }
 /* 틀 (#510): title row, left pane, centre, status row. Colours and sizes from the agreed mock. */
@@ -399,12 +407,12 @@ input:focus,select:focus,textarea:focus{border-color:var(--color-accent);outline
 .sc-topbar-account{flex:none;display:inline-flex;align-items:center;gap:6px;padding:0 4px;border:0;color:var(--color-muted)}
 .sc-topbar-avatar{width:20px;height:20px;font-size:10px}
 .fr-body{flex:1 1 auto;min-height:0;display:flex;position:relative}
-/* The whole left pane scrolls as one (#519): the menu has no scroller of its own. */
-.lp{flex:none;width:var(--lp-w,248px);min-width:0;display:flex;flex-direction:column;background:var(--color-paper);overflow-x:hidden;overflow-y:auto}
+/* Only the session list scrolls (#536): 검색, the menu and the 설정 row stay put. */
+.lp{flex:none;width:var(--lp-w,248px);min-width:0;display:flex;flex-direction:column;background:var(--color-paper);overflow:hidden}
 .lp-find{flex:none;display:flex;align-items:center;gap:8px;margin:8px 8px 4px;height:28px;padding:0 10px;background:var(--fr-hover);border-radius:6px;color:var(--color-muted)}
 .lp-find input{flex:1 1 auto;min-width:0;height:26px;padding:0;border:0;background:none;outline:0}
-.lp-main{flex:1 0 auto;display:flex;flex-direction:column}
-.lp .tabs{display:flex;flex-direction:column;gap:1px;padding:2px 0}
+.lp-main{flex:1 1 auto;min-height:0;display:flex;flex-direction:column}
+.lp .tabs{flex:none;display:flex;flex-direction:column;gap:1px;padding:2px 0}
 .nv{position:relative;display:flex;align-items:center;gap:10px;height:28px;margin:0 6px;padding:0 8px;border:0;border-radius:5px;background:none;color:var(--fr-nav);text-align:left;font-size:12.5px;line-height:1}
 .nv:hover{background:var(--fr-hover);color:var(--color-ink)}
 .nv[aria-selected=true]{background:var(--color-accent-tint);color:var(--color-ink)}
@@ -418,7 +426,8 @@ input:focus,select:focus,textarea:focus{border-color:var(--color-accent);outline
 .nv[hidden]{display:none}
 .lp-sh{flex:none;height:28px;display:flex;align-items:center;justify-content:space-between;margin-top:8px;padding:0 6px 0 12px;font-size:11px;font-weight:600;letter-spacing:.4px;color:var(--color-muted)}
 .lp-acts{display:flex;gap:2px}
-.lp-sess{display:flex;flex-direction:column;padding-bottom:6px}
+.lp-sess{flex:1 1 auto;min-height:0;overflow-x:hidden;overflow-y:auto;display:flex;flex-direction:column;padding-bottom:6px}
+.lp-sess>*{flex:none}
 .lp-grp{flex:none;height:28px;display:flex;align-items:center;gap:6px;margin-top:4px;padding:0 12px;font-weight:600;color:var(--fr-grp);min-width:0}
 .lp-grp>span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .lp-grp-mark{color:var(--color-muted);font-size:10px}

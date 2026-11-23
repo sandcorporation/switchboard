@@ -592,7 +592,7 @@ func TestDashboardSettingsDetail(t *testing.T) {
 		"setRow('qs:'+v.target,", "setRow('role:'+v.role,", "setRow('node:'+v.name,", "setRow('login:'+v.name,", "setRow('group:'+g.name,",
 		"back:id=>setViewHash[setKindView[id.slice(0,id.indexOf(':'))]]||'settings',",
 		"function closeDetail(){if(detailCur){const b=details[detailCur.tab].back;location.hash=b?b(detailCur.id):detailCur.tab}}",
-		"if(parts[0]==='settings')showSettingsView(setKindView[id.slice(0,id.indexOf(':'))]);",
+		"if(parts[0]==='settings')showSettingsView(setKindView[id.slice(0,id.indexOf(':'))],id);",
 		"apiSend('PUT','question-settings/'+targetPath(v.target),{can_ask:canAsk.checked,watchers:watchers,discord:discord.checked})",
 		"apiSend('PUT','question-settings/'+targetPath(target),{can_ask:$('setCanAsk').checked,watchers:watchers,discord:$('setDiscord').checked})",
 		"if(!confirm(v.target+' 설정을 지울까요?'))return;",
@@ -761,7 +761,7 @@ func TestDashboardWorkspaceLoadsWithHosting(t *testing.T) {
 	for _, want := range []string{
 		"if(hostingOn)loadWorkspace(Array.isArray(m.workspace_assets)?m.workspace_assets:[]);",
 		// A list screen (#514) stays in the page; the others are panels.
-		"$('panel-'+n).hidden=ws&&!pageTab(n)?false:!on;",
+		"$('panel-'+n).hidden=ws&&!pageTab(n)?false:!(on||n==='settings'&&setListKept(name));",
 		"frameFull(fullTabs.includes(name));", "if(ws&&!pageTab(name))ws.showMenu(name);",
 		"frameSplit(listTab(name)&&!(name==='questions'&&questionView==='decisions'));",
 		// With hosting on, the list column shows only the list screen, and

@@ -7,9 +7,11 @@ const setViewHash={qsettings:'settings',roles:'settings-roles',nodes:'settings-n
 const setKindView={qs:'qsettings',refusals:'qsettings',role:'roles',node:'nodes',group:'groups',login:'logins',watch:'watches',hook:'hooks',server:'reminders'};
 let setView='qsettings',setJump=false,setData=null;
 const setNotes=new Map(),setForms=new Map();
-function showSettingsView(v){
+// showSettingsView(v,id) unfolds group v and brings it into view, or with
+// id the item's row, only when that row is out of sight (#536).
+function showSettingsView(v,id){
   if(!setViewHash[v]||((v==='nodes'||v==='groups')&&!hostingOn))v='qsettings';
-  setView=v;setJump=true;listFolds.set('set-'+v,false);
+  setView=v;setJump=id||true;listFolds.set('set-'+v,false);
   if(setData)drawSettings();
 }
 function settingsViewOfHash(h){for(const [v,x] of Object.entries(setViewHash))if(x===h)return v;return ''}
@@ -51,12 +53,20 @@ function setRow(id,top,title,st){
 // address stays #progress …); 노드 opens in the body beside the list.
 function setViewRow(x){
   if(x[3])return setRow('view:'+x[0],[x[2]],x[1]);
-  const r=node('div','','ml');r.setAttribute('role','link');r.tabIndex=0;r.title=x[1]+' 화면을 연다';
+  const r=node('div','','ml');r.setAttribute('role','link');r.tabIndex=0;r.title=x[1]+' 화면을 연다';r.dataset.setView=x[0];
   const top=node('span','','ml-r');top.append(node('span',x[2],'ml-a'),node('span','','ml-t'));
   r.append(top,node('b',x[1],'ml-b'));
   const go=()=>{location.hash=x[0]};
   r.onclick=go;r.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();go()}};
   return r;
+}
+// markSetViews marks the 화면 row of the tab on screen (진행 …, #536).
+function markSetViews(){
+  for(const r of $('settingsList').querySelectorAll('[data-set-view]')){
+    const on=r.dataset.setView===curTab;
+    if(on)r.setAttribute('aria-current','true');else r.removeAttribute('aria-current');
+    r.classList.toggle('on',on);
+  }
 }
 function setAddButton(title,run){
   const b=node('button','+','fr-ib');b.type='button';b.title=title;b.setAttribute('aria-label',title);b.onclick=run;return b;
@@ -77,11 +87,15 @@ function drawSettings(){
   if(ws&&ws.nodes)views.push(['nodes','노드','노드 → 세션',true]);
   setGroup(items,'views','화면',views,setViewRow);
   setGroup(items,'reminders','다시 알림',d.srv&&!d.srv.err?[d.srv]:d.srv,s=>setRow('server:now',[s.reminders.on?'켬':'끔','판 '+s.version],'다시 알림 · 서버'),'');
-  const box=$('settingsList');
+  const box=$('settingsList'),top=box.scrollTop;
   listFill(box,items,'');
+  // A redraw (a pick, a live change) keeps the list where it was (#536).
+  box.scrollTop=top;markSetViews();
   if(setJump){
-    setJump=false;
-    for(const g of box.querySelectorAll('.grp'))if(g.querySelector('.grp-nm').textContent===setNames[setView]){if(g.scrollIntoView)g.scrollIntoView({block:'nearest'});break}
+    const id=setJump;setJump=false;
+    const row=id===true?null:[...box.querySelectorAll('[data-detail-id]')].find(r=>r.dataset.detailId===id);
+    if(row){if(row.scrollIntoView)row.scrollIntoView({block:'nearest'})}
+    else for(const g of box.querySelectorAll('.grp'))if(g.querySelector('.grp-nm').textContent===setNames[setView]){if(g.scrollIntoView)g.scrollIntoView({block:'nearest'});break}
   }
 }
 // setNote keeps a result line for an item's detail across the redraws of
