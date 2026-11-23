@@ -31,7 +31,7 @@ func cliPermission(c Config, p parsedArgs) (int, error) {
 		if p.values["--tool"] == "" || p.values["--summary"] == "" {
 			return 0, usagef("permission request: --tool and --summary are required")
 		}
-		b, err = slotCall(c, "POST", "/api/permissions", map[string]string{"tool": p.values["--tool"], "summary": p.values["--summary"]})
+		b, err = slotCallKey(c, "POST", "/api/permissions", map[string]string{"tool": p.values["--tool"], "summary": p.values["--summary"]}, p.values["--idempotency-key"])
 	case "show":
 		b, err = slotCall(c, "GET", "/api/permissions/"+url.PathEscape(p.pos[1]), nil)
 	case "answer":

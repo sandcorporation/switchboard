@@ -307,6 +307,7 @@ var commands = []command{
 			{"--summary", "TEXT", "request: what the tool will do (up to 500 bytes)"},
 			{"--decision", "allow|deny", "answer: the decision"},
 			{"--note", "TEXT", "answer: optional note for the requester"},
+			{"--idempotency-key", "KEY", "request: retry-safe key; resending with the same key returns the first request and mails nobody twice"},
 			{"--pending", "", "list: only requests still waiting for an answer"},
 			optJSON, optProfile,
 		}},
@@ -1808,6 +1809,11 @@ func fatal(s string) { fmt.Fprintln(os.Stderr, s); os.Exit(ExitError) }
 
 // slotCall sends one slot API request and returns the response body.
 func slotCall(c Config, method, path string, body any) ([]byte, error) {
+	return slotCallKey(c, method, path, body, "")
+}
+
+// slotCallKey is slotCall with an Idempotency-Key header when key is set.
+func slotCallKey(c Config, method, path string, body any, key string) ([]byte, error) {
 	var rd io.Reader
 	if body != nil {
 		b, _ := json.Marshal(body)
@@ -1815,6 +1821,9 @@ func slotCall(c Config, method, path string, body any) ([]byte, error) {
 	}
 	req, _ := http.NewRequest(method, endpoint(c, path), rd)
 	req.Header.Set("Content-Type", "application/json")
+	if key != "" {
+		req.Header.Set("Idempotency-Key", key)
+	}
 	authorize(c, req)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
