@@ -24,6 +24,7 @@ import (
 	"github.com/sandcorporation/switchboard/internal/asks"
 	"github.com/sandcorporation/switchboard/internal/config"
 	"github.com/sandcorporation/switchboard/internal/dashboard"
+	"github.com/sandcorporation/switchboard/internal/hooks"
 	"github.com/sandcorporation/switchboard/internal/hosting"
 	"github.com/sandcorporation/switchboard/internal/identity"
 	"github.com/sandcorporation/switchboard/internal/insight"
@@ -70,6 +71,8 @@ type Server struct {
 	secretsOnce    sync.Once
 	secrets        *secrets.Key // seals secret values (#525); run loads it, secretsKey reads it
 	watchHooks     watch.Hooks  // API watches (#528): the secret store, the alert mail and (tests) the fetch
+	hooksOnce      sync.Once
+	hooksSt        *hooks.State // incoming webhooks' rate limit and forward lock (hooks.go), built on first use
 }
 
 // version is the build version /health reports (set by Run).
@@ -237,6 +240,7 @@ func (s *Server) handler() http.Handler {
 	mux.HandleFunc("/auth/", s.authAPI)
 	mux.HandleFunc("/setup", s.setupAPI)
 	mux.HandleFunc("/setup/", s.setupAPI)
+	mux.HandleFunc("/hook/", s.receiveHook)
 	mux.HandleFunc(dashboard.AssetsPrefix, s.assets)
 	mux.HandleFunc("/", s.root)
 	return secureHeaders(mux)
@@ -390,6 +394,10 @@ func (s *Server) serveAPI(w http.ResponseWriter, r *http.Request) {
 	}
 	if path == "reports" || strings.HasPrefix(path, "reports/") {
 		s.reports().API(w, r, who, strings.TrimPrefix(strings.TrimPrefix(path, "reports"), "/"))
+		return
+	}
+	if path == "hooks" {
+		s.hooks().RoleAPI(w, r)
 		return
 	}
 	if path == "requests" || strings.HasPrefix(path, "requests/") {
@@ -560,6 +568,10 @@ func (s *Server) adminRoutes(w http.ResponseWriter, r *http.Request, path string
 		// POST check and uncheck: only a signed-in login (#501), like left's
 		// issue and pass (#470); none of the work screen's permissions (#476).
 		s.requests().AdminAPI(w, r, boss == nil, who.User, strings.TrimPrefix(rest, "/"))
+		return
+	}
+	if rest, ok := strings.CutPrefix(path, "hooks"); ok && (rest == "" || strings.HasPrefix(rest, "/")) {
+		s.hooksAdmin(w, r, strings.TrimPrefix(rest, "/"), who, boss)
 		return
 	}
 	if rest, ok := strings.CutPrefix(path, "jobs"); ok && (rest == "" || strings.HasPrefix(rest, "/")) {

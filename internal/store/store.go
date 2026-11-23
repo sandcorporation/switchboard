@@ -212,6 +212,9 @@ func Init(db *sql.DB) error {
 	if e = migrateWatches(db); e != nil {
 		return e
 	}
+	if e = migrateHooks(db); e != nil {
+		return e
+	}
 	return migrateHourlyIndexes(db)
 }
 

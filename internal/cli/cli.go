@@ -297,6 +297,9 @@ var commands = []command{
 			{"--state", "STATE", "only jobs and schedules in STATE (live: not ended)"},
 			optYes, optJSON, optProfile,
 		}},
+	{name: "hooks", args: "list", nargs: 1,
+		summary: "List the incoming webhooks: name, receiving role, mode (mail or forward) and when the last notice came. Adding and changing them is the dashboard's 설정 › 웹훅 only",
+		options: []option{optJSON, optProfile}},
 	{name: "roles", args: "[revoke ROLE | restore ROLE | rotate ROLE | retire ROLE]", nargs: 2, optArgs: true,
 		summary: "List roles (group, revoked, retired), leased numbered slots and groups, or revoke (needs --yes) or restore a role, rotate its token (needs --yes and --token-file) or retire it for good, keeping its mail (needs --yes) (boss roles only; a group boss sees and changes its groups)",
 		options: []option{
@@ -750,6 +753,8 @@ func dispatch(args []string) (int, error) {
 		return cliMail(c, p)
 	case "jobs":
 		return cliJobs(c, p)
+	case "hooks":
+		return cliHooks(c, p, os.Stdout)
 	case "roles":
 		return cliRoles(c, p)
 	case "settings":
