@@ -151,12 +151,6 @@ func (q *ScheduleCreate) Check() error {
 	case q.ExpiresIn < 0:
 		return errors.New("expires_in must not be negative")
 	}
-	if q.Label == "" {
-		q.Label = oneLine(q.Prompt)
-		if r := []rune(q.Label); len(r) > 60 {
-			q.Label = string(r[:60])
-		}
-	}
 	if len(q.Label) > MaxJobLabel {
 		return errors.New("label over 200 bytes")
 	}

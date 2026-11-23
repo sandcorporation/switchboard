@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -45,7 +46,7 @@ func TestJobCreateIsIdempotentAndOwnerOnly(t *testing.T) {
 	s := testServer(t)
 	body := map[string]any{"command": "make build", "cwd": "/work", "machine": "partner-a"}
 	j, code := createJob(t, s, "secret-a", body, "k1")
-	if code != 201 || j.State != wire.JobHanded || j.Role != "a" || j.Label != "make build" || j.Kind != wire.JobCommand {
+	if code != 201 || j.State != wire.JobHanded || j.Role != "a" || j.Label != fmt.Sprintf("명령 #%d", j.ID) || j.Kind != wire.JobCommand {
 		t.Fatalf("create: %d %+v", code, j)
 	}
 	if got := j.ExpiresAt.Sub(j.CreatedAt); got != wire.DefaultJobExpiry {
@@ -154,7 +155,7 @@ func TestJobStopIsRecordedUntilTheEnd(t *testing.T) {
 		t.Fatalf("stop: %d %+v", w.Code, got)
 	}
 	call(s, "POST", "/api/jobs/"+itoa(j.ID)+"/report", "secret-a", map[string]any{"state": "stopped", "exit_code": 143}, "")
-	if m := jobMail(t, s, "a"); len(m) != 1 || m[0].Subject != "[작업 끝남] sleep 60 중지됨" || m[0].Priority != "normal" {
+	if m := jobMail(t, s, "a"); len(m) != 1 || m[0].Subject != "[작업 끝남] 명령 #1 중지됨" || m[0].Priority != "normal" {
 		t.Fatalf("stop mail: %+v", m)
 	}
 }
@@ -337,5 +338,28 @@ func TestAdminJobsListStopAndRemove(t *testing.T) {
 	}
 	if w := doAuth(s, authReq{method: "GET", path: "/api/admin/jobs"}); w.Code != 401 {
 		t.Fatalf("no admin: %d", w.Code)
+	}
+}
+
+// A job or schedule made without a label is named by kind and number; the
+// command or prompt text, which may hold a secret, never becomes the label
+// (#410). A label given stays as given.
+func TestDefaultLabelIsKindAndNumber(t *testing.T) {
+	t.Parallel()
+	s := testServer(t)
+	secret := `curl -H "Authorization: Bearer sk-live-123456" https://mail.example`
+	j, code := createJob(t, s, "secret-a", map[string]any{"command": secret, "cwd": "/w", "machine": "partner-a"}, "")
+	if code != 201 || j.Label != fmt.Sprintf("명령 #%d", j.ID) {
+		t.Fatalf("job: %d %+v", code, j)
+	}
+	if w := call(s, "GET", "/api/jobs", "secret-a", nil, ""); strings.Contains(w.Body.String(), "sk-live") && !strings.Contains(w.Body.String(), "\"command\"") {
+		t.Fatalf("list: %s", w.Body)
+	}
+	if l, _ := createJob(t, s, "secret-a", map[string]any{"command": secret, "label": "build", "cwd": "/w", "machine": "partner-a"}, ""); l.Label != "build" {
+		t.Fatalf("given label: %q", l.Label)
+	}
+	sc, code, body := createSchedule(t, s, "secret-a", map[string]any{"kind": "cron", "tz": "UTC", "prompt": "매일 아침 sk-live-123456 정리", "cron": "0 9 * * *"}, "")
+	if code != 201 || sc.Label != fmt.Sprintf("예약 #%d", sc.ID) || strings.Contains(body, "label\":\"매일") {
+		t.Fatalf("schedule: %d %+v", code, sc)
 	}
 }

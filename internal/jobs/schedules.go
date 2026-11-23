@@ -225,6 +225,10 @@ func (s *Service) createSchedule(w http.ResponseWriter, r *http.Request, p ident
 		return
 	}
 	id, _ := res.LastInsertId()
+	if q.Label == "" {
+		// No label given: name it by kind and number, never by its prompt (#410).
+		_, _ = s.db.Exec(`UPDATE schedules SET label=? WHERE id=?`, fmt.Sprintf("예약 #%d", id), id)
+	}
 	sc, err := s.GetSchedule(id)
 	if err != nil {
 		http.Error(w, "query failed", http.StatusInternalServerError)

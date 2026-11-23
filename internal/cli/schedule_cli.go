@@ -22,7 +22,7 @@ var scheduleCmd = command{name: "schedule", args: "ACTION [ID]", nargs: 2, optAr
 		{"--in", "DURATION", "add: once after DURATION, e.g. 20m, 2h, 1d"},
 		{"--prompt", "TEXT", "add: the prompt each fire mails"},
 		{"--expires", "DURATION", "add: when it ends unless a session of the role is attached, e.g. 7d (default 7d)"},
-		{"--label", "TEXT", "add: label (default the first 60 characters of the prompt)"},
+		{"--label", "TEXT", "add: label (default 예약 #ID)"},
 		{"--no-extend", "", "add: the expiry is fixed; it does not move forward while a session is attached"},
 		{"--idem", "KEY", "add: retry-safe key; adding again with the same key returns the first schedule"},
 		{"--state", "STATE", "list: only schedules in this state (active, paused, ended, expired; live: active or paused)"},

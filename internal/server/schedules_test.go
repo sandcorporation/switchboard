@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -189,7 +190,7 @@ func TestScheduleSurvivesServerRestart(t *testing.T) {
 	}
 	c.at(60 * time.Minute)
 	m = scheduleMail(t, c.s, "a")
-	if len(m) != 2 || m[1].Subject != "[주기] half hour" {
+	if len(m) != 2 || m[1].Subject != "[주기] 예약 #1" {
 		t.Fatalf("next fire after restart %+v", m)
 	}
 	if got := c.get(sc.ID); got.LastFireAt == nil || !got.LastFireAt.Equal(c.now) {
@@ -309,7 +310,7 @@ func TestScheduleAPI(t *testing.T) {
 	}
 	first, code, _ := createSchedule(t, c.s, "secret-a", map[string]any{"kind": "cron", "cron": "0 9 * * 1-5", "tz": "+09:00", "prompt": strings.Repeat("long prompt ", 10)}, "k1")
 	again, code2, _ := createSchedule(t, c.s, "secret-a", map[string]any{"kind": "cron", "cron": "0 9 * * 1-5", "tz": "+09:00", "prompt": "other"}, "k1")
-	if code != 201 || code2 != 200 || again.ID != first.ID || len([]rune(first.Label)) != 60 {
+	if code != 201 || code2 != 200 || again.ID != first.ID || first.Label != fmt.Sprintf("예약 #%d", first.ID) {
 		t.Fatalf("idem: %d %d %+v %+v", code, code2, first, again)
 	}
 	// 09:00 UTC on Friday 2026-11-20 is 18:00 +09:00: next is Monday 09:00 +09:00.
