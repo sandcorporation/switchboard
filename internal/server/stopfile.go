@@ -32,18 +32,26 @@ func clearStopFile(path string) error {
 
 // watchStopFile returns a channel closed once path exists, after removing
 // it. It looks every interval until ctx ends; the channel then stays open.
+// On Windows a file cannot be removed while another handle holds it (the
+// writer between create and close, a virus scanner), so a failed remove is
+// tried again on the next look rather than leaving the file behind (#492).
 func watchStopFile(ctx context.Context, path string, interval time.Duration) <-chan struct{} {
 	seen := make(chan struct{})
 	goSafe("stop file", func() {
 		t := time.NewTicker(interval)
 		defer t.Stop()
+		logged := false
 		for {
 			if _, err := os.Stat(path); err == nil {
-				if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
-					log.Printf("stop file: %v", err)
+				err = os.Remove(path)
+				if err == nil || errors.Is(err, fs.ErrNotExist) {
+					close(seen)
+					return
 				}
-				close(seen)
-				return
+				if !logged {
+					log.Printf("stop file: %v; trying again", err)
+					logged = true
+				}
 			}
 			select {
 			case <-ctx.Done():

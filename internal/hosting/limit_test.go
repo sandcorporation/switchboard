@@ -336,10 +336,15 @@ func TestResumeOrderPutsQueuedWorkFirst(t *testing.T) {
 
 // Concurrent starts and adds at cap-1 on one node: the count and the write
 // are one statement, so exactly one is let through and the rest are
-// refused with the cap (409 over the API) (#210).
+// refused with the cap (409 over the API) (#210). The rounds share one
+// database and start from an empty hosted_sessions: opening a database
+// runs every migration, which cost most of each round on Windows (#492).
 func TestConcurrentStartsAtCapMinusOneLetExactlyOneThrough(t *testing.T) {
+	s, _ := limitService(t)
 	for round := range 20 {
-		s, _ := limitService(t)
+		if _, err := s.db.Exec(`DELETE FROM hosted_sessions`); err != nil {
+			t.Fatal(err)
+		}
 		for i := range 3 {
 			add(t, s, "/w/run"+strconv.Itoa(i), "", "")
 		}
