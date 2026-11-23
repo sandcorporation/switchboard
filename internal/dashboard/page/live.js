@@ -64,6 +64,8 @@ function showTab(name){
     if(n===mark)$('crumbTab').textContent=t.querySelector('.tab-name').textContent;
   }
   frameSplit(listTab(name)&&!(name==='questions'&&questionView==='decisions'));
+  // A menu is on screen (#519): no session screen, no right column.
+  frameScreen('menu');
   loadTab(name);
   if(ws&&!listTab(name))ws.showMenu(name);
 }
@@ -96,6 +98,12 @@ function route(){
   hideDetail();
   // 권한 요청 has no menu row of its own (#514): its list is in 답이 필요함.
   if(h==='permissions'){history.replaceState(null,'','#questions');route();return}
+  // #session=<role>: that session's screen (#519).
+  if(h.startsWith('session=')){
+    let role=h.slice(8);try{role=decodeURIComponent(role)}catch(e){}
+    frameSession(role);
+    return;
+  }
   if(h.startsWith('terminal=')){
     let id=h.slice(9);try{id=decodeURIComponent(id)}catch(e){}
     if(!hostingOn)return;

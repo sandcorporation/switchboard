@@ -283,6 +283,18 @@ table.cards td.cardhide{display:none}
 .fr-split .sc-app-page>[hidden],.fr-split .sc-app-page>:not(.lsec){display:none}
 .fr-split .detail{grid-column:2;border-left:0}
 .split-empty{grid-column:2;grid-row:1;display:grid;place-items:center;min-width:0}
+/* 세션 화면 (#519): html.fr-sess holds the page of a session that is not hosted; html.fr-menu (a menu on screen) has no right column. */
+.ss{padding:12px 18px 24px;min-width:0}
+.ss[hidden]{display:none}
+.fr-sess .sc-app-page,.ws-on.fr-sess .sc-app-page{display:block;grid-column:1;grid-row:1;padding:0;overflow-y:auto;overflow-x:hidden;min-width:0;min-height:0}
+.fr-sess #ws{display:none}
+.fr-sess .sc-app-page>:not(#sessScreen){display:none}
+.ss-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding-bottom:8px;border-bottom:1px solid var(--color-line)}
+.ss-name{margin:0;font-size:15px;font-weight:600;min-width:0;overflow-wrap:anywhere}
+.ss-sec{margin-top:14px;min-width:0;overflow-wrap:anywhere}
+.ss-h{margin:0 0 6px;font-size:11px;font-weight:600;letter-spacing:.4px;color:var(--color-muted)}
+.ws-on.fr-menu .ws-side,.fr-menu .fr-grip-r,.fr-menu .ws-sidebtn{display:none}
+.ws-on.fr-menu .sc-app-main:not(.has-detail){grid-template-columns:minmax(0,1fr)}
 .split-empty[hidden]{display:none}
 #detailTabs[hidden]{display:none}
 .lsec{display:flex;flex-direction:column;min-height:0;flex:1 1 auto;overflow:hidden}
@@ -387,10 +399,11 @@ input:focus,select:focus,textarea:focus{border-color:var(--color-accent);outline
 .sc-topbar-account{flex:none;display:inline-flex;align-items:center;gap:6px;padding:0 4px;border:0;color:var(--color-muted)}
 .sc-topbar-avatar{width:20px;height:20px;font-size:10px}
 .fr-body{flex:1 1 auto;min-height:0;display:flex;position:relative}
-.lp{flex:none;width:var(--lp-w,248px);min-width:0;display:flex;flex-direction:column;background:var(--color-paper);overflow:hidden}
+/* The whole left pane scrolls as one (#519): the menu has no scroller of its own. */
+.lp{flex:none;width:var(--lp-w,248px);min-width:0;display:flex;flex-direction:column;background:var(--color-paper);overflow-x:hidden;overflow-y:auto}
 .lp-find{flex:none;display:flex;align-items:center;gap:8px;margin:8px 8px 4px;height:28px;padding:0 10px;background:var(--fr-hover);border-radius:6px;color:var(--color-muted)}
 .lp-find input{flex:1 1 auto;min-width:0;height:26px;padding:0;border:0;background:none;outline:0}
-.lp-main{flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;display:flex;flex-direction:column}
+.lp-main{flex:1 0 auto;display:flex;flex-direction:column}
 .lp .tabs{display:flex;flex-direction:column;gap:1px;padding:2px 0}
 .nv{position:relative;display:flex;align-items:center;gap:10px;height:28px;margin:0 6px;padding:0 8px;border:0;border-radius:5px;background:none;color:var(--fr-nav);text-align:left;font-size:12.5px;line-height:1}
 .nv:hover{background:var(--fr-hover);color:var(--color-ink)}
