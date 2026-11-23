@@ -60,14 +60,15 @@ function wsStart(){
   const terms=new Map(),wraps=new Map(),titles=new Map(),items=new Map(),files=new Map(),trees=new Map();
   let autoFor=null,dragging=false;
   function valid(p){
-    // A list screen (listTab, #514) or a full one (지표, #515) is never a
-    // panel: it takes the centre.
-    if(p.startsWith('menu:'))return visibleTabs().includes(p.slice(5))&&!pageTab(p.slice(5));
+    // The centre holds a session's panels only (#523): every menu screen is
+    // a page (listTab, fullTabs), so a layout saved by an older version
+    // loses its menu tabs here and keeps the rest.
+    if(p.startsWith('menu:'))return false;
     return (p.startsWith('term:')&&p.length>5)||!!S.itemOf(p)||!!F.fileOf(p);
   }
   function load(){
     try{const s=L.parse(localStorage.getItem(KEY)||'',valid);if(s)return s}catch(e){}
-    return L.initial(curTab&&!pageTab(curTab)?'menu:'+curTab:null);
+    return L.initial(null);
   }
   function save(){try{localStorage.setItem(KEY,L.serialize(st))}catch(e){}}
   let st=load();
@@ -771,7 +772,6 @@ function wsStart(){
     if(mq.matches)drawer(false);
   }});
   for(const p of L.panels(st))if(p.startsWith('term:'))term(p.slice(5));
-  if(location.hash.length>1&&curTab&&!pageTab(curTab))st=L.open(st,'menu:'+curTab);
   side.session=S.follow(side.session,st.focus);
   render();drawSess();loadNeeds();
   return {
