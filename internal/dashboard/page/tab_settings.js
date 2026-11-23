@@ -3,8 +3,8 @@
 // 질문 설정 (with 최근 거절) and 다시 알림 — beside the open item's detail,
 // #settings/<kind>:<id>/<sub>. The old view links (#settings-roles …) still
 // work: they unfold that group and bring it into view.
-const setViewHash={qsettings:'settings',roles:'settings-roles',nodes:'settings-nodes',groups:'settings-groups',logins:'settings-logins',reminders:'settings-reminders'};
-const setKindView={qs:'qsettings',refusals:'qsettings',role:'roles',node:'nodes',group:'groups',login:'logins',server:'reminders'};
+const setViewHash={qsettings:'settings',roles:'settings-roles',nodes:'settings-nodes',groups:'settings-groups',logins:'settings-logins',watches:'settings-watches',reminders:'settings-reminders'};
+const setKindView={qs:'qsettings',refusals:'qsettings',role:'roles',node:'nodes',group:'groups',login:'logins',watch:'watches',server:'reminders'};
 let setView='qsettings',setJump=false,setData=null;
 const setNotes=new Map(),setForms=new Map();
 function showSettingsView(v){
@@ -18,9 +18,9 @@ function settingsViewOfHash(h){for(const [v,x] of Object.entries(setViewHash))if
 async function loadSettingsView(){
   if(!setData)$('settingsNote').textContent='불러오는 중…';
   const host=hostingOn,get=p=>p.catch(e=>({err:e.message}));
-  const [qs,ref,roles,logins,nodes,groups,srv]=await Promise.all([get(api('question-settings')),get(api('question-refusals')),get(api('roles')),get(api('logins')),host?get(api('nodes')):null,host?get(api('terminals/work-groups')):null,get(api('settings'))]);
+  const [qs,ref,roles,logins,nodes,groups,srv,watches]=await Promise.all([get(api('question-settings')),get(api('question-refusals')),get(api('roles')),get(api('logins')),host?get(api('nodes')):null,host?get(api('terminals/work-groups')):null,get(api('settings')),get(api('watches'))]);
   if(host!==hostingOn)return loadSettingsView();
-  setData={qs:qs,ref:ref,roles:roles,logins:logins,nodes:nodes,groups:groups,srv:srv};
+  setData={qs:qs,ref:ref,roles:roles,logins:logins,nodes:nodes,groups:groups,srv:srv,watches:watches};
   $('settingsNote').textContent='';
   drawSettings();
 }
@@ -70,6 +70,7 @@ function drawSettings(){
   setGroup(items,'groups','묶음',d.groups,g=>setRow('group:'+g.name,[g.threshold===null||g.threshold===undefined?'문턱 없음':'문턱 '+g.threshold+'%','세션 '+g.sessions],g.name),'묶음 없음',setAddButton('묶음 추가',()=>openDetail('settings','group:+','edit')));
   setGroup(items,'logins','로그인',d.logins,v=>setRow('login:'+v.name,[v.kind==='builtin'?'내장':'외부',v.perms.length?v.perms.map(p=>permName[p]||p).join(' · '):'권한 없음'],v.name,v.disabled?['꺼짐','danger']:null),'로그인 없음');
   setGroup(items,'qsettings','질문 설정',d.qs,v=>setRow('qs:'+v.target,[v.can_ask?'질문 가능':'질문 불가',v.discord?'디스코드':'',v.watchers.length?'지켜봄 '+v.watchers.length:''],v.target),'설정 없음',setAddButton('질문 설정 추가',openSetAdd),Array.isArray(d.ref)?[setRow('refusals:24h',['24시간'],'최근 거절',d.ref.length?[d.ref.length+'건','warning']:null)]:[]);
+  setGroup(items,'watches','지켜보기',d.watches,watchRow,'규칙 없음',setAddButton('지켜보기 추가',()=>openDetail('settings','watch:+','edit')));
   const views=[['progress','진행','서비스별 세션·지시·남긴 것'],['sessions','세션 표','상태·컨텍스트·기계·판']];
   if(hostingOn)views.push(['terminals','터미널','호스트된 세션·구독 한도']);
   if(ws&&ws.nodes)views.push(['nodes','노드','노드 → 세션',true]);
@@ -329,6 +330,7 @@ async function findSetting(kind,key){
   if(kind==='login')return (await api('logins')).find(x=>x.name===key);
   if(kind==='node'&&hostingOn)return (await api('nodes')).find(x=>x.name===key);
   if(kind==='group'&&hostingOn)return key==='+'?{name:'',fresh:true}:(await api('terminals/work-groups')).find(x=>x.name===key);
+  if(kind==='watch')return findWatch(key);
   if(kind==='server')return api('settings');
   if(kind==='view'&&key==='nodes'&&ws&&ws.nodes)return {};
   return undefined;
@@ -352,6 +354,6 @@ registerDetail('settings',{
     return v?{k:k,v:v}:null;
   },
   head:x=>setHeads[x.k](x.v),
-  subs:x=>x.k==='qs'||x.k==='group'?[['edit','설정']]:[['info','정보']],
+  subs:x=>x.k==='qs'||x.k==='group'||x.k==='watch'?[['edit','설정']]:[['info','정보']],
   draw:(x,sub,box)=>setDraws[x.k](x.v,box)
 });

@@ -209,6 +209,9 @@ func Init(db *sql.DB) error {
 	if e = migrateSecrets(db); e != nil {
 		return e
 	}
+	if e = migrateWatches(db); e != nil {
+		return e
+	}
 	return migrateHourlyIndexes(db)
 }
 
@@ -239,6 +242,47 @@ func migrateSecrets(db *sql.DB) error {
 		sealed BLOB NOT NULL,
 		hint TEXT NOT NULL DEFAULT '',
 		set_at TEXT NOT NULL)`)
+	return err
+}
+
+// migrateWatches adds the API watches (#528, internal/watch), all new
+// tables: watches (one rule: the address, the header names and plain values
+// as JSON — a secret header's value lives in the secret store, never here —,
+// the period, the condition as JSON, the mail settings and the state of the
+// last run) and watch_seen (the item keys a new-item rule has seen, capped
+// per rule). Times are RFC 3339.
+func migrateWatches(db *sql.DB) error {
+	_, err := db.Exec(`CREATE TABLE IF NOT EXISTS watches(
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		name TEXT NOT NULL UNIQUE,
+		to_role TEXT NOT NULL,
+		url TEXT NOT NULL,
+		headers TEXT NOT NULL DEFAULT '[]',
+		every_min INTEGER NOT NULL,
+		cond TEXT NOT NULL,
+		subject TEXT NOT NULL DEFAULT '',
+		urgent INTEGER NOT NULL DEFAULT 0,
+		window_min INTEGER NOT NULL DEFAULT 10,
+		fail_after INTEGER NOT NULL DEFAULT 3,
+		enabled INTEGER NOT NULL DEFAULT 1,
+		created_at TEXT NOT NULL,
+		updated_at TEXT NOT NULL,
+		next_at TEXT NOT NULL DEFAULT '',
+		last_at TEXT NOT NULL DEFAULT '',
+		last_status INTEGER NOT NULL DEFAULT 0,
+		last_ok INTEGER NOT NULL DEFAULT 0,
+		last_result TEXT NOT NULL DEFAULT '',
+		matched INTEGER NOT NULL DEFAULT 0,
+		seeded INTEGER NOT NULL DEFAULT 0,
+		fails INTEGER NOT NULL DEFAULT 0,
+		failing INTEGER NOT NULL DEFAULT 0
+	);
+	CREATE TABLE IF NOT EXISTS watch_seen(
+		watch_id INTEGER NOT NULL,
+		key TEXT NOT NULL,
+		seen_at TEXT NOT NULL,
+		PRIMARY KEY(watch_id, key)
+	);`)
 	return err
 }
 

@@ -150,8 +150,8 @@ var commands = []command{
 			{"--json", "", "print the server's JSON response ({\"events\":[...],\"cursor\":N})"},
 			optProfile,
 		}},
-	{name: "watch", args: "[start]", nargs: 1, optArgs: true, extra: true, synopsis: "[-- CMD ARGS...]",
-		summary: "Watch inbox without consuming messages; watch start runs a command on this machine whose output lines are events (lines within a batch window make one urgent mail to this role; list, stop and wait it with job)",
+	{name: "watch", args: "[start | list]", nargs: 1, optArgs: true, extra: true, synopsis: "[-- CMD ARGS...]",
+		summary: "Watch inbox without consuming messages; watch start runs a command on this machine whose output lines are events (lines within a batch window make one urgent mail to this role; list, stop and wait it with job); watch list shows the server's API watches (#528) that mail this role (all of them for a global boss): name, receiving role, period and last result (registered on the dashboard only)",
 		options: []option{
 			{"--after", "ID", "only report messages with an ID greater than this cursor"},
 			{"--attach", "", "start: stream the lines to stdout instead of mail while attached (killing it leaves the watch running and mail takes over)"},
@@ -713,6 +713,9 @@ func dispatch(args []string) (int, error) {
 	case "wait":
 		return cliWait(c, p)
 	case "watch":
+		if len(p.pos) == 1 && p.pos[0] == "list" && len(p.extra) == 0 {
+			return cliWatchList(c, p)
+		}
 		if len(p.pos) > 0 || len(p.extra) > 0 {
 			return watchStart(c, p)
 		}
