@@ -17,7 +17,8 @@ func TestFrameKind(t *testing.T) {
 	// line two beside the machine.
 	for _, want := range []string{
 		"const kind=node('span',frameKind(r.role),'tag');kind.title=r.role;l1.append(kind);",
-		"if(r.machine)l2.append(node('span',r.machine,'tag'));\n  if(r.cli&&r.cli!=='unknown'){const c=node('span',r.cli.split(/\\s/)[0],'tag');c.title=r.cli;l2.append(c)}",
+		"if(r.machine)l2.append(node('span',r.machine,'tag'));",
+		"if(r.cli&&r.cli!=='unknown'){const c=node('span',r.cli.split(/\\s/)[0],'tag');c.title=r.cli;l2.append(c)}",
 	} {
 		if !strings.Contains(string(src), want) {
 			t.Fatalf("frame.js missing %q", want)
