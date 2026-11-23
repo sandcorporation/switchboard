@@ -20,7 +20,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const apiKey = "key-0123456789-secret"
+const apiKey = "key-0123456789-sQ7zX"
 
 type fakeSecrets struct {
 	mu   sync.Mutex
@@ -357,7 +357,8 @@ func TestKeyNeverShown(t *testing.T) {
 	// errors, results, mail and logs carry neither the query nor the key.
 	told, _ := json.Marshal([]any{got, got2, list[0].LastResult, notes})
 	for _, s := range []string{string(everything), string(told), logs.String()} {
-		if strings.Contains(s, apiKey) {
+		// Not even in part: the store's hint ("…cret") is not passed on.
+		if strings.Contains(s, apiKey) || strings.Contains(s, apiKey[len(apiKey)-4:]) || strings.Contains(s, `"hint"`) {
 			t.Fatalf("key shown: %s", s)
 		}
 	}

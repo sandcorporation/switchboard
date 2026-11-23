@@ -156,8 +156,8 @@ func (s *Service) get(ctx context.Context, id int64) (row, error) {
 	return r, err
 }
 
-// secretInfo adds each secret header's trace and whether the key still
-// opens it.
+// secretInfo adds whether each secret header's stored value is still set
+// and opens with the server's key; nothing of the value itself.
 func (s *Service) secretInfo(ctx context.Context, r *row) {
 	if s.hooks.Secrets == nil {
 		return
@@ -171,7 +171,7 @@ func (s *Service) secretInfo(ctx context.Context, r *row) {
 		if err != nil {
 			continue
 		}
-		h.Hint, h.Unreadable = info.Hint, info.Unreadable
+		h.Unreadable = info.Unreadable // never info.Hint: no part of a secret is shown
 		if !info.Set {
 			h.Set, h.SetAt = false, ""
 		}
