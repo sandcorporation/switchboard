@@ -75,6 +75,8 @@ switchboard close 44 --left-none   # 44 answers directive 41: closes 41 and comp
 switchboard left add 42 'found later'     # to a directive you ended
 switchboard left issue 7 https://example.com/issues/12   # sender of the directive item 7 came from
 switchboard left pass 7 --directive 45                   # a directive the same sender sent
+switchboard search 'cache ttl'                           # mail, reports, questions, left items: newest 50, two lines each
+switchboard search 'ttl\s+\d+' --regex --case --kind mail --role team/worker --since 2026-10-01 [--after CURSOR] [--json]
 switchboard withdraw 43 [--json]   # take back mail the recipient has not read
 switchboard watch --after 0 --json
 switchboard wait --timeout 1800
