@@ -27,6 +27,7 @@ type CLIPair struct {
 // CLIPairs is the table. Keep it in the dashboard's order.
 var CLIPairs = []CLIPair{
 	{Method: "GET", Path: "me", Why: "the page's sign-in check and first-screen settings; the CLI signs in with the profile's role token"},
+	{Method: "GET", Path: "search", CLI: "search"},
 	{Method: "GET", Path: "roles", CLI: "roles"},
 	{Method: "GET", Path: "presence", CLI: "status"},
 	{Method: "GET", Path: "messages", CLI: "mail list"},

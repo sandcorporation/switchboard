@@ -162,6 +162,9 @@ func TestSearchLiteralRegexAndCase(t *testing.T) {
 			t.Errorf("%+v: err = %v, want ErrBadQuery", q, err)
 		}
 	}
+	if _, err := sv.Search(context.Background(), Query{Pattern: "(", Regex: true}, nil, ""); err == nil || strings.Contains(err.Error(), "(?i)") || !strings.Contains(err.Error(), "missing closing )") {
+		t.Errorf("bad regexp error = %v", err)
+	}
 }
 
 // A group role sees only its group: other services' rows are neither in the

@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"regexp/syntax"
 	"slices"
 	"strconv"
 	"strings"
@@ -129,7 +130,11 @@ func compile(q Query) (*regexp.Regexp, error) {
 	}
 	re, err := regexp.Compile(src)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrBadQuery, err)
+		var se *syntax.Error
+		if errors.As(err, &se) { // without the (?i) the pattern was given
+			return nil, fmt.Errorf("%w: regexp: %s", ErrBadQuery, se.Code)
+		}
+		return nil, fmt.Errorf("%w: regexp: %v", ErrBadQuery, err)
 	}
 	return re, nil
 }
