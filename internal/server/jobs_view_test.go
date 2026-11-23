@@ -182,3 +182,46 @@ func TestLedgerShowRecordsForeignReads(t *testing.T) {
 		}
 	}
 }
+
+// A boss role's own token lists the jobs and schedules of its scope on
+// /api/jobs and /api/schedules (#402): a group boss those of its group, a
+// global boss every role's; the other group's roles stay out of a group
+// boss's list.
+func TestOwnListsAreBossScoped(t *testing.T) {
+	t.Parallel()
+	s, _ := bossMailServer(t)
+	for _, o := range []struct{ token, role string }{{partnerDevToken, partnerDevRole}, {"secret-a", "a"}} {
+		if w := callAs(s, "POST", "/api/jobs", o.token, o.role, map[string]any{"machine": "m1", "label": "build", "command": "make", "cwd": "/w"}); w.Code != 201 {
+			t.Fatalf("job %s: %d %s", o.role, w.Code, w.Body)
+		}
+		if w := callAs(s, "POST", "/api/schedules", o.token, o.role, map[string]any{"machine": "m1", "kind": "cron", "cron": "0 * * * *", "tz": "UTC", "prompt": "p", "label": "hourly"}); w.Code != 201 {
+			t.Fatalf("schedule %s: %d %s", o.role, w.Code, w.Body)
+		}
+	}
+	roles := func(token, role, path string) []string {
+		t.Helper()
+		w := callAs(s, "GET", path, token, role, nil)
+		if w.Code != 200 {
+			t.Fatalf("%s %s: %d %s", role, path, w.Code, w.Body)
+		}
+		var rows []struct {
+			Role string `json:"role"`
+		}
+		if err := json.Unmarshal(w.Body.Bytes(), &rows); err != nil {
+			t.Fatal(err)
+		}
+		var out []string
+		for _, r := range rows {
+			out = append(out, r.Role)
+		}
+		return out
+	}
+	for _, path := range []string{"/api/jobs", "/api/schedules"} {
+		if got := roles(partnerBossToken, partnerBossRole, path); !reflect.DeepEqual(got, []string{partnerDevRole}) {
+			t.Fatalf("group boss %s: %v", path, got)
+		}
+		if got := roles(bossToken, internalBossRole, path); len(got) != 2 {
+			t.Fatalf("global boss %s: %v", path, got)
+		}
+	}
+}
