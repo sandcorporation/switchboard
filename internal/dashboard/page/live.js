@@ -8,6 +8,8 @@ const liveCounts={requests:refreshRequestCount,reports:refreshReportCount,questi
 let liveBoot='',liveSeq=0,liveDelay=1000,liveDirty=new Set(),liveStale=new Set(),liveTimer=0,liveDetail=false;
 function liveMark(kinds){
   if(ws)ws.live(kinds);
+  // 답이 필요함 lists the permission requests and proposed rules too (#514).
+  if(kinds.some(k=>k==='permissions'||k==='rules')&&!kinds.includes('questions'))kinds=kinds.concat('questions');
   frameLive(kinds);
   for(const k of kinds){
     if(detailCur&&(details[detailCur.tab].kinds||[detailCur.tab]).includes(k))liveDetail=true;
@@ -50,16 +52,20 @@ function showTab(name){
   if(name!=='terminals'&&$('termAdd').open)$('termAdd').close();
   if(name!=='settings'&&$('setAdd').open)$('setAdd').close();
   curTab=name;
+  // 권한 요청 and 규칙 sit in 답이 필요함 (#514): that row stays marked.
+  const mark=name==='permissions'||name==='rules'?'questions':name;
   for(const n of tabNames){
     const on=n===name,t=$('tab-'+n);
-    t.setAttribute('aria-selected',on?'true':'false');
-    t.tabIndex=on?0:-1;
-    // In the workspace every section shows wherever its panel is.
-    $('panel-'+n).hidden=ws?false:!on;
-    if(on)$('crumbTab').textContent=t.querySelector('.tab-name').textContent;
+    t.setAttribute('aria-selected',n===mark?'true':'false');
+    t.tabIndex=n===mark?0:-1;
+    // In the workspace every section shows wherever its panel is, except a
+    // list screen's (listTab), which stays in the page.
+    $('panel-'+n).hidden=ws&&!listTab(n)?false:!on;
+    if(n===mark)$('crumbTab').textContent=t.querySelector('.tab-name').textContent;
   }
+  frameSplit(listTab(name)&&!(name==='questions'&&questionView==='decisions'));
   loadTab(name);
-  if(ws)ws.showMenu(name);
+  if(ws&&!listTab(name))ws.showMenu(name);
 }
 // loadTab loads a tab's section the first time it shows, and again when a
 // live change marked it stale meanwhile.
@@ -78,6 +84,8 @@ function tabShown(k){return k===curTab||!!(ws&&ws.shown(k))}
 function route(){
   const h=location.hash.slice(1);
   const parts=h.split('/');
+  // A permission request opens in 답이 필요함 (#514).
+  if(parts[0]==='permissions'&&parts[1]){history.replaceState(null,'',detailHash('questions','p:'+parts[1]));route();return}
   if(parts.length>1&&details[parts[0]]&&visibleTabs().includes(parts[0])&&parts[1]){
     let id=parts[1];try{id=decodeURIComponent(id)}catch(e){}
     if(parts[0]==='questions')showQuestionView('questions');
@@ -86,6 +94,8 @@ function route(){
     return;
   }
   hideDetail();
+  // 권한 요청 has no menu row of its own (#514): its list is in 답이 필요함.
+  if(h==='permissions'){history.replaceState(null,'','#questions');route();return}
   if(h.startsWith('terminal=')){
     let id=h.slice(9);try{id=decodeURIComponent(id)}catch(e){}
     if(!hostingOn)return;
@@ -112,7 +122,7 @@ for(const n of tabNames)$('tab-'+n).onclick=()=>selectTab(n);
 // visibleTabs leaves out 터미널 unless hosting is on.
 function visibleTabs(){return tabNames.filter(n=>n!=='terminals'||hostingOn)}
 for(const tl of [$('tabs'),$('tabsMore')])tl.addEventListener('keydown',e=>{
-  const tabs=visibleTabs();
+  const tabs=visibleTabs().filter(n=>!$('tab-'+n).hidden);
   const i=tabs.findIndex(n=>$('tab-'+n)===document.activeElement);
   if(i<0)return;
   let j;

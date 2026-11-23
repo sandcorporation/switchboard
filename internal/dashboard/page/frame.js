@@ -135,9 +135,18 @@ function frameCard(r){
 // workspace) or the terminal detail, any other one as the session detail.
 function frameOpen(r){
   frameSel=r.term?r.term.id:r.role;frameMark();
-  if(r.term&&ws&&ws.openTerm)ws.openTerm(r.term);
+  if(r.term&&ws&&ws.openTerm){frameLeaveList();ws.openTerm(r.term)}
   else if(r.term)openDetail('terminals',r.term.id,'screen');
   else openDetail('sessions',r.role);
+}
+// frameLeaveList steps out of a list screen (#514) to the workspace: the
+// hash drops the screen, so its menu row opens it again.
+function frameLeaveList(){
+  if(!listTab(curTab))return;
+  history.replaceState(null,'',location.pathname+location.search);
+  hideDetail();$('panel-'+curTab).hidden=true;frameSplit(false);
+  for(const n of tabNames){const t=$('tab-'+n);t.setAttribute('aria-selected','false');t.tabIndex=n==='requests'?0:-1}
+  curTab='';
 }
 // frameMark marks the card of the session on screen.
 function frameMark(){

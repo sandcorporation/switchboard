@@ -6,7 +6,9 @@
 //   list   the list's name on the mobile back button (← 세션)
 //   kinds  live change kinds that redraw the open item (default [tab])
 //   load   async id => item, or null when it is gone
-//   head   item => {title, badge:[text,tone]} (tone: success|info|warning|danger|neutral)
+//   head   item => {title, badge:[text,tone], crumb} (tone: success|info|warning|danger|neutral;
+//          crumb, optional: {path:[text,...], meta:[[text,hover],...]}, the
+//          line under the title on a list screen, #514)
 //   subs   item => [[key,label],...]; the first is the default sub-tab
 //   draw   async (item,sub,box) => fills box with text nodes only
 //   back   id => the hash closing goes to (optional; default #<tab>)
@@ -26,18 +28,20 @@ function openDetail(tab,id,sub){
 function closeDetail(){if(detailCur){const b=details[detailCur.tab].back;location.hash=b?b(detailCur.id):detailCur.tab}}
 function detailRow(tr,tab,id){
   id=String(id);tr.dataset.detailId=id;tr.tabIndex=0;
-  if(detailCur&&detailCur.tab===tab&&detailCur.id===id)tr.setAttribute('aria-current','true');
+  if(detailCur&&detailCur.tab===tab&&detailCur.id===id){tr.setAttribute('aria-current','true');tr.classList.add('on')}
   tr.addEventListener('click',e=>{if(!e.target.closest('a,button,input'))openDetail(tab,id)});
   tr.addEventListener('keydown',e=>{if(e.target===tr&&(e.key==='Enter'||e.key===' ')){e.preventDefault();openDetail(tab,id)}});
 }
 function detailRowFor(tab,id){
-  for(const tr of $('panel-'+tab).querySelectorAll('tr[data-detail-id]'))if(tr.dataset.detailId===id)return tr;
+  for(const tr of $('panel-'+tab).querySelectorAll('[data-detail-id]'))if(tr.dataset.detailId===id)return tr;
   return null;
 }
 function markDetailRows(){
-  for(const tr of document.querySelectorAll('tr[data-detail-id]')){
-    const tab=tr.closest('[role=tabpanel]').id.slice(6);
-    if(detailCur&&detailCur.tab===tab&&detailCur.id===tr.dataset.detailId)tr.setAttribute('aria-current','true');else tr.removeAttribute('aria-current');
+  for(const tr of document.querySelectorAll('[data-detail-id]')){
+    const p=tr.closest('[role=tabpanel]');if(!p)continue;
+    const tab=p.id.slice(6),on=!!detailCur&&detailCur.tab===tab&&detailCur.id===tr.dataset.detailId;
+    if(on)tr.setAttribute('aria-current','true');else tr.removeAttribute('aria-current');
+    tr.classList.toggle('on',on);
   }
 }
 // keepRowFocus(tbody,fill) rebuilds a list with fill() and puts focus back on
@@ -45,16 +49,16 @@ function markDetailRows(){
 function keepRowFocus(body,fill){
   const a=document.activeElement,id=a&&a.dataset&&body.contains(a)?a.dataset.detailId:undefined;
   fill();
-  if(id!==undefined)for(const tr of body.querySelectorAll('tr[data-detail-id]'))if(tr.dataset.detailId===id){tr.focus();break}
+  if(id!==undefined)for(const tr of body.querySelectorAll('[data-detail-id]'))if(tr.dataset.detailId===id){tr.focus();break}
 }
 function showDetail(tab,id,sub){
   const fresh=!detailCur||detailCur.tab!==tab||detailCur.id!==id;
   detailCur={tab:tab,id:id,sub:sub||''};
   $('appMain').classList.add('has-detail');$('detail').hidden=false;
   $('detailBack').textContent='← '+details[tab].list;
-  markDetailRows();
+  markDetailRows();splitEmptyShow();
   if(fresh){
-    $('detailTitle').textContent=id;$('detailBadge').hidden=true;$('detailTabs').replaceChildren();
+    $('detailTitle').textContent=id;$('detailBadge').hidden=true;$('detailTabs').replaceChildren();$('detailCrumb').replaceChildren();
     $('detailBody').replaceChildren(node('p','불러오는 중…','muted'));$('detail').scrollTop=0;
     $('detailTitle').focus({preventScroll:true});
   }
@@ -66,7 +70,7 @@ function hideDetail(){
   detailCur=null;detailSeq++;
   $('detail').hidden=true;$('appMain').classList.remove('has-detail');
   $('detailBody').replaceChildren();termGc();
-  markDetailRows();
+  markDetailRows();splitEmptyShow();
   const tr=detailRowFor(c.tab,c.id);
   if(back&&tr&&curTab===c.tab)tr.focus();
 }
@@ -88,11 +92,12 @@ async function drawDetail(){
   }catch(e){box.replaceChildren(node('p',e.message,'msg err'))}
   if(seq!==detailSeq)return;
   $('detailTitle').textContent=head.title;
+  detailCrumbDraw(head.crumb);
   const b=$('detailBadge');b.hidden=!head.badge;
   if(head.badge){b.textContent=head.badge[0];b.className='sc-badge '+(toneClass[head.badge[1]]||toneClass.neutral)}
   // Redrawing replaces the sub-tab links and the body: keep focus where it was.
   const nav=$('detailTabs'),act=document.activeElement,onTab=nav.contains(act)?act.getAttribute('href'):null,inBody=$('detailBody').contains(act);
-  nav.replaceChildren();
+  nav.replaceChildren();nav.hidden=subs.length<2;
   for(const [k,label] of subs){
     const a=node('a',label);a.href=detailHash(c.tab,c.id,k);
     if(k===sub)a.setAttribute('aria-current','page');
@@ -109,6 +114,16 @@ async function drawDetail(){
 $('detailClose').onclick=closeDetail;
 $('detailBack').onclick=closeDetail;
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&detailCur&&!e.defaultPrevented){e.preventDefault();closeDetail()}});
+// detailCrumbDraw fills the line under the title: where the item sits
+// (path) and, on the right, its facts, each with its hover text.
+function detailCrumbDraw(c){
+  const box=$('detailCrumb');box.replaceChildren();box.hidden=!c;
+  if(!c)return;
+  const path=node('span',(c.path||[]).filter(Boolean).join('  ›  '),'dc-path');path.title=path.textContent;
+  const rt=node('span','','dc-rt');
+  for(const [t,h] of c.meta||[]){if(!t)continue;const m=node('span',t);m.title=h;rt.append(m)}
+  box.append(path,rt);
+}
 function dl(pairs){
   const d=node('dl','','pdl');
   for(const [k,v] of pairs){const dd=document.createElement('dd');if(v instanceof Node)dd.append(v);else dd.textContent=v;d.append(node('dt',k),dd)}

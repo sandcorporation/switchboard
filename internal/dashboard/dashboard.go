@@ -61,6 +61,7 @@ var dashboardHTML = buildPage()
 // pageFS holds the page's parts (#412): head.html, page.css and body.html
 // (the markup), then the script as one file per tab (tab_<id>.js) and the
 // shared ones (core.js: api() and the helpers; detail.js: the detail panel;
+// lists.js: the list screens' rows and groups, #514;
 // tabs.js: the tab registry and switching; search.js; live.js: the change
 // bus and the first load).
 //
@@ -72,7 +73,7 @@ var pageFS embed.FS
 // in a function that runs after the whole script has loaded. A new tab is a
 // new file added here.
 var scriptParts = []string{
-	"core.js", "detail.js", "tab_sessions.js", "tab_mail.js", "tabs.js", "tab_requests.js",
+	"core.js", "detail.js", "lists.js", "tab_sessions.js", "tab_mail.js", "tabs.js", "tab_requests.js",
 	"tab_metrics.js", "search.js", "tab_progress.js", "tab_questions.js",
 	"tab_reports.js", "tab_jobs.js", "tab_rules.js", "tab_terminals.js",
 	"tab_settings.js", "tab_permissions.js", "frame.js", "live.js",

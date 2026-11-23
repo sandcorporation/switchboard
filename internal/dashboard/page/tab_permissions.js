@@ -18,9 +18,9 @@ const permTone={pending:'warning',allowed:'success',denied:'danger',expired:'neu
 const permCols=['상태','도구 · 요약','요청한 쪽','요청','만료'],permHistCols=['결과','도구 · 요약','요청한 쪽','요청','답한 쪽'];
 function permAnswerForm(v){
   const form=node('form','','panswer');
-  const lab=node('label','메모');const note=node('input','');note.maxLength=500;note.autocomplete='off';lab.append(note);
-  const allow=node('button','허용','ok');allow.type='button';
-  const deny=node('button','거절','danger');deny.type='button';
+  const lab=node('label','메모');const note=node('input','');note.maxLength=500;note.autocomplete='off';note.title='답에 붙여 보낼 메모';lab.append(note);
+  const allow=node('button','허용','ok');allow.type='button';allow.title='이 도구 사용을 허용한다 — 답은 바꿀 수 없다';
+  const deny=node('button','거절','danger');deny.type='button';deny.title='이 도구 사용을 거절한다 — 답은 바꿀 수 없다';
   const msg=node('div','','msg');msg.setAttribute('role','status');
   const send=async decision=>{
     const word=decision==='allow'?'허용':'거절';
@@ -32,6 +32,7 @@ function permAnswerForm(v){
       $('detailTitle').focus({preventScroll:true});
       drawDetail();
       if(curTab==='permissions')loadPermissions();
+      if(curTab==='questions')loadQuestions();
     }catch(e){setMsg(msg,e.message,'err');allow.disabled=deny.disabled=false}
   };
   allow.onclick=()=>send('allow');deny.onclick=()=>send('deny');

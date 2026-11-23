@@ -190,7 +190,8 @@ registerDetail('reports',{
     try{return await api('reports/'+encodeURIComponent(id))}
     catch(e){if(e.status===404)return null;throw e}
   },
-  head:r=>({title:r.title,badge:reportBadge(r)}),
+  head:r=>({title:'#'+r.id+' '+r.title,badge:reportBadge(r),crumb:{path:['보고 #'+r.id,r.author,r.request_id?'지시 '+reportRequestName(r.request_id):''],
+    meta:[[shortWhen(r.created_at),'올린 때 — '+when(r.created_at)],['메일 '+r.threads.length,'이 보고에 딸린 지시 메일']]}}),
   subs:()=>[['body','보고']],
   draw:async(r,sub,box)=>{
     if(r.request){const q=node('p','','reqline');q.append(node('span','요청 ','muted'),document.createTextNode(r.request));box.append(q)}
@@ -199,5 +200,6 @@ registerDetail('reports',{
     box.append(node('h3','연결된 지시 '+r.threads.length,'sechead'));
     if(!r.threads.length)box.append(node('p','연결된 지시 없음','empty'));
     for(const t of r.threads)box.append(reportThread(t));
+    box.append(reportBar(r));
   }
 });

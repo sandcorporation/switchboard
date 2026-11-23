@@ -17,8 +17,9 @@ func TestDashboardTabsSkeleton(t *testing.T) {
 		t.Fatal("dashboard has no tablist")
 	}
 	// Tab order matters (#510): the left pane's menu rows (지시, 답이 필요함
-	// with 권한 요청 and 규칙 under it, 메일, 보고, 작업 · 예약, 지표), then its
-	// foot (설정, 진행, 세션 표, 터미널).
+	// with 권한 요청 and 규칙 under it, hidden since #514 put them in 답이
+	// 필요함, 메일, 보고, 작업 · 예약, 지표), then its foot (설정, 진행, 세션
+	// 표, 터미널).
 	last := -1
 	for _, name := range []string{"requests", "questions", "permissions", "rules", "mail", "reports", "jobs", "metrics", "settings", "progress", "sessions", "terminals"} {
 		tab := `id="tab-` + name + `" data-tab="` + name + `" aria-controls="panel-` + name + `"`
@@ -399,7 +400,10 @@ func TestDashboardDetailPanel(t *testing.T) {
 		"box.append(dl(pairs),node('pre',m.body));",
 		"if(f.id)openDetail('mail',String(f.id),'body');else selectTab('mail');",
 		`<thead><tr><th>역할</th><th>상태</th><th class="num">컨텍스트</th><th>마지막 턴</th><th>기계</th><th>판</th><th>라벨</th></tr></thead>`,
-		`<thead><tr><th class="num">#</th><th>제목</th><th>보낸 쪽 → 받는 쪽</th><th>상태</th><th>시각</th></tr></thead>`,
+		// 메일 is a list screen (#514): two-line rows beside the body.
+		`<div id="list" class="ls-list"></div>`,
+		"return listRow('mail',String(m.id),{",
+		"if(m.request_id)top+=' · 지시 #'+m.request_id;",
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("detail panel missing %q", want)
@@ -525,7 +529,15 @@ func TestDashboardWaitAndDetails(t *testing.T) {
 		"subs:x=>[['answer',x.q.status==='pending'&&x.q.can_answer?'답하기':'답'],['decisions','관련 결정 '+x.decs.length]],",
 		"if(!f){f=answerForm(q);qForms.set(q.id,f)}",
 		"qNotes.set(q.id,'이미 답했거나 거둔 질문입니다(409)');",
-		"detailRow(tr,'questions',q.id);",
+		// 답이 필요함 (#514): questions, permission requests (p:<id>) and
+		// proposed rules (r:<id>) in one list, each drawn by its own spec.
+		"return listRow('questions',q.id,{",
+		"return listRow('questions','p:'+v.id,{",
+		"return listRow('questions','r:'+r.id,{",
+		"if(id.startsWith('p:'))return ['permissions',id.slice(2)];",
+		"draw:(w,sub,box)=>needSpec(w.k).draw(w.x,sub,box)",
+		"if(parts[0]==='permissions'&&parts[1]){history.replaceState(null,'',detailHash('questions','p:'+parts[1]));route();return}",
+		"if(curTab==='questions')loadQuestions();",
 		// 권한 요청: 대기 / 지난 기록 lists, detail with allow and deny.
 		"registerDetail('permissions',{",
 		"api('permissions/'+encodeURIComponent(id))",
@@ -734,8 +746,15 @@ func TestDashboardWorkspaceLoadsWithHosting(t *testing.T) {
 	body := w.Body.String()
 	for _, want := range []string{
 		"if(hostingOn)loadWorkspace(Array.isArray(m.workspace_assets)?m.workspace_assets:[]);",
-		"$('panel-'+n).hidden=ws?false:!on;",
-		"if(ws)ws.showMenu(name);",
+		// A list screen (#514) stays in the page; the others are panels.
+		"$('panel-'+n).hidden=ws&&!listTab(n)?false:!on;",
+		"if(ws&&!listTab(name))ws.showMenu(name);",
+		"frameSplit(listTab(name)&&!(name==='questions'&&questionView==='decisions'));",
+		// With hosting on, the list column shows only the list screen, and
+		// opening a terminal from the left pane leaves it for the workspace.
+		".fr-split .sc-app-page>[hidden],.fr-split .sc-app-page>:not(.lsec){display:none}",
+		"if(r.term&&ws&&ws.openTerm){frameLeaveList();ws.openTerm(r.term)}",
+		"wsLoading=loadAssets(list).then(()=>{ws=wsStart();if(listTab(curTab))frameSplit(true)})",
 		"if(tabShown(k))liveDirty.add(k);",
 		"if(ws)ws.live(kinds);",
 		"api('admin-actions?target='+id+'&limit=20').catch(()=>null)",
@@ -753,7 +772,8 @@ func TestDashboardWorkspaceLoadsWithHosting(t *testing.T) {
 	for _, want := range []string{
 		"main.before(box);main.hidden=true;",
 		"try{const s=L.parse(localStorage.getItem(KEY)||'',valid);if(s)return s}catch(e){}",
-		"return L.initial('menu:'+(curTab||'requests'));",
+		"return L.initial(curTab&&!listTab(curTab)?'menu:'+curTab:null);",
+		"if(p.startsWith('menu:'))return visibleTabs().includes(p.slice(5))&&!listTab(p.slice(5));",
 		"window.matchMedia('(max-width:600px)')",
 		"if(m)main.append($('panel-'+m));",
 		"else{const id=p.slice(5),t=terms.get(id);if(t){termStop(t);terms.delete(id)}",
@@ -873,12 +893,16 @@ func TestDashboardRequestsTab(t *testing.T) {
 		`id="tab-requests" data-tab="requests" aria-controls="panel-requests" aria-selected="true" tabindex="0"`,
 		`<span class="tab-name nv-label">지시</span>`,
 		`<span class="fr-crumb" id="crumbTab" aria-current="page" title="지금 연 메뉴">지시</span>`,
-		`id="panel-requests" role="tabpanel" aria-labelledby="tab-requests" tabindex="0" class="card">`,
+		`id="panel-requests" role="tabpanel" aria-labelledby="tab-requests" tabindex="0" class="lsec">`,
 		`<option value="request">지시</option>`,
 		"const requestGroups=[['waiting','대표 답 기다림','warning'],['done','끝 — 안 봄','success'],['progress','진행','info'],['checked','확인함','neutral']];",
-		"if(st==='checked'){",
-		"apiSend('POST','requests/'+r.id+(check?'/check':'/uncheck'))",
-		"node('p','지시 없음','muted')",
+		"listGroup('req:'+st,label,rows.map(requestItem),{fold:st==='checked',redraw:drawRequests})",
+		"apiSend('POST','requests/'+d.id+(check?'/check':'/uncheck'))",
+		"listFill($('requests'),out,q?'맞는 지시 없음':'지시 없음');",
+		// The body holds the request's questions, reports and mail (#509 계약 9).
+		"for(const q of d.question_list||[]){",
+		"for(const x of d.report_list||[])rows.push(",
+		"for(const x of d.mail_list||[])rows.push(",
 		"else if(h.kind==='request')openRequest(h.id);",
 		"liveCounts={requests:refreshRequestCount,",
 	} {
