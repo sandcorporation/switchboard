@@ -222,3 +222,73 @@ func TestRolesRotateAndRetireCommands(t *testing.T) {
 		t.Fatalf("roles list after retire:\n%s", out)
 	}
 }
+
+// The dashboard's rotate (#499): the server makes the new token and answers
+// it once; it works at once, the old one stops, and neither the log, the
+// live change event, the mail nor any audit record holds it.
+func TestRotateGeneratesTokenOnce(t *testing.T) {
+	var logged bytes.Buffer
+	log.SetOutput(&logged)
+	defer log.SetOutput(os.Stderr)
+	s, _ := slotServer(t)
+	s.admin.ProxyToken = "proxy-secret"
+	sub, _, cancel, _ := s.live.Subscribe("", 0)
+	defer cancel()
+
+	for _, body := range []string{`{"generate":false}`, `{"generate":true,"credential":"` + rotatedToken + `"}`} {
+		if w := adminWrite(s, "POST", "/api/admin/roles/team/worker/rotate", body); w.Code != 400 {
+			t.Fatalf("rotate %s: %d %s", body, w.Code, w.Body)
+		}
+	}
+	rotate := func() (identity.RoleView, string) {
+		t.Helper()
+		w := adminWrite(s, "POST", "/api/admin/roles/team/worker/rotate", `{"generate":true}`)
+		var got struct {
+			identity.RoleView
+			Token string `json:"token"`
+		}
+		if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &got) != nil || got.Role != "team/worker" || got.RotatedAt == nil || len(got.Token) < 24 {
+			t.Fatalf("generated rotate: %d %s", w.Code, w.Body)
+		}
+		return got.RoleView, got.Token
+	}
+	v, token := rotate()
+	if w := callAs(s, "GET", "/api/messages", workerToken, "team/worker", nil); w.Code != 401 {
+		t.Fatalf("old token after rotate: %d", w.Code)
+	}
+	if w := callAs(s, "GET", "/api/messages", token, "team/worker-2", nil); w.Code != 200 {
+		t.Fatalf("new token: %d %s", w.Code, w.Body)
+	}
+	if got := roleViewOf(t, s, "team/worker"); got.RotatedAt == nil || *got.RotatedAt != *v.RotatedAt {
+		t.Fatalf("roles list rotated_at: %+v", got)
+	}
+	if w := adminRequest(s, "GET", "/api/admin/roles", "", nil); strings.Contains(w.Body.String(), token) {
+		t.Fatal("the role list carries the token")
+	}
+	if _, again := rotate(); again == token {
+		t.Fatal("a second rotate answered the same token")
+	}
+
+	select {
+	case ev := <-sub.C:
+		b, _ := json.Marshal(ev)
+		if !strings.Contains(string(b), "settings") || strings.Contains(string(b), token) {
+			t.Fatalf("live event %s", b)
+		}
+	default:
+		t.Fatal("no live event for the rotate")
+	}
+	if strings.Contains(logged.String(), token) {
+		t.Fatal("the token reached the log")
+	}
+	for _, q := range []string{
+		`SELECT COUNT(*) FROM messages WHERE subject LIKE ?1 OR body LIKE ?1`,
+		`SELECT COUNT(*) FROM admin_actions WHERE action LIKE ?1 OR target LIKE ?1 OR detail LIKE ?1`,
+		`SELECT COUNT(*) FROM boss_writes WHERE path LIKE ?1 OR target LIKE ?1`,
+	} {
+		var n int
+		if err := s.db.QueryRow(q, "%"+token+"%").Scan(&n); err != nil || n != 0 {
+			t.Fatalf("%s: %d %v", q, n, err)
+		}
+	}
+}

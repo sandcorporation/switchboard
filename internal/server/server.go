@@ -537,6 +537,12 @@ func (s *Server) adminRoutes(w http.ResponseWriter, r *http.Request, path string
 		return
 	}
 	if rest, ok := strings.CutPrefix(path, "roles"); ok && (rest == "" || strings.HasPrefix(rest, "/")) {
+		// Rotating and retiring a role end its sessions' token: only a login
+		// allowed to manage sessions (#476, #499).
+		if boss == nil && r.Method == http.MethodPost && (strings.HasSuffix(rest, "/rotate") || strings.HasSuffix(rest, "/retire")) && !who.Can(wire.PermSessions) {
+			refusePerm(w, wire.PermSessions)
+			return
+		}
 		s.ids().AdminRolesAPI(w, r, strings.TrimPrefix(rest, "/"))
 		return
 	}
