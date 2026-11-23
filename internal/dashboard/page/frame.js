@@ -157,7 +157,7 @@ function frameStatus(){
   // 지난 한 시간 (#511 T3): mail and reports from GET metrics/hourly; the
   // cell stays empty (and hidden) when the server gave none.
   const h=d.hour,hb=$('stHour');hb.hidden=!h;
-  hb.textContent=h?'지난 1시간 메일 '+h.mail+' · 보고 '+h.reports:'';
+  hb.textContent=h?'지난 한 시간 메일 '+h.mail+' · 보고 '+h.reports:'';
   const box=$('stUsage'),out=[];
   if(d.nodes){
     const worst=new Map();
@@ -183,7 +183,7 @@ function frameStatus(){
 // frameLive takes the kinds of a live change: the list follows sessions,
 // hosted sessions, questions and permission requests.
 function frameLive(kinds){
-  if(!kinds.some(k=>k==='sessions'||k==='terminals'||k==='questions'||k==='permissions'||k==='progress'||k==='settings'||k==='mail'||k==='reports'))return;
+  if(!kinds.some(k=>k==='sessions'||k==='terminals'||k==='questions'||k==='permissions'||k==='progress'||k==='settings'||k==='metrics'))return;
   if(!frameTimer)frameTimer=setTimeout(()=>{frameTimer=0;frameLoad()},400);
 }
 // frameStart runs once /api/admin/me answered (hostingOn known).

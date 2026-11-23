@@ -901,7 +901,7 @@ func TestDashboardFrame(t *testing.T) {
 		"const paneBounds={l:[180,480,248],r:[200,520,292]};",
 		"function fillTitles(root){",
 		"new MutationObserver(",
-		"$('stCount')", "$('stUsage')", "api('metrics/hourly')", "'지난 1시간 메일 '+h.mail+' · 보고 '+h.reports",
+		"$('stCount')", "$('stUsage')", "api('metrics/hourly')", "'지난 한 시간 메일 '+h.mail+' · 보고 '+h.reports", "k==='metrics'",
 	} {
 		if !strings.Contains(string(frame), want) {
 			t.Errorf("frame.js lacks %q", want)
