@@ -7,6 +7,7 @@
 #   timeouts       job test 10 min, windows 20 min (about twice the usual run); go test -timeout 8m / 12m.
 #   single test    30 s on Linux, 60 s on Windows (scripts/ci/test_budget.sh); tests already over the budget are
 #                  listed in scripts/ci/test_budget_allow.txt until #340.
+#   exp/ branches a pull request from an exp/ branch fails test at its first step (#540); no automatic factory opens PRs from exp/.
 #   main pushes    promote.yml reuses this workflow's pull request run on the same git tree (scripts/ci/reuse.sh).
 name: CI
 on:
@@ -30,6 +31,18 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      - name: Refuse pull requests from exp/ branches (#540)
+        if: github.event_name == 'pull_request'
+        shell: bash
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          case "$HEAD_REF" in
+            exp/*)
+              echo "::error::exp/ 갈래는 실험용이라 병합하지 않는다 — 운영에 들이기로 정해졌으면 평소 갈래에서 PR 을 다시 낸다"
+              exit 1
+              ;;
+          esac
       - uses: actions/checkout@v4
       - name: Scope (docs-only pull requests skip the tests)
         id: scope
