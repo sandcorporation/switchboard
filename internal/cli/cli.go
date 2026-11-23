@@ -590,7 +590,11 @@ func dispatch(args []string) (int, error) {
 	}
 	if name == "host" {
 		// Its --profile names the hosted session's profile, not this
-		// client's credentials.
+		// client's credentials. The plugin still follows the CLI's
+		// version here, like any other command (#485).
+		if !noAutoPlugin[name] {
+			syncPluginOnce(os.Stderr)
+		}
 		return cliHost(p, os.Stdout)
 	}
 	if v, ok := p.values["--profile"]; ok {
