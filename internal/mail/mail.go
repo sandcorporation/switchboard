@@ -334,7 +334,7 @@ func (s *Service) send(w http.ResponseWriter, r *http.Request, p identity.Princi
 			http.Error(w, fmt.Sprintf("complete: message %d was not sent to %s", id, role), 400)
 			return
 		}
-		if isDirectiveMail(got) {
+		if s.isDirective(got) {
 			ending = append(ending, id)
 		}
 	}
@@ -671,7 +671,7 @@ func (s *Service) Status(w http.ResponseWriter, r *http.Request, role string, id
 			return
 		}
 		claim = claimOf(r, note.Left, note.LeftNone)
-		ending = isDirectiveMail(m) && !s.ended(id)
+		ending = s.isDirective(m) && !s.ended(id)
 		if msg := claim.problem(ending, id); msg != "" {
 			http.Error(w, msg, 400)
 			return
@@ -744,7 +744,7 @@ func (s *Service) Reply(w http.ResponseWriter, r *http.Request, p identity.Princ
 	// reply --complete to a directive ends it (#470): it says what is left.
 	claim := claimOf(r, m.Left, m.LeftNone)
 	m.Left, m.LeftNone = nil, false
-	ending := done && isDirectiveMail(orig)
+	ending := done && s.isDirective(orig)
 	if msg := claim.problem(ending, id); msg != "" {
 		http.Error(w, msg, 400)
 		return

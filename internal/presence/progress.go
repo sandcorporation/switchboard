@@ -122,7 +122,7 @@ func (s *Service) openDirectivesUnder(rule mail.AnsweredRule, wide bool, base fu
 	}
 	var out []progressMailRow
 	for _, m := range directives {
-		if rule.Open(m.State) {
+		if rule.Open(m.State) && !mail.IsReport(s.db, base, mail.FlowMail{ID: m.ID, Sender: m.Sender, Recipient: m.Recipient, TaskID: m.TaskID, ReplyTo: m.ReplyTo}) {
 			out = append(out, m)
 		}
 	}

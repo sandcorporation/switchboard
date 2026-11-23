@@ -237,7 +237,7 @@ func (s *Service) endBy(w http.ResponseWriter, item wire.LeftItem, action string
 		s.endLeft(w, item.ID, wire.LeftIssue, by, u.String())
 	case "pass":
 		m, e := s.Get(CurrentID(s.db, in.Directive))
-		if in.Directive <= 0 || e != nil || !isDirectiveMail(m) || identity.BaseOf(s.db, m.Sender) != base || m.ID == item.Directive {
+		if in.Directive <= 0 || e != nil || !s.isDirective(m) || identity.BaseOf(s.db, m.Sender) != base || m.ID == item.Directive {
 			http.Error(w, "directive: a directive sent by the same role as the item's, other than that one", http.StatusBadRequest)
 			return
 		}
@@ -262,7 +262,7 @@ func (s *Service) addLeft(w http.ResponseWriter, r *http.Request, p identity.Pri
 		return
 	}
 	d, err := s.Get(CurrentID(s.db, in.Directive))
-	if err != nil || !isDirectiveMail(d) {
+	if err != nil || !s.isDirective(d) {
 		http.Error(w, "directive: no such directive", http.StatusNotFound)
 		return
 	}
@@ -393,7 +393,7 @@ func (s *Service) leftElsewhere(role string, m wire.Message) string {
 // chain.
 func (s *Service) directiveAbove(m wire.Message) (wire.Message, bool) {
 	for i := 0; i < maxReplyChain; i++ {
-		if isDirectiveMail(m) {
+		if s.isDirective(m) {
 			return m, true
 		}
 		if m.ReplyTo == 0 {
