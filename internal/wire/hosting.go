@@ -326,6 +326,11 @@ const (
 	// ActionFileSave is a save of a session folder file (#448): the target
 	// is the session, the detail its path and size, never the content.
 	ActionFileSave = "file.save"
+	// A delete, rename or upload in a session folder (#473–#475): the
+	// detail is the path (a rename's old → new, an upload's size).
+	ActionFileDelete = "file.delete"
+	ActionFileRename = "file.rename"
+	ActionFileUpload = "file.upload"
 )
 
 // AdminAction is one row of GET /api/admin/admin-actions (#446): who did

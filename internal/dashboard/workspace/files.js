@@ -12,6 +12,7 @@
 // 다시 읽기 or 그래도 저장 (fingerprint *).
 (function(root){
 'use strict';
+const UPLOAD_MAX=4<<20; // wire.FileUploadMax: an uploaded file (#475)
 const TEXT_MAX=2<<20; // wire.FileTextMax: a text file opens whole up to this, and saves
 // FP_HEADER is config.HeaderPrefix + config.FileFingerprintHeaderName.
 const FP_HEADER='X-Switchboard-File-Fingerprint';
@@ -46,7 +47,11 @@ function problem(status,body){
   case 'conflict':return '다른 곳에서 바뀜';
   case 'too-big':return '너무 큼';
   case 'read-only':return '이 노드는 저장을 지원하지 않음';
+  case 'old-node':return '이 노드는 지우기·이름 바꾸기·올리기를 지원하지 않음 · 노드를 새 판으로';
+  case 'exists':return '같은 이름이 있음';
+  case 'not-empty':return '비어 있지 않은 폴더';
   }
+  if(status===403&&/may not/.test(body||''))return '권한 없음';
   if(status===404)return '이 주소에서는 파일이 꺼져 있음';
   if(status===403)return '이 주소에서는 파일이 꺼져 있음';
   return '요청 실패('+status+')';
@@ -92,6 +97,6 @@ function size(n){
   if(n<1<<30)return (n/(1<<20)).toFixed(n<10<<20?1:0)+' MB';
   return (n/(1<<30)).toFixed(1)+' GB';
 }
-const api={TEXT_MAX:TEXT_MAX,FP_HEADER:FP_HEADER,modeOf:modeOf,pid:pid,fileOf:fileOf,join:join,base:base,url:url,problem:problem,textOf:textOf,kindOf:kindOf,size:size};
+const api={TEXT_MAX:TEXT_MAX,UPLOAD_MAX:UPLOAD_MAX,FP_HEADER:FP_HEADER,modeOf:modeOf,pid:pid,fileOf:fileOf,join:join,base:base,url:url,problem:problem,textOf:textOf,kindOf:kindOf,size:size};
 if(typeof module==='object'&&module.exports)module.exports=api;else root.wsFiles=api;
 })(this);

@@ -46,6 +46,12 @@ const NodeFilesHeaderName = "Node-Files"
 // The host sends no write to the others; a save there is refused.
 const NodeFileWriteHeaderName = "Node-File-Write"
 
+// NodeFileOpsHeaderName is HeaderPrefix + this on GET /api/node/socket: a
+// node that also deletes, renames and takes uploads (wire.FileDelete,
+// FileRename, FileUpload; #473–#475) sends it ("1"). The host sends those
+// to no other node; the dashboard's request is refused (501).
+const NodeFileOpsHeaderName = "Node-File-Ops"
+
 // FileFingerprintHeaderName is HeaderPrefix + this (#448): on a whole read
 // of a text file (GET …/files/raw, at most wire.FileTextMax) the content's
 // wire.FileFingerprint, and on a save (PUT …/files/raw) the one the file is
