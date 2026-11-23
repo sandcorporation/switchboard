@@ -126,6 +126,13 @@ test('serialize and parse round-trip',()=>{
   assert.strictEqual(new Set(L.groups(t).map(g=>g.g)).size,L.groups(t).length,'new group ids stay unique');
 });
 
+test('parse: a layout saved with menu tabs keeps the session panels (#523)',()=>{
+  const text=JSON.stringify({root:{dir:'row',kids:[{g:'g1',tabs:['menu:progress','term:a','menu:sessions'],active:'menu:progress'},{g:'g2',tabs:['menu:terminals','term:b']}],sizes:[1,1]},focus:'menu:terminals',max:null,seq:2});
+  const s=L.parse(text,p=>!p.startsWith('menu:'));
+  assert.deepStrictEqual(L.panels(s),['term:a','term:b']);
+  assert.ok(!JSON.stringify(s).includes('menu:'));
+});
+
 test('parse: malformed gives null, gone or repeated panels drop out',()=>{
   for(const bad of ['', 'x', 'null', '[]', '{"root":{"dir":"row","kids":[],"sizes":[]}}',
     '{"root":{"dir":"diag","kids":[{"g":"g1","tabs":[]}],"sizes":[1]}}',

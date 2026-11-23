@@ -14,9 +14,10 @@ const tabLoaded=new Set();
 // one is on screen.
 const listTabs=['requests','questions','mail','reports','jobs','settings'];
 function listTab(name){return listTabs.includes(name)}
-// fullTabs (#515) are one body with no list column (지표): like a list
-// screen they take the centre, no panels or splits (html.fr-full).
-const fullTabs=['metrics'];
+// fullTabs (#515) are one body with no list column (지표, and 설정's 화면
+// rows, #523): like a list screen they take the centre, no panels or splits
+// (html.fr-full).
+const fullTabs=['metrics','progress','sessions','terminals'];
 function pageTab(name){return listTab(name)||fullTabs.includes(name)}
 function frameFull(on){
   document.documentElement.classList.toggle('fr-full',on);
