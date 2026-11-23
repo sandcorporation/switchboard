@@ -118,17 +118,21 @@ var commands = []command{
 			{"--idempotency-key", "KEY", "retry-safe key; resending with the same key returns the first message and marks nothing twice"},
 			optJSON, optProfile,
 		}},
-	{name: "inbox", summary: "List messages for the active role (newest 100)",
+	{name: "inbox", summary: "List messages for the active role (newest 100; --limit and --before page)",
 		options: []option{
 			{"--q", "TEXT", "only messages whose subject, body or task contain TEXT"},
 			{"--status", "STATUS", "only messages in STATUS: pending, read, acknowledged or complete (completed also accepted)"},
+			{"--limit", "N", "at most N messages (default 100, at most 500), newest first"},
+			{"--before", "ID", "only messages with an ID below ID: the next page after the oldest one shown"},
 			{"--of", "ROLE", "boss roles only: list another role's or slot's inbox read-only (states unchanged; the view is recorded)"},
 			optJSON, optProfile,
 		}},
-	{name: "outbox", summary: "List messages sent by the active role (newest 100)",
+	{name: "outbox", summary: "List messages sent by the active role (newest 100; --limit and --before page)",
 		options: []option{
 			{"--q", "TEXT", "only messages whose subject, body or task contain TEXT"},
 			{"--status", "STATUS", "only messages whose recipient state is STATUS"},
+			{"--limit", "N", "at most N messages (default 100, at most 500), newest first"},
+			{"--before", "ID", "only messages with an ID below ID: the next page after the oldest one shown"},
 			optJSON, optProfile,
 		}},
 	{name: "wait", summary: "Wait until the inbox has pending messages, print them and exit (does not mark them read)",
@@ -1430,6 +1434,13 @@ func withPriority(p parsedArgs, req map[string]any) map[string]any {
 
 func cliList(c Config, box string, p parsedArgs) (int, error) {
 	req, _ := http.NewRequest("GET", listURL(c, box, p.values["--q"], p.values["--status"]), nil)
+	for _, k := range []string{"limit", "before"} {
+		if v := p.values["--"+k]; v != "" {
+			q := req.URL.Query()
+			q.Set(k, v)
+			req.URL.RawQuery = q.Encode()
+		}
+	}
 	if of := p.values["--of"]; of != "" && box == "inbox" {
 		q := req.URL.Query()
 		q.Set("of", of)

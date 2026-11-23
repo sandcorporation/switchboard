@@ -80,7 +80,7 @@ func (s *Service) Close(w http.ResponseWriter, r *http.Request, role string, id 
 		http.Error(w, "only the sender may close a directive", http.StatusForbidden)
 		return
 	}
-	if identity.IsSystemSender(m.Sender) || !(FlowMail{ReplyTo: m.ReplyTo, Directive: m.Directive}).IsDirective() {
+	if !s.isDirective(m) {
 		http.Error(w, "not a directive", http.StatusBadRequest)
 		return
 	}
@@ -126,7 +126,7 @@ func (s *Service) answeredDirective(role string, m wire.Message) (int64, bool) {
 		return 0, false
 	}
 	d, err := s.Get(m.ReplyTo)
-	if err != nil || d.Sender != role || identity.IsSystemSender(d.Sender) || !(FlowMail{ReplyTo: d.ReplyTo, Directive: d.Directive}).IsDirective() {
+	if err != nil || d.Sender != role || identity.IsSystemSender(d.Sender) || !s.isDirective(d) {
 		return 0, false
 	}
 	return d.ID, true
