@@ -16,7 +16,7 @@ function termMake(id){
   const bar=node('div','','toolbar termbar');
   t.stateEl=node('span','','muted');
   t.connEl=node('span','','muted');t.connEl.setAttribute('role','status');t.connEl.setAttribute('aria-live','polite');
-  t.modeEl=node('button','입력','t-mode');t.modeEl.type='button';t.modeEl.setAttribute('aria-pressed','false');
+  t.modeEl=node('button','입력','t-mode');t.modeEl.type='button';t.modeEl.setAttribute('aria-pressed','false');t.modeEl.hidden=!can('type');
   t.wideEl=node('button','넓히기','t-wide');t.wideEl.type='button';t.wideEl.setAttribute('aria-pressed','false');t.wideEl.title='Esc: 원래 크기';
   bar.append(t.stateEl,t.connEl,t.modeEl,t.wideEl);
   t.msgEl=node('div','','msg');t.msgEl.setAttribute('role','status');t.msgEl.setAttribute('aria-live','polite');

@@ -775,7 +775,8 @@ func migrateGroups(db *sql.DB) error {
 func migrateAdminAuth(db *sql.DB) error {
 	_, err := db.Exec(`CREATE TABLE IF NOT EXISTS admin_users(name TEXT PRIMARY KEY, password_hash TEXT NOT NULL, totp_secret TEXT NOT NULL, totp_last_step INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, disabled_at TEXT);
 CREATE TABLE IF NOT EXISTS admin_sessions(id_hash TEXT PRIMARY KEY, user TEXT NOT NULL, mode TEXT NOT NULL, created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, ip TEXT NOT NULL DEFAULT '', user_agent TEXT NOT NULL DEFAULT '');
-CREATE INDEX IF NOT EXISTS idx_admin_sessions_user ON admin_sessions(user);`)
+CREATE INDEX IF NOT EXISTS idx_admin_sessions_user ON admin_sessions(user);
+CREATE TABLE IF NOT EXISTS admin_perms(name TEXT PRIMARY KEY, perms TEXT NOT NULL, updated_at TEXT NOT NULL);`)
 	return err
 }
 

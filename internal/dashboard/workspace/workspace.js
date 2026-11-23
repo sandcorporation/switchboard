@@ -349,40 +349,147 @@ function wsStart(){
     return raw?new Uint8Array(await r.arrayBuffer()):r.json();
   }
   // fileTree is the 파일 view of session id, kept per session so a redraw
-  // of the column keeps what is open; ↻ reads the folder again.
+  // of the column keeps what is open; ↻ reads the folder again. ⬆ 올리기
+  // puts files in the open folder (the last one opened, else the session
+  // folder); each row has ✎ (rename in place) and 🗑 (delete after an
+  // in-row confirm), shown on hover or focus, always where there is no
+  // hover (#473–#475). Without the files permission (#476) none of them.
   function fileTree(id){
     let t=trees.get(id);
     if(t)return t.el;
-    const el=node('div','','ws-files'),bar=node('div','','ws-files-bar'),re=node('button','↻','ws-files-re'),list=node('ul','','ws-tree');
+    const el=node('div','','ws-files'),bar=node('div','','ws-files-bar'),re=node('button','↻','ws-files-re'),list=node('ul','','ws-tree'),
+      up=node('button','⬆ 올리기','ws-files-up'),pick=document.createElement('input'),msg=node('div','','ws-files-msg');
     re.type='button';re.title='다시 읽기';re.setAttribute('aria-label','다시 읽기');
+    up.type='button';up.hidden=!can('files');
+    pick.type='file';pick.multiple=true;pick.hidden=true;pick.tabIndex=-1;
+    msg.setAttribute('role','status');msg.hidden=true;
     list.setAttribute('role','tree');list.setAttribute('aria-label','세션 폴더');
-    bar.append(re);el.append(bar,list);
-    t={el:el,list:list};trees.set(id,t);
-    re.onclick=()=>fillDir(id,'',list);
+    bar.append(up,re,pick);el.append(bar,msg,list);
+    t={el:el,list:list,msg:msg,up:up,cur:'',uls:new Map([['',list]])};trees.set(id,t);
+    treeCur(t,'');
+    re.onclick=()=>{treeMsg(t,'');fillDir(id,'',list)};
+    up.onclick=()=>pick.click();
+    pick.onchange=async()=>{
+      const fl=[...pick.files];pick.value='';
+      const dir=t.cur;
+      for(const f of fl)if(!await uploadOne(id,t,dir,f))break;
+      const ul=t.uls.get(dir);if(ul&&ul.isConnected)fillDir(id,dir,ul);
+    };
     if(termRefused)list.append(node('li','이 주소에서는 파일이 꺼져 있음','msg err'));
     else fillDir(id,'',list);
     return el;
   }
+  // treeMsg shows a line under the bar ('' hides it).
+  function treeMsg(t,text,cls){t.msg.hidden=!text;t.msg.textContent=text;t.msg.className='ws-files-msg msg '+(cls||'')}
+  // treeCur makes dir the folder ⬆ 올리기 puts files in.
+  function treeCur(t,dir){
+    t.cur=dir;t.up.title='올리기: '+(dir?dir+'/':'세션 폴더');
+    for(const b of t.list.querySelectorAll('.ws-tree-cur'))b.classList.remove('ws-tree-cur');
+    if(dir)for(const b of t.list.querySelectorAll('.ws-tree-dir'))if(b.dataset.path===dir)b.classList.add('ws-tree-cur');
+  }
+  // fileSend sends a change of the files pane: DELETE, or POST with body.
+  async function fileSend(id,method,path,body){
+    let r;
+    try{r=await fetch('/api/admin/'+F.url(id,path,false),{method:method,credentials:'same-origin',headers:{'Accept':'application/json','Content-Type':'application/json','X-Switchboard-Dashboard':'1'},body:body===undefined?undefined:JSON.stringify(body)})}
+    catch(e){throw Error('네트워크 오류 · 연결과 로그인 확인')}
+    if(r.status===401)signedOut();
+    if(!r.ok){let b='';try{b=await r.text()}catch(e){}let code='';try{code=JSON.parse(b).code||''}catch(e){}const e=Error(F.problem(r.status,b));e.code=code;throw e}
+    return r.json();
+  }
+  // b64 is a file's bytes as base64.
+  function b64(file){
+    return new Promise((ok,no)=>{const fr=new FileReader();fr.onload=()=>{const s=String(fr.result);ok(s.slice(s.indexOf(',')+1))};fr.onerror=()=>no(Error('읽기 실패'));fr.readAsDataURL(file)});
+  }
+  // uploadOne puts file in dir; a name already there asks first. false
+  // stops the rest.
+  async function uploadOne(id,t,dir,file){
+    if(file.size>F.UPLOAD_MAX){treeMsg(t,file.name+' · 너무 큼 (4 MiB까지)','err');return true}
+    treeMsg(t,file.name+' 올리는 중…');
+    try{
+      const data=await b64(file),send=replace=>fileSend(id,'POST',dir,{op:'upload',name:file.name,data:data,replace:replace});
+      try{await send(false)}
+      catch(e){
+        if(e.code!=='exists')throw e;
+        if(!confirm(F.join(dir,file.name)+' 덮어씀'))return(treeMsg(t,''),true);
+        await send(true);
+      }
+      treeMsg(t,'');return true;
+    }catch(e){treeMsg(t,file.name+' · '+e.message,'err');return false}
+  }
+  // rowActs puts ✎ and 🗑 on a row of path (in dir, listed into ul).
+  function rowActs(id,t,line,b,e,dir,path,ul){
+    const acts=node('span','','ws-tree-acts'),ren=node('button','✎','ws-tree-act'),del=node('button','🗑','ws-tree-act');
+    ren.type=del.type='button';
+    ren.title='이름 바꾸기';ren.setAttribute('aria-label',e.name+' 이름 바꾸기');
+    del.title='지우기';del.setAttribute('aria-label',e.name+' 지우기');
+    acts.append(ren,del);line.append(acts);
+    const back=()=>{line.replaceChildren(b,acts);line.classList.remove('ws-tree-ask')};
+    del.onclick=()=>{
+      const yes=node('button','지움','sc-btn sc-btn--sm ws-tree-yes'),no=node('button','취소','sc-btn sc-btn--sm sc-btn--secondary');
+      yes.type=no.type='button';line.classList.add('ws-tree-ask');
+      line.replaceChildren(node('span',e.name+' 지움 · 되돌릴 수 없음','ws-tree-warn'),yes,no);
+      no.onclick=()=>{back();del.focus()};
+      line.onkeydown=k=>{if(k.key==='Escape'&&line.classList.contains('ws-tree-ask')){k.stopPropagation();back();del.focus()}};
+      yes.onclick=async()=>{
+        yes.disabled=no.disabled=true;
+        try{await fileSend(id,'DELETE',path);treeMsg(t,'');gone(id,path,null);if(t.cur===path||t.cur.startsWith(path+'/'))treeCur(t,dir);fillDir(id,dir,ul)}
+        catch(err){back();treeMsg(t,e.name+' · '+(err.code==='not-empty'?'비어 있지 않은 폴더':err.message),'err')}
+      };
+      no.focus();
+    };
+    ren.onclick=()=>{
+      const inp=document.createElement('input');inp.className='ws-tree-input';inp.value=e.name;inp.spellcheck=false;inp.autocomplete='off';
+      inp.setAttribute('aria-label',e.name+' 새 이름');
+      line.replaceChildren(inp);inp.focus();
+      const dot=e.kind==='dir'?-1:e.name.lastIndexOf('.');inp.setSelectionRange(0,dot>0?dot:e.name.length);
+      let busy=false;
+      const cancel=()=>{if(!busy){back();ren.focus()}};
+      inp.onkeydown=async k=>{
+        if(k.key==='Escape'){k.preventDefault();k.stopPropagation();cancel();return}
+        if(k.key!=='Enter')return;
+        k.preventDefault();
+        const to=inp.value.trim();
+        if(!to||to===e.name){cancel();return}
+        busy=true;inp.disabled=true;
+        try{const r=await fileSend(id,'POST',path,{op:'rename',to:to});treeMsg(t,'');gone(id,path,r.path);if(t.cur===path)treeCur(t,r.path);fillDir(id,dir,ul)}
+        catch(err){busy=false;inp.disabled=false;inp.focus();treeMsg(t,to+' · '+(err.code==='exists'?'같은 이름이 있음':err.message),'err')}
+      };
+      inp.onblur=()=>setTimeout(()=>{if(line.contains(inp)&&document.activeElement!==inp)cancel()},0);
+    };
+  }
+  // gone closes the panel of a file deleted (to null) or renamed, and opens
+  // the renamed one in its place.
+  function gone(id,path,to){
+    const p=F.pid(id,path);
+    if(!files.has(p))return;
+    closePanel(p);
+    if(to&&!files.has(p))openFile(id,to);
+  }
   // fillDir lists dir of session id into ul: folders first, each opening
   // in place; a file opens as a centre panel.
   async function fillDir(id,dir,ul){
+    const t=trees.get(id);
+    if(t)t.uls.set(dir,ul);
     ul.replaceChildren(node('li','…','empty'));
     let ls;
     try{ls=await filesGet(id,dir,false)}
     catch(e){ul.replaceChildren(node('li',e.message,'msg err'));return}
     const rows=(ls.entries||[]).map(e=>{
-      const li=node('li','','ws-tree-row'),path=F.join(dir,e.name),dirRow=e.kind==='dir';
+      const li=node('li','','ws-tree-row'),line=node('div','','ws-tree-line'),path=F.join(dir,e.name),dirRow=e.kind==='dir';
       li.setAttribute('role','treeitem');
-      const b=node('button','','ws-tree-item ws-tree-'+e.kind);b.type='button';b.title=path;
+      const b=node('button','','ws-tree-item ws-tree-'+e.kind);b.type='button';b.title=path;b.dataset.path=path;
+      if(t&&dirRow&&t.cur===path)b.classList.add('ws-tree-cur');
       b.append(node('span',dirRow?'▸':'','ws-tree-mark'),node('span',e.name,'ws-tree-name'));
       if(e.kind==='file')b.append(node('span',F.size(e.size),'ws-tree-size'));
-      li.append(b);
+      line.append(b);li.append(line);
+      if(t&&can('files'))rowActs(id,t,line,b,e,dir,path,ul);
       if(dirRow){
         li.setAttribute('aria-expanded','false');
         const sub=node('ul','','ws-tree');sub.setAttribute('role','group');sub.hidden=true;li.append(sub);
         b.onclick=()=>{
           const open=sub.hidden;sub.hidden=!open;li.setAttribute('aria-expanded',String(open));b.firstChild.textContent=open?'▾':'▸';
           if(open)fillDir(id,path,sub);
+          if(t)treeCur(t,open?path:t.cur===path||t.cur.startsWith(path+'/')?dir:t.cur);
         };
       }else if(e.kind==='file')b.onclick=()=>openFile(id,path);
       else b.disabled=true;
@@ -439,7 +546,7 @@ function wsStart(){
   // it has the text last marked (mark()).
   function makeEditor(parent,text,path,cm,changed,save){
     if(cm){
-      const ed=CodeMirror(parent,{value:text,mode:F.modeOf(path),lineNumbers:true,indentUnit:F.modeOf(path)==='go'?8:2,indentWithTabs:F.modeOf(path)==='go',
+      const ed=CodeMirror(parent,{value:text,mode:F.modeOf(path),lineNumbers:true,readOnly:!can('files'),indentUnit:F.modeOf(path)==='go'?8:2,indentWithTabs:F.modeOf(path)==='go',
         tabSize:F.modeOf(path)==='go'?8:4,lineWrapping:false,extraKeys:{'Ctrl-S':save,'Cmd-S':save}});
       let gen=ed.changeGeneration();
       ed.on('changes',changed);
@@ -447,7 +554,7 @@ function wsStart(){
       if(typeof ResizeObserver==='function')new ResizeObserver(()=>ed.refresh()).observe(parent);
       return {clean:()=>ed.isClean(gen),mark:()=>{gen=ed.changeGeneration()},get:()=>ed.getValue(),focus:()=>ed.focus()};
     }
-    const ta=node('textarea','','ws-text ws-edit');ta.value=text;ta.spellcheck=false;ta.setAttribute('aria-label',path);
+    const ta=node('textarea','','ws-text ws-edit');ta.value=text;ta.spellcheck=false;ta.readOnly=!can('files');ta.setAttribute('aria-label',path);
     let saved=text;
     ta.oninput=changed;
     ta.onkeydown=e=>{if((e.ctrlKey||e.metaKey)&&e.key==='s'){e.preventDefault();save()}};
@@ -492,13 +599,14 @@ function wsStart(){
       f.body.replaceChildren();
       f.fp=rd.fp;
       f.ed=makeEditor(f.body,t.text,x.path,cm,()=>fileMarks(p),()=>saveFile(p,false));
-      f.save.hidden=!f.fp;
+      f.save.hidden=!f.fp||!can('files');
       fileMarks(p);
     }catch(e){if(seq===f.seq)f.body.replaceChildren(node('p',e.message,'msg err'))}
   }
   // saveFile writes the editor's text back; anyway saves over a change
   // made elsewhere since the read (그래도 저장).
   async function saveFile(p,anyway){
+    if(!can('files'))return;
     const f=files.get(p),x=F.fileOf(p);if(!f||!x||!f.ed||f.busy||!f.fp)return;
     if(!anyway&&f.ed.clean())return;
     const text=f.ed.get(),seq=f.seq;

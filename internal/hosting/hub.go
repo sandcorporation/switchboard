@@ -111,6 +111,8 @@ type nodeConn struct {
 	// files is whether the node answers file frames (#447); write whether
 	// it also writes (#448).
 	files, write bool
+	// ops is whether it also deletes, renames and takes uploads (#473–#475).
+	ops bool
 }
 
 // NewHub returns the hub over svc. publish may be nil.
@@ -440,6 +442,7 @@ func (h *Hub) nodeSocket(w http.ResponseWriter, r *http.Request, name string) {
 	c.held, c.takes = parseHeld(r.Header.Values(config.HeaderPrefix + config.NodeCredentialsHeaderName))
 	c.files = r.Header.Get(config.HeaderPrefix+config.NodeFilesHeaderName) == "1"
 	c.write = c.files && r.Header.Get(config.HeaderPrefix+config.NodeFileWriteHeaderName) == "1"
+	c.ops = c.write && r.Header.Get(config.HeaderPrefix+config.NodeFileOpsHeaderName) == "1"
 	go func() {
 		for {
 			select {
@@ -735,6 +738,8 @@ func (h *Hub) AdminTerminalsAPI(w http.ResponseWriter, r *http.Request, rest str
 			h.terminalSocket(w, r, id)
 		case sub == "/events":
 			h.eventsAPI(w, r, id)
+		case sub == "/files" && (r.Method == http.MethodDelete || r.Method == http.MethodPost):
+			h.changeAPI(w, r, id)
 		case sub == "/files":
 			h.filesAPI(w, r, id)
 		case sub == "/files/raw" && r.Method == http.MethodPut:

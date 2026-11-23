@@ -162,9 +162,9 @@ func TestWriteBuffers(t *testing.T) {
 	if got := w.take("a"); got == nil || len(got) != 0 {
 		t.Fatalf("take again = %v", got)
 	}
-	w.add("b", make([]byte, wire.FileTextMax))
+	w.add("b", make([]byte, wire.FileUploadMax))
 	w.add("b", make([]byte, 10))
-	if n := len(w.take("b")); n != wire.FileTextMax+1 {
+	if n := len(w.take("b")); n != wire.FileUploadMax+1 {
 		t.Fatalf("capped at %d", n)
 	}
 	for i := 0; i < fileWorkers+2; i++ {

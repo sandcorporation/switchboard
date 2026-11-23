@@ -190,3 +190,20 @@
   .ws-file-body .CodeMirror .cm-positive{color:#c3e88d}
   .ws-file-body .CodeMirror .CodeMirror-matchingbracket{color:#c3e88d}
 }
+/* 파일 창의 바꾸기 (#473–#475): ⬆ 올리기, 줄의 ✎ 🗑 (올리면 보임, 손가락 화면은 늘), 줄 안의 확인 */
+.ws-files-bar{gap:var(--space-1);align-items:center}
+.ws-files-up{border:0;background:none;padding:.2rem .45rem;font-size:.85rem;color:var(--color-muted);margin-right:auto}
+.ws-files-up:hover,.ws-files-re:hover{color:inherit}
+.ws-files-msg{margin:0;padding:.2rem .45rem;font-size:.85em;overflow-wrap:anywhere}
+.ws-tree-line{display:flex;align-items:center;min-width:0;border-radius:var(--radius)}
+.ws-tree-line>.ws-tree-item{flex:1}
+.ws-tree-cur{font-weight:600}
+.ws-tree-acts{display:none;flex:none}
+.ws-tree-line:hover .ws-tree-acts,.ws-tree-line:focus-within .ws-tree-acts{display:flex}
+@media (hover:none){.ws-tree-acts{display:flex}}
+.ws-tree-act{border:0;background:none;padding:.2rem .3rem;font-size:.8em;line-height:1;opacity:.7}
+.ws-tree-act:hover,.ws-tree-act:focus-visible{opacity:1}
+@media (hover:none){.ws-tree-act{padding:.35rem .45rem}}
+.ws-tree-ask{flex-wrap:wrap;gap:var(--space-1);padding:.2rem .45rem;background:var(--color-paper)}
+.ws-tree-warn{flex:1 1 8rem;min-width:0;font-size:.85em;color:var(--color-danger,#b42318);overflow-wrap:anywhere}
+.ws-tree-input{flex:1;min-width:0;font:inherit;font-size:.85em;padding:.15rem .4rem}

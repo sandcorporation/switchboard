@@ -32,6 +32,7 @@ const (
 	fileTimeout     = "timeout"     // the node did not answer in time
 	fileBadRequest  = "bad-request" // refused before asking the node
 	fileReadOnly    = "read-only"   // a save on a node that does not write (#448)
+	fileOldNode     = "old-node"    // a delete, rename or upload on a node without them (#473–#475)
 )
 
 // pendingFile is a file frame waiting for its answer from conn.
@@ -80,6 +81,9 @@ func (h *Hub) askFileData(id string, req wire.NodeFile, data []byte) (wire.NodeF
 	case req.Op == wire.FileWrite && !c.write:
 		h.mu.Unlock()
 		return wire.NodeFileResult{}, nil, &fileErr{fileReadOnly, "node " + rec.Node + " does not save files"}
+	case (req.Op == wire.FileDelete || req.Op == wire.FileRename || req.Op == wire.FileUpload) && !c.ops:
+		h.mu.Unlock()
+		return wire.NodeFileResult{}, nil, &fileErr{fileOldNode, "node " + rec.Node + " does not delete, rename or take uploads; update it"}
 	}
 	if h.files == nil {
 		h.files = map[string]*pendingFile{}
@@ -89,7 +93,7 @@ func (h *Hub) askFileData(id string, req wire.NodeFile, data []byte) (wire.NodeF
 	p := &pendingFile{conn: c, ch: make(chan fileAnswer, 1)}
 	h.files[req.Ref] = p
 	sent := true
-	if req.Op == wire.FileWrite {
+	if req.Op == wire.FileWrite || req.Op == wire.FileUpload {
 		req.Length = int64(len(data))
 		for off := 0; sent && off < len(data); off += wire.FileChunkMax {
 			end := min(off+wire.FileChunkMax, len(data))
@@ -178,11 +182,11 @@ func fileStatus(code string) int {
 		return http.StatusNotFound
 	case wire.FileNotFile, wire.FileNotDir, fileBadRequest:
 		return http.StatusBadRequest
-	case wire.FileConflict:
+	case wire.FileConflict, wire.FileExists, wire.FileNotEmpty:
 		return http.StatusConflict
 	case wire.FileTooBig:
 		return http.StatusRequestEntityTooLarge
-	case fileUnsupported, fileReadOnly:
+	case fileUnsupported, fileReadOnly, fileOldNode:
 		return http.StatusNotImplemented
 	case fileOffline:
 		return http.StatusServiceUnavailable
@@ -495,4 +499,98 @@ func (h *Hub) saveAPI(w http.ResponseWriter, r *http.Request, id string) {
 // the size, never the content.
 func (h *Hub) fileSaved(r *http.Request, id, p string, size int64) {
 	h.svc.recordActionDetail(r, wire.ActionFileSave, id, p+" · "+strconv.FormatInt(size, 10)+" B")
+}
+
+// changeAPI serves the files pane's changes on
+// /api/admin/terminals/{id}/files?path=: DELETE removes the entry at path
+// (a file, a symbolic link, an empty folder: #473); POST with
+// wire.FileChange renames it (Op rename, To a name in the same folder:
+// #474) or puts an uploaded file in the folder path (Op upload, Name, Data
+// at most wire.FileUploadMax bytes, Replace to write over a regular file of
+// that name: #475). A name already there or a folder with entries is 409.
+// The server's admin guard has checked the write and the files permission.
+// Each is recorded by path, never content.
+func (h *Hub) changeAPI(w http.ResponseWriter, r *http.Request, id string) {
+	p, ok := h.filePath(w, r)
+	if !ok {
+		return
+	}
+	if p == "" && r.Method == http.MethodDelete {
+		writeFileErr(w, &fileErr{wire.FileRefused, "the session folder itself"})
+		return
+	}
+	var req wire.NodeFile
+	var data []byte
+	var action, detail string
+	if r.Method == http.MethodDelete {
+		req, action, detail = wire.NodeFile{Op: wire.FileDelete, Path: p}, wire.ActionFileDelete, p
+	} else {
+		// base64 is 4 bytes for 3; room for that and the JSON around it.
+		var c wire.FileChange
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, wire.FileUploadMax/3*4+8192)).Decode(&c); err != nil {
+			var tooBig *http.MaxBytesError
+			if errors.As(err, &tooBig) {
+				writeFileErr(w, &fileErr{wire.FileTooBig, "more than 4 MiB"})
+				return
+			}
+			writeFileErr(w, &fileErr{fileBadRequest, "bad body"})
+			return
+		}
+		switch c.Op {
+		case wire.FileRename:
+			if p == "" {
+				writeFileErr(w, &fileErr{wire.FileRefused, "the session folder itself"})
+				return
+			}
+			if err := checkFileName(c.To); err != nil {
+				writeFileErr(w, err)
+				return
+			}
+			to := path.Join(path.Dir(p), c.To)
+			req, action, detail = wire.NodeFile{Op: wire.FileRename, Path: p, To: c.To}, wire.ActionFileRename, p+" → "+to
+		case wire.FileUpload:
+			if err := checkFileName(c.Name); err != nil {
+				writeFileErr(w, err)
+				return
+			}
+			if len(c.Data) > wire.FileUploadMax {
+				writeFileErr(w, &fileErr{wire.FileTooBig, "more than 4 MiB"})
+				return
+			}
+			to := c.Name
+			if p != "" {
+				to = p + "/" + c.Name
+			}
+			data = c.Data
+			req, action, detail = wire.NodeFile{Op: wire.FileUpload, Path: to, Replace: c.Replace}, wire.ActionFileUpload, to+" · "+strconv.Itoa(len(data))+" B"
+		default:
+			writeFileErr(w, &fileErr{fileBadRequest, `op must be "rename" or "upload"`})
+			return
+		}
+	}
+	res, _, err := h.askFileData(id, req, data)
+	if err != nil {
+		writeFileErr(w, err)
+		return
+	}
+	h.svc.recordActionDetail(r, action, id, detail)
+	out := wire.FileChanged{Path: req.Path}
+	if req.Op != wire.FileDelete {
+		st := *res.Stat
+		out.Stat = &st
+		if req.Op == wire.FileRename {
+			out.Path = path.Join(path.Dir(p), req.To)
+		}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	_ = json.NewEncoder(w).Encode(out)
+}
+
+// checkFileName refuses early a new name that is not one plain segment.
+func checkFileName(name string) error {
+	if name == "" || name == "." || name == ".." || strings.ContainsAny(name, "/\\:\x00") || len(name) > 255 {
+		return &fileErr{fileBadRequest, "a name is one segment, without / \\ :"}
+	}
+	return nil
 }

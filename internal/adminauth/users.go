@@ -164,14 +164,21 @@ func (s *Service) checkBuiltinLogin(req loginRequest, now time.Time) bool {
 
 var adminNamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._@-]{0,63}$`)
 
-// CLI serves `admin create|passwd|totp-reset|disable|enable NAME` and
-// `admin list`. It opens
-// DB_PATH (the server's database) directly.
-func CLI(action, name string, jsonOut bool, stdin io.Reader, stdout, stderr io.Writer) (int, error) {
+// CLI serves `admin create|passwd|totp-reset|disable|enable NAME`, `admin
+// allow NAME PERMS` (#476) and `admin list`. It opens DB_PATH (the server's
+// database) directly.
+func CLI(action, name, arg string, jsonOut bool, stdin io.Reader, stdout, stderr io.Writer) (int, error) {
 	switch action {
 	case "create", "passwd", "totp-reset", "disable", "enable":
 		if name == "" {
 			return 0, cli.Usagef("admin %s: NAME needed", action)
+		}
+		if arg != "" {
+			return 0, cli.Usagef("admin %s takes one name", action)
+		}
+	case "allow":
+		if name == "" || arg == "" {
+			return 0, cli.Usagef("admin allow: NAME and PERMS needed (view,type,files,sessions,discard; all; none)")
 		}
 	case "list":
 		if name != "" {
@@ -179,10 +186,17 @@ func CLI(action, name string, jsonOut bool, stdin io.Reader, stdout, stderr io.W
 		}
 		return listAdmins(jsonOut, stdout)
 	default:
-		return 0, cli.Usagef("admin: unknown action %q (create, passwd, totp-reset, disable, enable, list)", action)
+		return 0, cli.Usagef("admin: unknown action %q (create, passwd, totp-reset, disable, enable, allow, list)", action)
 	}
 	if !adminNamePattern.MatchString(name) {
 		return 0, cli.Usagef("admin: invalid name %q (1-64 of A-Z a-z 0-9 . _ @ -)", name)
+	}
+	if action == "allow" {
+		perms, err := ParsePerms(arg)
+		if err != nil {
+			return 0, cli.Usagef("admin allow: %v", err)
+		}
+		return allowAdmin(name, perms, jsonOut, stdout)
 	}
 	db, err := store.Open(config.Env("DB_PATH", "/data/mail.db"))
 	if err != nil {
@@ -338,6 +352,8 @@ type adminRow struct {
 	// LastLogin is the time of the last accepted TOTP step, i.e. of the last
 	// successful login; "" when the user never logged in.
 	LastLogin string `json:"last_login"`
+	// Perms is what the login may do on the work screen (#476).
+	Perms Perms `json:"perms"`
 }
 
 func listAdmins(jsonOut bool, stdout io.Writer) (int, error) {
@@ -346,7 +362,7 @@ func listAdmins(jsonOut bool, stdout io.Writer) (int, error) {
 		return 0, err
 	}
 	defer db.Close()
-	rows, err := db.Query(`SELECT name,created_at,disabled_at IS NOT NULL,totp_last_step FROM admin_users ORDER BY name`)
+	rows, err := db.Query(`SELECT u.name,u.created_at,u.disabled_at IS NOT NULL,u.totp_last_step,p.perms FROM admin_users u LEFT JOIN admin_perms p ON p.name=u.name ORDER BY u.name`)
 	if err != nil {
 		return 0, err
 	}
@@ -355,9 +371,11 @@ func listAdmins(jsonOut bool, stdout io.Writer) (int, error) {
 	for rows.Next() {
 		var r adminRow
 		var step int64
-		if err := rows.Scan(&r.Name, &r.CreatedAt, &r.Disabled, &step); err != nil {
+		var perms sql.NullString
+		if err := rows.Scan(&r.Name, &r.CreatedAt, &r.Disabled, &step, &perms); err != nil {
 			return 0, err
 		}
+		r.Perms = permsOf(perms)
 		if step > 0 {
 			r.LastLogin = time.Unix(step*TOTPStep, 0).UTC().Format(time.RFC3339)
 		}
@@ -379,7 +397,7 @@ func listAdmins(jsonOut bool, stdout io.Writer) (int, error) {
 		if last == "" {
 			last = "never"
 		}
-		fmt.Fprintf(stdout, "%s\t%s\tcreated %s\tlast login %s\n", r.Name, state, r.CreatedAt, last)
+		fmt.Fprintf(stdout, "%s\t%s\tcreated %s\tlast login %s\tallow %s\n", r.Name, state, r.CreatedAt, last, r.Perms)
 	}
 	return 0, nil
 }

@@ -34,13 +34,19 @@ const (
 	FileStat  = "stat"  // what the path is
 	FileRead  = "read"  // Length bytes from Offset, at most FileChunkMax
 	FileWrite = "write" // replace a regular file with Length bytes (#448)
+	// Changes of the files pane, only to a node that advertised
+	// config.NodeFileOpsHeaderName.
+	FileDelete = "delete" // remove a file, a symbolic link or an empty folder (#473)
+	FileRename = "rename" // give Path the name To, in the same folder (#474)
+	FileUpload = "upload" // a new file of Length bytes at Path; with Replace over a regular file (#475)
 )
 
 // Limits of the file path (#443 §4).
 const (
-	FileListMax  = 1000    // entries in one listing
-	FileChunkMax = 1 << 20 // bytes in one read
-	FileTextMax  = 2 << 20 // a text file the dashboard opens whole, and a write
+	FileListMax   = 1000    // entries in one listing
+	FileChunkMax  = 1 << 20 // bytes in one read
+	FileTextMax   = 2 << 20 // a text file the dashboard opens whole, and a write
+	FileUploadMax = 4 << 20 // an uploaded file (#475)
 )
 
 // File error codes: FileResult.Code, which the server maps to a status.
@@ -52,6 +58,8 @@ const (
 	FileFailed   = "failed"    // any other error
 	FileConflict = "conflict"  // a write whose expected fingerprint is not the file's (#448)
 	FileTooBig   = "too-big"   // a write of more than FileTextMax (#448)
+	FileExists   = "exists"    // a rename or an upload onto a name already there
+	FileNotEmpty = "not-empty" // a delete of a folder that has entries
 )
 
 // File entry kinds.
@@ -75,6 +83,10 @@ type NodeFile struct {
 	Offset int64            `json:"offset,omitempty"`
 	Length int64            `json:"length,omitempty"`
 	Expect *FileFingerprint `json:"expect,omitempty"`
+	// To is a rename's new name: one segment, in Path's folder.
+	To string `json:"to,omitempty"`
+	// Replace lets an upload write over a regular file of that name.
+	Replace bool `json:"replace,omitempty"`
 }
 
 // FileEntry is one directory entry, or the stat of a path.
@@ -156,4 +168,24 @@ type FileListing struct {
 	Stat      FileEntry   `json:"stat"`
 	Entries   []FileEntry `json:"entries,omitempty"`
 	Truncated bool        `json:"truncated,omitempty"`
+}
+
+// FileChange is the body of POST …/terminals/{id}/files?path= (#474, #475):
+// Op FileRename gives path the name To; Op FileUpload puts Data (base64 in
+// JSON, at most FileUploadMax bytes) in the folder path under Name, over a
+// regular file of that name only with Replace.
+type FileChange struct {
+	Op      string `json:"op"`
+	To      string `json:"to,omitempty"`
+	Name    string `json:"name,omitempty"`
+	Data    []byte `json:"data,omitempty"`
+	Replace bool   `json:"replace,omitempty"`
+}
+
+// FileChanged answers a delete, a rename or an upload: the path it left
+// (a rename's and an upload's new path, a delete's old one) and, but for a
+// delete, what is there now.
+type FileChanged struct {
+	Path string     `json:"path"`
+	Stat *FileEntry `json:"stat,omitempty"`
 }

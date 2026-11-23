@@ -549,7 +549,12 @@ func (s *Server) adminRoutes(w http.ResponseWriter, r *http.Request, path string
 		return
 	}
 	if rest, ok := strings.CutPrefix(path, "left/"); ok {
-		// POST /api/admin/left/{id}/{issue,pass,drop}: only a signed-in admin (#470).
+		// POST /api/admin/left/{id}/{issue,pass,drop}: only a signed-in admin (#470);
+		// drop only a login allowed to discard (#476).
+		if _, action, _ := strings.Cut(rest, "/"); boss == nil && action == "drop" && !who.Can(wire.PermDiscard) {
+			refusePerm(w, wire.PermDiscard)
+			return
+		}
 		s.mail().AdminLeftAPI(w, r, boss == nil, who.User, rest)
 		return
 	}

@@ -97,6 +97,7 @@ async function termAct(v,method,path,body,done){
 }
 // termActs puts the record's actions (멈춤 or 시작 · 재시작 · 새 대화 · 지우기) in box.
 function termActs(v,box){
+  if(!can('sessions')){if(termNote&&termNote.id===v.id)box.append(node('p',termNote.text,'msg '+termNote.cls));return}
   const acts=node('div','','detail-acts');
   const add=(label,fn)=>{const b=node('button',label);b.type='button';b.onclick=fn;acts.append(b)};
   if(v.desired==='stopped')add('시작',()=>termAct(v,'PUT','',{desired:'running'},v.base+' 시작'));
@@ -172,6 +173,7 @@ function termSettings(v,box){
     if(!Object.keys(c).length)return;
     termAct(v,'PUT','',c,v.base+' 설정 저장');
   };
+  if(!can('sessions')){perm.hidden=true;save.hidden=true;for(const el of f.elements)el.disabled=true}
   box.append(f,node('p','바꾼 설정은 다음 시작부터 적용','muted'));
 }
 // ---- 예약 (#336): the record's scheduled runs and their recent runs ----

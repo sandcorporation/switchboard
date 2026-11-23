@@ -55,7 +55,7 @@ function usageText(u){
   const who=u.adapter+(u.account?' · '+u.account:'');
   return who+' '+(u.remaining==null?'-':u.remaining+'%');
 }
-const actionText={'node.invite':'초대','node.revoke':'끊기','grant.set':'허가','grant.revoke':'허가 거둠','session.add':'세션 넣기','session.change':'세션 고침','session.remove':'세션 지움','file.save':'파일 저장'};
+const actionText={'node.invite':'초대','node.revoke':'끊기','grant.set':'허가','grant.revoke':'허가 거둠','session.add':'세션 넣기','session.change':'세션 고침','session.remove':'세션 지움','file.save':'파일 저장','file.delete':'파일 지움','file.rename':'이름 바꿈','file.upload':'파일 올림'};
 function actionName(a){return actionText[a]||a}
 const api={parseVersion:parseVersion,older:older,state:state,stateText:stateText,sessionsOn:sessionsOn,grantsOn:grantsOn,list:list,grantWith:grantWith,grantWithout:grantWithout,usageText:usageText,actionName:actionName};
 if(typeof module==='object'&&module.exports)module.exports=api;else root.wsNodes=api;

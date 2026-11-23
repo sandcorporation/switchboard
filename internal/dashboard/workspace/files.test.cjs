@@ -80,3 +80,12 @@ test('a save names the fingerprint header and its refusals',()=>{
   assert.strictEqual(F.problem(501,'{"code":"read-only","error":"x"}'),'이 노드는 저장을 지원하지 않음');
   assert.strictEqual(F.problem(501,'{"code":"unsupported","error":"x"}'),'이 노드는 파일을 지원하지 않음');
 });
+
+test('problem: the files pane changes and a missing permission (#473–#476)',()=>{
+  assert.strictEqual(F.problem(409,'{"code":"exists","error":"x"}'),'같은 이름이 있음');
+  assert.strictEqual(F.problem(409,'{"code":"not-empty","error":"x"}'),'비어 있지 않은 폴더');
+  assert.match(F.problem(501,'{"code":"old-node","error":"x"}'),/노드를 새 판으로/);
+  assert.strictEqual(F.problem(403,'forbidden: this login may not change files (files)'),'권한 없음');
+  assert.strictEqual(F.problem(403,'forbidden'),'이 주소에서는 파일이 꺼져 있음');
+  assert.strictEqual(F.UPLOAD_MAX,4<<20);
+});

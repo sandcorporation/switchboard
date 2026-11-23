@@ -214,6 +214,8 @@ func (l *Link) session(ctx context.Context, url string) (attached bool, err erro
 	// This node answers file frames (#447) and writes (#448).
 	header.Set(config.HeaderPrefix+config.NodeFilesHeaderName, "1")
 	header.Set(config.HeaderPrefix+config.NodeFileWriteHeaderName, "1")
+	// … and deletes, renames and takes uploads (#473–#475).
+	header.Set(config.HeaderPrefix+config.NodeFileOpsHeaderName, "1")
 	ws, resp, err := websocket.Dial(dctx, url, &websocket.DialOptions{HTTPHeader: header})
 	cancel()
 	if err != nil {
@@ -271,7 +273,7 @@ func (l *Link) session(ctx context.Context, url string) (attached bool, err erro
 			}
 			if f.Type == wire.NodeFileType {
 				var data []byte
-				if f.File != nil && f.File.Op == wire.FileWrite {
+				if f.File != nil && (f.File.Op == wire.FileWrite || f.File.Op == wire.FileUpload) {
 					data = writes.take(f.File.Ref)
 				}
 				l.file(sctx, f, data, files, write, writeFile)
@@ -345,9 +347,12 @@ func (l *Link) file(sctx context.Context, f wire.NodeFrame, data []byte, slots c
 	go func() {
 		defer func() { <-slots }()
 		var res wire.NodeFileResult
-		if req.Op == wire.FileWrite {
+		switch req.Op {
+		case wire.FileWrite:
 			res = l.Node.FileWrite(f.ID, req, data)
-		} else {
+		case wire.FileDelete, wire.FileRename, wire.FileUpload:
+			res = l.Node.FileChange(f.ID, req, data)
+		default:
 			res, data = l.Node.File(f.ID, req)
 		}
 		if req.Op == wire.FileRead && res.Code == "" {
@@ -420,9 +425,9 @@ func (l *Link) receive(ctx context.Context, f wire.NodeFrame, sctx context.Conte
 }
 
 // writeBuffers holds the bytes of writes whose file frame has not come yet
-// (#448), by ref: at most fileWorkers of them, each at most
-// wire.FileTextMax plus one byte (so an oversized write still fails as too
-// big, not short). Only the read loop touches it.
+// (#448) and uploads (#475), by ref: at most fileWorkers of them, each at
+// most wire.FileUploadMax plus one byte (so an oversized write still fails
+// as too big, not short). Only the read loop touches it.
 type writeBuffers map[string][]byte
 
 func (w writeBuffers) add(ref string, b []byte) {
@@ -430,7 +435,7 @@ func (w writeBuffers) add(ref string, b []byte) {
 	if !ok && (len(w) >= fileWorkers || len(ref) > 255) {
 		return
 	}
-	if room := wire.FileTextMax + 1 - len(cur); len(b) > room {
+	if room := max(wire.FileTextMax, wire.FileUploadMax) + 1 - len(cur); len(b) > room {
 		b = b[:room]
 	}
 	w[ref] = append(cur, b...)
