@@ -29,9 +29,9 @@ func cliProgress(c Config, p parsedArgs) (int, error) {
 		fmt.Println(strings.TrimSpace(string(b)))
 		return ExitOK, nil
 	}
-	services := r.Services
+	services, left := r.Services, r.Left
 	if len(p.pos) == 1 {
-		services = nil
+		services, left = nil, nil
 		for _, s := range r.Services {
 			if s.Service == p.pos[0] {
 				services = append(services, s)
@@ -40,9 +40,33 @@ func cliProgress(c Config, p parsedArgs) (int, error) {
 		if len(services) == 0 {
 			return 0, fmt.Errorf("no service %q in progress", p.pos[0])
 		}
+		for _, it := range r.Left {
+			if svc, _, _ := strings.Cut(it.RecordedBy, "/"); svc == p.pos[0] {
+				left = append(left, it)
+			}
+		}
 	}
-	_, err = io.WriteString(os.Stdout, formatProgress(services, r.GeneratedAt))
+	_, err = io.WriteString(os.Stdout, formatProgress(services, r.GeneratedAt)+formatLeft(left, r.GeneratedAt))
 	return ExitOK, err
+}
+
+// formatLeft renders the open 남긴 것 items (#470), oldest first: item ID,
+// the directive it came from, who recorded it, when, and the text ((적지
+// 않음) for an older CLI's ending answer). "" when there are none.
+func formatLeft(items []wire.LeftItem, now time.Time) string {
+	if len(items) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "\n남긴 것 %d\n", len(items))
+	for _, it := range items {
+		text := it.Text
+		if it.Kind == wire.LeftKindUnrecorded {
+			text = "(적지 않음)"
+		}
+		fmt.Fprintf(&b, "  #%d 지시 #%d %s %s — %s\n", it.ID, it.Directive, it.RecordedBy, relTime(now, it.RecordedAt), text)
+	}
+	return b.String()
 }
 
 // formatProgress renders services in the order given (the server sends the
@@ -72,6 +96,9 @@ func formatProgress(ss []wire.ServiceProgress, now time.Time) string {
 				}
 				b.WriteString("\n")
 			}
+		}
+		if s.Left > 0 {
+			fmt.Fprintf(&b, "  남긴 것 %d\n", s.Left)
 		}
 		if len(s.OpenDirectives) > 0 {
 			b.WriteString("  답 없는 지시\n")

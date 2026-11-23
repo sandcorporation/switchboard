@@ -323,3 +323,46 @@ func TestCLILeft(t *testing.T) {
 		t.Fatalf("open after issue and pass: %+v", got)
 	}
 }
+
+// 진행 (#470 T3): GET /api/admin/progress lists the open items, oldest
+// first, with their directive, and counts them on the service of the role
+// that recorded them; an ended item leaves both.
+func TestProgressLeft(t *testing.T) {
+	t.Parallel()
+	s, clock := slotsWithRoles(t)
+	s.admin.ProxyToken = "proxy-secret"
+	d := directiveTo(t, s, clock, "work")
+	if w := callNew(s, "POST", fmt.Sprintf("/api/messages/%d/reply", d.ID), "team/worker", map[string]any{"body": "done", "done": true, "left": []string{"a", "b"}}); w.Code != 201 {
+		t.Fatalf("reply: %d %s", w.Code, w.Body)
+	}
+	old := directiveTo(t, s, clock, "old cli")
+	if w := callAs(s, "POST", fmt.Sprintf("/api/messages/%d/complete", old.ID), workerToken, "team/worker", nil); w.Code != 200 {
+		t.Fatalf("old complete: %d %s", w.Code, w.Body)
+	}
+	progress := func() wire.ProgressReport {
+		w := adminRequest(s, "GET", "/api/admin/progress", "", nil)
+		var rp wire.ProgressReport
+		if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &rp) != nil {
+			t.Fatalf("progress: %d %s", w.Code, w.Body)
+		}
+		return rp
+	}
+	count := func(rp wire.ProgressReport, svc string) int {
+		for _, p := range rp.Services {
+			if p.Service == svc {
+				return p.Left
+			}
+		}
+		return -1
+	}
+	rp := progress()
+	if len(rp.Left) != 3 || rp.Left[0].Text != "a" || rp.Left[0].Directive != d.ID || rp.Left[0].DirectiveSubject != "work" || rp.Left[0].DirectiveFrom != "hq/boss" || rp.Left[2].Kind != wire.LeftKindUnrecorded || count(rp, "team") != 3 || count(rp, "hq") != 0 {
+		t.Fatalf("progress left %+v, team %d", rp.Left, count(rp, "team"))
+	}
+	if w := adminWrite(s, "POST", fmt.Sprintf("/api/admin/left/%d/drop", rp.Left[0].ID), `{"reason":"not needed"}`); w.Code != 200 {
+		t.Fatalf("drop: %d %s", w.Code, w.Body)
+	}
+	if rp = progress(); len(rp.Left) != 2 || count(rp, "team") != 2 {
+		t.Fatalf("after drop %+v", rp.Left)
+	}
+}
