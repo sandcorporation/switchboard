@@ -198,7 +198,11 @@ function wsStart(){
       dropTarget(bar,g,()=>'center');
       dropTarget(body,g,e=>{const r=body.getBoundingClientRect();return L.dropZone(r.width,r.height,e.clientX-r.left,e.clientY-r.top)});
     }
-    el.addEventListener('pointerdown',()=>{if(g.active&&st.focus!==g.active){st.focus=g.active;save();markFocus()}},true);
+    el.addEventListener('pointerdown',()=>{
+      // A session panel brings the session screen back (#519).
+      if(S.sessionOf(g.active))frameToSession();
+      if(g.active&&st.focus!==g.active){st.focus=g.active;save();markFocus()}
+    },true);
     if(g.active&&g.active===st.focus)el.classList.add('ws-focus');
     el.dataset.g=g.g;
     el.append(bar,body);
@@ -228,6 +232,7 @@ function wsStart(){
   }
   // pick shows a panel; a 메뉴 panel also becomes the page's tab (hash).
   function pick(p){
+    if(S.sessionOf(p))frameToSession();
     st=L.open(st,p);commit();
     const m=menuOf(p);if(m&&m!==curTab)selectTab(m);
   }
@@ -309,6 +314,10 @@ function wsStart(){
   $('appMain').append(gripR);frameGrip(gripR,'r');
   $('appMain').append(sideEl);
   let needN=0,needSeq=0,sessSeq=0,sessShown='',needRows=[],sessRole='';
+  // pageRole is the session on the session screen that is not hosted
+  // (#519): the column shows its mail and what it waits on.
+  let pageRole='';
+  const ROLE_SUBS=['mail','needs'];
   function pickSub(k){side.sub=k;saveSide();drawSess().then(()=>ixBtn[k].focus())}
   // markNeeds marks the row whose panel has focus.
   function markNeeds(){for(const b of needList.querySelectorAll('.ws-need'))if(b.dataset.p===st.focus)b.setAttribute('aria-current','true');else b.removeAttribute('aria-current')}
@@ -328,7 +337,7 @@ function wsStart(){
   // drawNeeds lists the waiting rows of the followed session (all with none).
   function drawNeeds(){
     const sess=needSess,id=side.session,a=document.activeElement,was=needList.contains(a)?a.dataset.p:'';
-    const rows=id?needRows.filter(r=>r.pid==='term:'+id||(!!sessRole&&r.who===sessRole)):needRows;
+    const rows=pageRole?needRows.filter(r=>r.who===pageRole):id?needRows.filter(r=>r.pid==='term:'+id||(!!sessRole&&r.who===sessRole)):needRows;
     ixBtn.needs.querySelector('.ix-n').textContent=rows.length?String(rows.length):'';
     {
       needList.replaceChildren(...rows.map(r=>{
@@ -364,9 +373,18 @@ function wsStart(){
   // an open detail holds the same views, so the column stays empty meanwhile.
   async function drawSess(){
     const id=side.session,seq=++sessSeq;
-    for(const [k,b] of Object.entries(ixBtn)){const on=k===side.sub;b.setAttribute('aria-selected',String(on));b.tabIndex=on?0:-1}
-    const needs=side.sub==='needs';needBox.hidden=!needs;
+    const sub=pageRole&&!ROLE_SUBS.includes(side.sub)?'mail':side.sub;
+    for(const [k,b] of Object.entries(ixBtn)){const on=k===sub;b.setAttribute('aria-selected',String(on));b.tabIndex=on?0:-1;b.hidden=!!pageRole&&!ROLE_SUBS.includes(k)}
+    const needs=sub==='needs';needBox.hidden=!needs;
     if(detailCur){sessShown='';sessBody.replaceChildren();return}
+    if(pageRole){
+      sessShown='role:'+pageRole;sessRole=pageRole;sessTitle.textContent=pageRole;sessWhere.textContent='';sessBadge.hidden=true;
+      const out=document.createElement('div');
+      if(!needs){try{await wsMail(pageRole,out)}catch(e){out.append(node('p',e.message,'msg err'))}}
+      if(seq!==sessSeq)return;
+      sessBody.replaceChildren(...out.childNodes);drawNeeds();
+      return;
+    }
     sessShown=id||'-';
     if(!id){sessRole='';sessTitle.textContent=needs?'답을 기다리는 것':'세션';sessWhere.textContent='';sessBadge.hidden=true;sessBody.replaceChildren(needs?'':node('p','세션 없음','empty'));drawNeeds();return}
     const out=document.createElement('div');
@@ -767,6 +785,9 @@ function wsStart(){
     // session cards, #510); session is the session the column follows.
     openTerm(v){openTerm(v);if(mq.matches)drawer(false)},
     session(){return side.session},
+    // followRole points the column at a session that is not hosted (its
+    // screen is on the centre, #519); '' follows the focused panel again.
+    followRole(role){if(role===pageRole)return;pageRole=role;drawSess()},
     // shown says whether tab name's section is on screen now.
     shown(name){return shownPanels().includes('menu:'+name)},
     // termPaneFor stands in a detail body for the terminal screen: it opens

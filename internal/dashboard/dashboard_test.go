@@ -753,8 +753,10 @@ func TestDashboardWorkspaceLoadsWithHosting(t *testing.T) {
 		// With hosting on, the list column shows only the list screen, and
 		// opening a terminal from the left pane leaves it for the workspace.
 		".fr-split .sc-app-page>[hidden],.fr-split .sc-app-page>:not(.lsec){display:none}",
-		"if(r.term&&ws&&ws.openTerm){frameLeaveList();ws.openTerm(r.term)}",
-		"wsLoading=loadAssets(list).then(()=>{ws=wsStart();if(listTab(curTab))frameSplit(true)})",
+		// A session card opens the session screen (#519) through the address.
+		"const h='#session='+encodeURIComponent(r.role);",
+		"if(r&&r.term&&ws){frameScreen('');ws.followRole('');ws.openTerm(r.term)}",
+		"wsLoading=loadAssets(list).then(()=>{ws=wsStart();if(listTab(curTab))frameSplit(true);if(curTab)frameScreen('menu');frameSessionTry()})",
 		"if(tabShown(k))liveDirty.add(k);",
 		"if(ws)ws.live(kinds);",
 		"api('admin-actions?target='+id+'&limit=20').catch(()=>null)",

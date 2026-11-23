@@ -216,7 +216,7 @@ func cookieNamed(w *httptest.ResponseRecorder, name string) *http.Cookie {
 // startOIDC is GET /auth/login: the redirect target and the flow cookie.
 func startOIDC(t *testing.T, s *Server) (string, *http.Cookie) {
 	t.Helper()
-	w := doAuth(s, authReq{method: "GET", path: "/auth/login"})
+	w := doAuth(s, authReq{method: "GET", path: "/auth/login", host: "mail.example"})
 	if w.Code != http.StatusFound {
 		t.Fatalf("login=%d %s", w.Code, w.Body)
 	}

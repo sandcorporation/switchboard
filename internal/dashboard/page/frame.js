@@ -94,6 +94,7 @@ async function frameLoad(){
     if(seq!==frameSeq)return;
     frameData={sessions:p.sessions||[],terms:Array.isArray(terms)?terms:[],questions:q.questions||[],perms:pm.permissions||[],nodes:Array.isArray(nodes)?nodes:null,hour:hr&&hr.last_hour?hr.last_hour:null};
     frameDraw();frameStatus();
+    if(frameWant)frameSessionTry();else if(frameSessRole)frameSessDraw();
   }catch(e){if(seq===frameSeq){$('sessList').replaceChildren(node('p',e.message,'msg err lp-msg'))}}
 }
 function frameDraw(){
@@ -135,29 +136,127 @@ function frameCard(r){
   b.onclick=()=>frameOpen(r);
   return b;
 }
-// frameOpen shows a session: a hosted one as its terminal panel (the
-// workspace) or the terminal detail, any other one as the session detail.
+// frameOpen shows a session's screen (#519): the address points at it.
 function frameOpen(r){
-  frameSel=r.term?r.term.id:r.role;frameMark();
-  if(r.term&&ws&&ws.openTerm){frameLeaveList();ws.openTerm(r.term)}
-  else if(r.term)openDetail('terminals',r.term.id,'screen');
-  else openDetail('sessions',r.role);
+  const h='#session='+encodeURIComponent(r.role);
+  if(location.hash===h)frameSession(r.role);else location.hash=h.slice(1);
 }
-// frameLeaveList steps out of a list screen (#514) to the workspace: the
-// hash drops the screen, so its menu row opens it again.
-function frameLeaveList(){
-  if(!listTab(curTab))return;
-  history.replaceState(null,'',location.pathname+location.search);
-  hideDetail();$('panel-'+curTab).hidden=true;frameSplit(false);
+// ---- 세션 화면 (#519) ----
+// A card opens its session's screen in the centre: a hosted one's terminal
+// panel (the workspace), any other one's page (#sessScreen: the head, then
+// 상태 · 답을 기다림 · 메일 · 작업 one under another). The right column
+// shows on the session screen only, for the session on it; a menu screen
+// hides it (html.fr-menu).
+let frameWant='',frameSessRole='',frameSessSeq=0;
+// frameScreen sets which screen the centre holds: 'menu', 'sess' (a page
+// session) or '' (the workspace's session panels).
+function frameScreen(kind){
+  const html=document.documentElement;
+  html.classList.toggle('fr-menu',kind==='menu');
+  html.classList.toggle('fr-sess',kind==='sess');
+  if(kind!=='sess'){frameSessRole='';$('sessScreen').hidden=true}
+  if(ws)document.querySelector('.sc-app-page').hidden=!(html.classList.contains('fr-split')||kind==='sess');
+}
+// frameSession opens role's screen once the list (and, for a hosted one,
+// the workspace) is there; frameLoad and the workspace start call it again.
+function frameSession(role){frameWant=role;frameSessionTry()}
+function frameSessionTry(){
+  const role=frameWant;
+  if(!role||!frameData)return;
+  const r=frameRows(frameData).find(x=>x.role===role)||null;
+  // With hosting on, the workspace (its terminal panels, the right column)
+  // comes first.
+  if(hostingOn&&!ws&&!wsFailed)return;
+  frameWant='';
+  frameLeaveMenu();
+  frameSel=r&&r.term?r.term.id:role;
+  if(r&&r.term&&ws){frameScreen('');ws.followRole('');ws.openTerm(r.term)}
+  else{frameScreen('sess');frameSessRole=role;frameSessDraw();if(ws)ws.followRole(role)}
+  frameCrumb();frameMark();
+}
+// frameLeaveMenu steps out of the menu screen on the centre: no menu row
+// is marked and the detail closes.
+function frameLeaveMenu(){
+  hideDetail();
+  if(curTab)$('panel-'+curTab).hidden=!(ws&&!listTab(curTab));
+  frameSplit(false);
   for(const n of tabNames){const t=$('tab-'+n);t.setAttribute('aria-selected','false');t.tabIndex=n==='requests'?0:-1}
   curTab='';
 }
+// frameToSession: a session panel of the workspace got the focus (a click
+// on it), so the centre is the session screen again.
+function frameToSession(){
+  const html=document.documentElement;
+  if(!curTab&&!html.classList.contains('fr-sess')&&!html.classList.contains('fr-menu'))return;
+  frameLeaveMenu();frameScreen('');if(ws)ws.followRole('');frameCrumb();
+}
+// frameCrumb names the session on screen in the title row and the address.
+function frameCrumb(){
+  if(curTab)return;
+  let role=frameSessRole;
+  if(!role&&ws&&ws.session()&&frameData){const r=frameRows(frameData).find(x=>x.term&&x.term.id===ws.session());role=r?r.role:''}
+  $('crumbTab').textContent=role||'세션';
+  const h=role?'#session='+encodeURIComponent(role):'';
+  if(location.hash!==h)history.replaceState(null,'',h||location.pathname+location.search);
+}
+// frameSessDraw draws the page of a session that is not hosted, with the
+// session detail's own drawing (registerDetail('sessions')).
+async function frameSessDraw(){
+  const role=frameSessRole,seq=++frameSessSeq,box=$('sessScreen');
+  if(!role)return;
+  box.hidden=false;
+  const head=node('div','','ss-head'),out=[head];
+  const sec=(title,el)=>{const s=node('section','','ss-sec');s.append(node('h2',title,'ss-h'),el);out.push(s)};
+  let it=null;
+  try{it=await details.sessions.load(role)}catch(e){if(seq===frameSessSeq)box.replaceChildren(node('p',e.message,'msg err'));return}
+  if(seq!==frameSessSeq)return;
+  const r=frameData?frameRows(frameData).find(x=>x.role===role):null;
+  const [stText,stCls]=!r||r.st==='offline'?['꺼짐','st-offline']:r.st==='unknown'?['모름','st-unknown']:sessionStatus(r.st);
+  const nm=node('h1',role+(r&&r.label?' · '+r.label:''),'ss-name');nm.title=role;
+  head.append(node('span','','dot '+stCls),nm,node('span',stText,'tag'));
+  if(r&&r.machine)head.append(node('span',r.machine,'tag'));
+  if(r&&r.cli&&r.cli!=='unknown'){const c=node('span',r.cli.split(/\s/)[0],'tag');c.title=r.cli;head.append(c)}
+  if(!it){out.push(node('p','세션 없음','empty'));box.replaceChildren(...out);return}
+  const status=document.createElement('div'),mail=document.createElement('div'),jobs=document.createElement('div');
+  await Promise.all([details.sessions.draw(it,'status',status),details.sessions.draw(it,'mail',mail).catch(e=>mail.append(node('p',e.message,'msg err'))),frameSessJobs(role,jobs)]);
+  if(seq!==frameSessSeq)return;
+  sec('상태',status);
+  sec('답을 기다림',frameSessNeeds(role));
+  sec('메일',mail);
+  sec('작업',jobs);
+  const top=box.scrollTop;box.replaceChildren(...out);box.scrollTop=top;
+}
+// frameSessNeeds lists role's waiting questions and permission requests.
+function frameSessNeeds(role){
+  const ul=node('ul','','dlist'),d=frameData||{questions:[],perms:[]};
+  for(const q of d.questions)if(q.asker===role){
+    const li=node('li',''),a=node('a',(q.questions||[]).map(x=>x.header).join(' · ')||q.id);a.href=detailHash('questions',q.id,'answer');
+    li.append(a,node('small','질문 · '+when(q.created_at)));ul.append(li);
+  }
+  for(const p of d.perms)if(p.requester===role){
+    const li=node('li',''),a=node('a',(p.tool||'')+(p.summary?' · '+p.summary:''));a.href=detailHash('permissions',p.id,'request');
+    li.append(a,node('small','권한 요청 · '+when(p.created_at)));ul.append(li);
+  }
+  return ul.childNodes.length?ul:node('p','대기 없음','empty');
+}
+// frameSessJobs lists role's jobs and watches.
+async function frameSessJobs(role,box){
+  try{
+    const jobs=await api('jobs?'+new URLSearchParams({role:role}));
+    const ul=node('ul','','dlist');
+    for(const j of jobs||[]){
+      const li=node('li',''),a=node('a',(jobKinds[j.kind]||j.kind)+' · '+(j.name||j.command||j.id));a.href=detailHash('jobs','job:'+j.id,'');
+      li.append(a,node('small',(j.state||'')+(j.machine?' · '+j.machine:'')+' · '+when(j.started_at||j.created_at)));ul.append(li);
+    }
+    box.append(ul.childNodes.length?ul:node('p','작업 없음','empty'));
+  }catch(e){box.append(node('p',e.message,'msg err'))}
+}
 // frameMark marks the card of the session on screen.
 function frameMark(){
-  const cur=ws&&ws.session?ws.session()||frameSel:frameSel;
+  const cur=frameSessRole||(ws&&ws.session?ws.session()||frameSel:frameSel);
   for(const b of $('sessList').querySelectorAll('.sess')){const on=!!cur&&(b.dataset.term===cur||b.dataset.role===cur);b.classList.toggle('on',on);if(on)b.setAttribute('aria-current','true');else b.removeAttribute('aria-current')}
 }
-document.addEventListener('ws-follow',frameMark);
+document.addEventListener('ws-follow',()=>{frameMark();frameCrumb()});
 $('gsQ').addEventListener('input',frameDraw);
 $('sessWait').onclick=()=>{frameWait=!frameWait;$('sessWait').setAttribute('aria-pressed',String(frameWait));frameDraw()};
 
@@ -165,8 +264,10 @@ $('sessWait').onclick=()=>{frameWait=!frameWait;$('sessWait').setAttribute('aria
 function frameStatus(){
   const d=frameData;if(!d)return;
   const on=d.sessions.filter(s=>s.online).length;
-  const machines=d.nodes?d.nodes.filter(n=>!n.revoked_at&&n.connected).length:null;
-  $('stCount').textContent='세션 '+on+(machines===null?'':' · 기계 '+machines);
+  // 기계 (#519): the machines the online sessions run on, not the nodes.
+  const machines=[...new Set(d.sessions.filter(s=>s.online&&s.machine).map(s=>s.machine))].sort();
+  $('stCount').textContent='세션 '+on+' · 기계 '+machines.length;
+  $('stCount').title=machines.length?'기계 — '+machines.join(', '):'붙은 기계 없음';
   // 지난 한 시간 (#511 T3): mail and reports from GET metrics/hourly; the
   // cell stays empty (and hidden) when the server gave none.
   const h=d.hour,hb=$('stHour');hb.hidden=!h;

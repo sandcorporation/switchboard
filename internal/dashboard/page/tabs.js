@@ -15,7 +15,7 @@ function listTab(name){return listTabs.includes(name)}
 // frameSplit turns the list screen layout on or off.
 function frameSplit(on){
   document.documentElement.classList.toggle('fr-split',on);
-  const main=document.querySelector('.sc-app-page');if(ws)main.hidden=!on;
+  const main=document.querySelector('.sc-app-page');if(ws)main.hidden=!on&&!document.documentElement.classList.contains('fr-sess');
   splitEmptyShow();
 }
 // splitEmptyShow shows the body column's empty state while a list screen

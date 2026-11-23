@@ -38,6 +38,7 @@
 <div id="gsPanel" class="gspanel" hidden><div class="gshead"><span id="gsCount" role="status"></span><select id="gsKind" aria-label="종류" title="종류"><option value="">전체</option><option value="mail">메일</option><option value="report">보고</option><option value="question">질문</option><option value="left">남긴 것</option><option value="request">지시</option></select><label class="gsre" title="Go 정규식(RE2) · 대소문자 무시"><input type="checkbox" id="gsRe" title="검색어를 정규식으로 읽는다"> 정규식</label></div><ul id="gsList" class="gslist"></ul><button type="button" id="gsMore" class="gsmore" hidden title="더 보기">더 보기</button></div>
 <div class="sc-app-main" id="appMain">
 <main class="sc-app-page">
+<section id="sessScreen" class="ss" aria-label="세션 화면" hidden></section>
 <section id="panel-requests" role="tabpanel" aria-labelledby="tab-requests" tabindex="0" class="lsec">
 <div class="ls-h"><h2>지시</h2><span id="requestsNote" class="ls-note" role="status" aria-live="polite"></span><button type="button" class="fr-ib" id="reloadRequests" title="다시 불러온다">↻</button></div>
 <input type="search" class="ls-filter" id="requestsFilter" placeholder="거르기" title="지시 제목·번호·결과로 거른다" aria-label="지시 거르기" autocomplete="off" maxlength="200">
