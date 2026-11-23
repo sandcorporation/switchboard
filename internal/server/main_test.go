@@ -133,7 +133,7 @@ func TestAdminReadAPIRequiresProxySecretAndIsReadOnly(t *testing.T) {
 		t.Fatalf("wrong proxy secret=%d", w.Code)
 	}
 	w := request("GET", "/api/admin/roles", "proxy-secret")
-	if w.Code != 200 || !strings.Contains(w.Body.String(), `[{"role":"a","created_at":"now","revoked_at":null,"group":"","last_used_at":"","last_machine":""},{"role":"b",`) || strings.Contains(w.Body.String(), "secret-a") || strings.Contains(w.Body.String(), "sha256") {
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `[{"role":"a","created_at":"now","revoked_at":null,"rotated_at":null,"retired_at":null,"group":"","last_used_at":"","last_machine":""},{"role":"b",`) || strings.Contains(w.Body.String(), "secret-a") || strings.Contains(w.Body.String(), "sha256") {
 		t.Fatalf("roles response=%d %s", w.Code, w.Body)
 	}
 	w = request("GET", "/api/admin/messages?box=inbox&role=b&thread=41", "proxy-secret")

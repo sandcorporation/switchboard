@@ -1,7 +1,10 @@
 package cli
 
 import (
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/url"
@@ -10,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sandcorporation/switchboard/internal/ownerfile"
 	"github.com/sandcorporation/switchboard/internal/wire"
 )
 
@@ -130,8 +134,52 @@ func rolesWrite(c Config, p parsedArgs) (int, error) {
 		return bossSend(c, "POST", "roles/"+escapePath(role)+"/revoke?force=1", nil, jsonOut, os.Stdout, "revoked "+role)
 	case "restore":
 		return bossSend(c, "POST", "roles/"+escapePath(role)+"/restore", nil, jsonOut, os.Stdout, "restored "+role)
+	case "rotate":
+		path := p.values["--token-file"]
+		if path == "" {
+			return 0, usagef("roles rotate requires --token-file")
+		}
+		if !confirmed(p, os.Stdout, "rotate the token of "+role+": its current token stops working and the one in "+path+" replaces it") {
+			return ExitUsage, nil
+		}
+		credential, err := rotationCredential(path)
+		if err != nil {
+			return 0, err
+		}
+		return bossSend(c, "POST", "roles/"+escapePath(role)+"/rotate", map[string]string{"credential": credential}, jsonOut, os.Stdout, "rotated "+role+"; its new token is in "+path)
+	case "retire":
+		would := "retire " + role + ": it is revoked for good (no restore, rotate or new registration under its name); its mail stays readable"
+		if use := recentRoleUse(c, role); use != "" {
+			would += "; " + use
+		}
+		if !confirmed(p, os.Stdout, would) {
+			return ExitUsage, nil
+		}
+		return bossSend(c, "POST", "roles/"+escapePath(role)+"/retire?force=1", nil, jsonOut, os.Stdout, "retired "+role)
 	}
-	return 0, usagef("roles: unknown action %q (revoke, restore)", p.pos[0])
+	return 0, usagef("roles: unknown action %q (revoke, restore, rotate, retire)", p.pos[0])
+}
+
+// rotationCredential is the new token for `roles rotate`: the content of
+// path, or, when path is missing or empty, a new random one written there
+// owner-only first, so a lost reply never loses the token.
+func rotationCredential(path string) (string, error) {
+	b, err := os.ReadFile(path)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return "", errors.New("cannot read " + path)
+	}
+	if t := strings.TrimSpace(string(b)); t != "" {
+		return t, nil
+	}
+	raw := make([]byte, 32)
+	if _, err = rand.Read(raw); err != nil {
+		return "", err
+	}
+	t := base64.RawURLEncoding.EncodeToString(raw)
+	if err = ownerfile.Write(path, []byte(t+"\n")); err != nil {
+		return "", errors.New("cannot write " + path)
+	}
+	return t, nil
 }
 
 // settingsWrite runs `settings set TARGET` (options left out keep the
