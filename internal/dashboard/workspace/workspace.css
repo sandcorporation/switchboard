@@ -1,28 +1,28 @@
 /* 작업 화면 (#444): loaded with hosting on only; html.ws-on once it runs. */
-.ws-on .sc-app-main{height:100vh;height:100dvh;grid-template-rows:auto minmax(0,1fr)}
-.ws-on .sc-app-main>.sc-topbar{grid-column:1}
+.ws-on .sc-app-main{grid-template-rows:minmax(0,1fr)}
 .ws-on .sc-app-page{display:none}
-#ws{grid-column:1;grid-row:2;display:flex;min-width:0;min-height:0;padding:var(--space-2);background:var(--color-paper)}
+#ws{grid-column:1;grid-row:1;display:flex;min-width:0;min-height:0;background:var(--color-canvas)}
 #ws>*{flex:1 1 0;min-width:0;min-height:0}
 .ws-split{display:flex;min-width:0;min-height:0}
 .ws-split.ws-row{flex-direction:row}
 .ws-split.ws-col{flex-direction:column}
 .ws-cell{display:flex;min-width:0;min-height:0}
 .ws-cell>*{flex:1 1 0;min-width:0;min-height:0}
-.ws-gutter{flex:0 0 6px;background:transparent;touch-action:none}
+.ws-gutter{flex:0 0 5px;background:linear-gradient(var(--color-line),var(--color-line)) center/1px 100% no-repeat;touch-action:none}
+.ws-col>.ws-gutter{background-size:100% 1px}
 .ws-row>.ws-gutter{cursor:col-resize}
 .ws-col>.ws-gutter{cursor:row-resize}
 .ws-gutter:hover,.ws-gutter:focus-visible{background:var(--color-accent-tint)}
 .ws-resizing{user-select:none}
 .ws-resizing iframe,.ws-resizing .termscreen{pointer-events:none}
-.ws-group{display:flex;flex-direction:column;min-width:0;min-height:0;background:var(--color-canvas);border:1px solid var(--color-line);border-radius:var(--radius)}
-.ws-group.ws-focus{border-color:var(--color-line-strong)}
-.ws-tabs{display:flex;align-items:stretch;min-width:0;border-bottom:1px solid var(--color-line);background:var(--color-paper);border-radius:var(--radius) var(--radius) 0 0}
+.ws-group{display:flex;flex-direction:column;min-width:0;min-height:0;background:var(--color-canvas)}
+.ws-tabs{flex:none;height:32px;display:flex;align-items:stretch;min-width:0;border-bottom:1px solid var(--color-line);background:var(--color-paper)}
 .ws-tablist{display:flex;min-width:0;overflow-x:auto;scrollbar-width:thin}
-.ws-tabcell{display:flex;align-items:center;flex:0 0 auto;border-right:1px solid var(--color-line)}
-.ws-tabcell.on{background:var(--color-canvas);box-shadow:inset 0 2px var(--color-accent)}
+.ws-tabcell{display:flex;align-items:center;flex:0 1 auto;min-width:0;border-right:1px solid var(--color-line)}
+.ws-tabcell.on{background:var(--color-canvas);box-shadow:inset 0 1px var(--color-accent)}
+.ws-focus .ws-tabcell.on .ws-tab{color:#fff}
 .ws-tab,.ws-x,.ws-menu{border:0;border-radius:0;background:none;padding:.35rem .6rem;font-size:.85em}
-.ws-tab{max-width:14rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ws-tab{max-width:14rem;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ws-tabcell:not(.on) .ws-tab{color:var(--color-muted)}
 .ws-x{padding:.35rem .45rem .35rem 0;color:var(--color-muted)}
 .ws-menu{border-right:1px solid var(--color-line);font-size:1rem}
@@ -42,10 +42,8 @@
 .ws-idx{display:flex;flex-wrap:wrap;gap:2px;width:100%;margin-bottom:var(--space-1)}
 .ws-idx-tab{flex:1 1 auto;min-width:0;border:1px solid var(--color-line);border-radius:var(--radius);background:none;padding:.2rem .4rem;font-size:.8em;color:var(--color-muted)}
 .ws-idx-tab[aria-selected=true]{background:var(--color-accent-tint);border-color:var(--color-accent);color:var(--color-ink);font-weight:600}
-.ws-on.ws-idx-nodes .sc-sidenav{width:clamp(220px,24vw,320px);align-items:stretch;padding-left:10px;padding-right:10px}
-.ws-on.ws-idx-nodes .sc-sidenav-org{justify-content:flex-start;width:100%}
-.ws-nodes[hidden],.ws-invite[hidden],.ws-invited[hidden],.sc-sidenav .tabs[hidden]{display:none}
-.ws-nodes{display:flex;flex-direction:column;gap:var(--space-2);min-width:0;font-size:.9em}
+.ws-nodes[hidden],.ws-invite[hidden],.ws-invited[hidden],.lp-main[hidden]{display:none}
+.ws-nodes{flex:1 1 auto;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:var(--space-2);min-width:0;padding:4px 10px;font-size:.9em}
 .ws-nodes-bar{display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-2)}
 .ws-nodes-bar .muted{font-size:.85em}
 .ws-invite,.ws-grant-form{display:flex;flex-wrap:wrap;gap:var(--space-1)}
@@ -88,29 +86,17 @@
 .termpane.typing .termscreen{overflow:hidden}
 .termpane .t-mode{margin-left:auto}
 .termpane .t-mode[aria-pressed="true"]{outline:2px solid var(--st-idle)}
-.ws-scrim{display:none}
 @media (min-width:601px) and (max-width:720px){
-.ws-on.ws-idx-nodes .sc-sidenav{width:100%;flex-direction:column;max-height:50vh;max-height:50dvh;overflow-y:auto}
-.ws-on.ws-idx-nodes .sc-sidenav-org{display:none}
 }
 @media (max-width:600px){
 #ws{padding:0}
 .ws-group{border:0;border-radius:0}
-.ws-on .sc-sidenav{display:none}
-.ws-on.ws-left-open .sc-sidenav{display:flex;position:fixed;inset:0 auto 0 0;z-index:30;width:min(80vw,260px);height:100vh;height:100dvh;flex-direction:column;align-items:stretch;overflow-y:auto;padding:var(--space-3) 10px;border-right:1px solid var(--color-line);border-bottom:0}
-.ws-on.ws-left-open .sc-sidenav .tabs{flex-direction:column;align-items:stretch}
-.ws-on.ws-left-open .sc-sidenav-item{width:auto;justify-content:flex-start}
-.ws-on.ws-left-open .sc-sidenav-label,.ws-on.ws-left-open .sc-sidenav-org-text{position:static;width:auto;height:auto;clip-path:none}
-.ws-on.ws-left-open .sc-sidenav-heading{display:block}
-.ws-on.ws-left-open .sc-sidenav-item{gap:10px}
-.ws-on.ws-left-open .sc-sidenav-org{justify-content:flex-start;width:100%;margin:0 0 var(--space-2)}
-.ws-on.ws-left-open.ws-idx-nodes .sc-sidenav{width:min(90vw,320px)}
-.ws-on.ws-left-open .sc-sidenav-item[aria-selected=true]::before{top:var(--space-2);bottom:var(--space-2);left:0;right:auto;width:2px;height:auto}
-.ws-on.ws-left-open .ws-scrim{display:block;position:fixed;inset:0;z-index:29;background:rgb(0 0 0/.35)}
 }
 /* 오른쪽 칸 (#445): the column beside the centre; an open detail takes its place. */
-.ws-on .sc-app-main:not(.has-detail){grid-template-columns:minmax(0,1fr) 320px}
-.ws-side{grid-column:2;grid-row:1/span 2;min-width:0;min-height:0;overflow-y:auto;overflow-x:hidden;background:var(--color-canvas);border-left:1px solid var(--color-line);overflow-wrap:anywhere}
+.ws-on .sc-app-main:not(.has-detail){grid-template-columns:minmax(0,1fr) 5px var(--rp-w,292px)}
+.fr-grip-r{grid-column:2;grid-row:1;margin:0}
+.has-detail>.fr-grip-r{display:none}
+.ws-side{grid-column:3;grid-row:1;min-width:0;min-height:0;overflow-y:auto;overflow-x:hidden;background:var(--color-paper);overflow-wrap:anywhere}
 .has-detail>.ws-side{display:none}
 .ws-side h2,.ws-item-head h2{flex:1;min-width:0;margin:0;font-size:.95rem}
 .ws-needs{padding:var(--space-3);border-bottom:1px solid var(--color-line)}
@@ -139,10 +125,9 @@
 .ws-side-x{float:right;border:0;background:none;padding:.4rem .6rem;font-size:1.2rem}
 @media (max-width:600px){
 .ws-on .sc-app-main:not(.has-detail){grid-template-columns:minmax(0,1fr)}
-.ws-side{display:none}
+.ws-side,.fr-grip-r{display:none}
 .ws-sidebtn,.ws-side-x{display:inline-block}
 .ws-on.ws-right-open .ws-side{display:block;position:fixed;inset:0 0 0 auto;z-index:30;width:min(88vw,360px);height:100vh;height:100dvh}
-.ws-on.ws-right-open .ws-scrim{display:block;position:fixed;inset:0;z-index:29;background:rgb(0 0 0/.35)}
 }
 /* 파일 (#447): the session folder's tree in the column, a file's text in a panel. */
 .ws-files-bar{display:flex;justify-content:flex-end}
@@ -207,3 +192,32 @@
 .ws-tree-ask{flex-wrap:wrap;gap:var(--space-1);padding:.2rem .45rem;background:var(--color-paper)}
 .ws-tree-warn{flex:1 1 8rem;min-width:0;font-size:.85em;color:var(--color-danger,#b42318);overflow-wrap:anywhere}
 .ws-tree-input{flex:1;min-width:0;font:inherit;font-size:.85em;padding:.15rem .4rem}
+/* 오른쪽 칸 색인 (#510): one icon per view; only the chosen view shows. */
+.ws-menu{display:none}
+.ix{position:sticky;top:0;z-index:2;flex:none;height:36px;display:flex;align-items:center;gap:2px;padding:0 8px;background:var(--color-paper);border-bottom:1px solid var(--color-line)}
+.ix-b{position:relative;width:32px;height:28px;padding:0;border:0;border-radius:5px;background:none;display:grid;place-items:center;color:var(--color-muted)}
+.ix-b:hover{background:var(--fr-hover);color:var(--color-text)}
+.ix-b[aria-selected=true]{color:var(--color-ink)}
+.ix-b[aria-selected=true]::after{content:"";position:absolute;left:7px;right:7px;bottom:-4px;height:2px;background:var(--color-text)}
+.ix-b svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+.ix-n{position:absolute;right:1px;top:1px;min-width:13px;height:13px;padding:0 2px;box-sizing:border-box;border-radius:7px;background:var(--color-warning);color:var(--fr-on-warn);font-size:9.5px;font-weight:700;line-height:13px;text-align:center}
+.ix-n:empty{display:none}
+.ix .ws-side-x{margin-left:auto}
+.ixh{display:flex;align-items:center;gap:8px;min-height:30px;padding:0 12px;font-weight:600}
+.ixh h2{flex:1 1 auto;min-width:0;margin:0;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ixh .sc-badge{flex:none}
+.ixh .ixc{flex:none;max-width:50%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:400;font-size:11px;color:var(--color-muted)}
+.ws-side .ws-needs{padding:0 8px 8px;border:0}
+.ws-side .ws-needlist{max-height:none;margin:0}
+.ixh [hidden],.ix [hidden]{display:none}
+.ws-mail{list-style:none;margin:0;padding:0 8px}
+.ws-mailrow{display:block;width:100%;padding:5px 6px;border:0;border-bottom:1px solid var(--color-line);border-radius:0;background:none;text-align:left;color:inherit}
+.ws-mailrow:hover{background:var(--fr-hover)}
+.ws-mail1{display:flex;gap:8px;justify-content:space-between;min-width:0}
+.ws-mail1 strong{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
+.ws-mail1 span{flex:none;font-size:11px}
+.ws-mail2{display:block;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* Tabs shrink like browser tabs (#510) so the strip never scrolls sideways;
+   a narrow inactive tab shows its close button on hover or focus only. */
+.ws-x{flex:none}
+.ws-tablist .ws-tabcell:not(.on):not(:hover):not(:focus-within) .ws-x{display:none}

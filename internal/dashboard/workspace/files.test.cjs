@@ -17,9 +17,11 @@ test('the column follows the session of a file panel too',()=>{
   assert.strictEqual(S.follow('hs_1','menu:mail'),'hs_1');
 });
 
-test('the 파일 view is first of four, and the default stays 기록',()=>{
-  assert.deepStrictEqual(S.SUBS.map(s=>s[0]),['files','log','autos','settings']);
-  assert.strictEqual(S.initial().sub,'log');
+test('the icon row is 파일, 메일, 질문 · 권한 요청, 예약, 기록, 세션 설정 (#510), each with a hover text; the default is 메일',()=>{
+  assert.deepStrictEqual(S.SUBS.map(s=>s[0]),['files','mail','needs','autos','log','settings']);
+  for(const [k] of S.SUBS)assert.ok(S.TIPS[k]&&S.TIPS[k].length>3,k);
+  assert.strictEqual(S.parse('{"session":"a","sub":"needs"}').sub,'needs');
+  assert.strictEqual(S.initial().sub,'mail');
   assert.strictEqual(S.parse('{"session":"a","sub":"files"}').sub,'files');
 });
 

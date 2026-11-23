@@ -8,6 +8,7 @@ const liveCounts={requests:refreshRequestCount,reports:refreshReportCount,questi
 let liveBoot='',liveSeq=0,liveDelay=1000,liveDirty=new Set(),liveStale=new Set(),liveTimer=0,liveDetail=false;
 function liveMark(kinds){
   if(ws)ws.live(kinds);
+  frameLive(kinds);
   for(const k of kinds){
     if(detailCur&&(details[detailCur.tab].kinds||[detailCur.tab]).includes(k))liveDetail=true;
     if(!liveReload[k])continue;
@@ -110,7 +111,7 @@ function selectTab(name){
 for(const n of tabNames)$('tab-'+n).onclick=()=>selectTab(n);
 // visibleTabs leaves out 터미널 unless hosting is on.
 function visibleTabs(){return tabNames.filter(n=>n!=='terminals'||hostingOn)}
-$('tabs').addEventListener('keydown',e=>{
+for(const tl of [$('tabs'),$('tabsMore')])tl.addEventListener('keydown',e=>{
   const tabs=visibleTabs();
   const i=tabs.findIndex(n=>$('tab-'+n)===document.activeElement);
   if(i<0)return;
@@ -153,7 +154,7 @@ $('reset').onclick=()=>{$('thread').value='';$('task').value='';mailID='';$('sea
 $('search').addEventListener('keydown',e=>{if(e.key==='Enter')load()});
 $('thread').addEventListener('keydown',e=>{if(e.key==='Enter')load()});
 $('task').addEventListener('keydown',e=>{if(e.key==='Enter'){mailID='';load()}});
-loadMe();
+loadMe().then(frameStart);
 route();
 if(!tabLoaded.has('questions'))refreshQuestionCount();
 if(!tabLoaded.has('reports'))refreshReportCount();

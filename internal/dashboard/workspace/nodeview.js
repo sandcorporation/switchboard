@@ -9,7 +9,7 @@
 // shortWhen, termRole, termSt, termStateText, detailHash) and wsNodes.
 function wsNodeIndex(opts){
   const N=wsNodes,KEY='switchboard.workspace.index';
-  const html=document.documentElement,nav=document.querySelector('.sc-sidenav'),tabs=$('tabs');
+  const html=document.documentElement,tabs=$('lpMain');
   const idx=node('div','','ws-idx');idx.setAttribute('role','tablist');idx.setAttribute('aria-label','색인');
   const box=node('section','','ws-nodes');box.id='wsNodes';box.setAttribute('role','tabpanel');box.setAttribute('aria-label','노드');box.hidden=true;
   const btns={};
@@ -21,7 +21,7 @@ function wsNodeIndex(opts){
     if(e.key!=='ArrowLeft'&&e.key!=='ArrowRight'&&e.key!=='ArrowUp'&&e.key!=='ArrowDown')return;
     e.preventDefault();show(cur==='menu'?'nodes':'menu',true);btns[cur].focus();
   });
-  tabs.before(idx);tabs.after(box);
+  $('lpFoot').prepend(idx);tabs.after(box);
   const bar=node('div','','ws-nodes-bar');
   const addBtn=node('button','노드 붙이기');addBtn.type='button';
   const note=node('span','','muted');note.setAttribute('role','status');note.setAttribute('aria-live','polite');

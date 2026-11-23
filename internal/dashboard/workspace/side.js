@@ -10,7 +10,12 @@
 // panel, ask:<id> or perm:<id>.
 (function(root){
 'use strict';
-const SUBS=[['files','파일'],['log','기록'],['autos','예약'],['settings','설정']],DEFAULT_SUB='log';
+// SUBS are the column's views in the order of its icon row (#510): 파일,
+// 메일 (the session's role's mail), 질문 · 권한 요청 (those still waiting),
+// 예약, 기록 (starts, stops and restarts) and 세션 설정. TIPS are their
+// hover texts.
+const SUBS=[['files','파일'],['mail','메일'],['needs','질문 · 권한 요청'],['autos','예약'],['log','기록'],['settings','세션 설정']],DEFAULT_SUB='mail';
+const TIPS={files:'파일 — 이 세션의 작업 폴더',mail:'메일 — 이 세션의 역할이 주고받은 메일',needs:'질문 · 권한 요청 — 답을 기다리는 것',autos:'예약 — 이 세션으로 가는 예약',log:'기록 — 시작·정지·재시작',settings:'세션 설정 — 프로필·권한·재시작'};
 const ITEMS={ask:'questions',perm:'permissions'};
 function initial(){return {session:'',sub:DEFAULT_SUB}}
 // sessionOf is the hosted session a panel shows, '' for none.
@@ -58,6 +63,6 @@ function parse(text){
   }catch(e){return initial()}
 }
 function serialize(s){return JSON.stringify({session:s.session,sub:s.sub})}
-const api={SUBS:SUBS,initial:initial,sessionOf:sessionOf,follow:follow,itemOf:itemOf,needs:needs,parse:parse,serialize:serialize};
+const api={SUBS:SUBS,TIPS:TIPS,initial:initial,sessionOf:sessionOf,follow:follow,itemOf:itemOf,needs:needs,parse:parse,serialize:serialize};
 if(typeof module==='object'&&module.exports)module.exports=api;else root.wsSide=api;
 })(this);

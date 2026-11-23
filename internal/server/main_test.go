@@ -151,7 +151,8 @@ func TestDashboardUsesSameOriginAndNoRoleCredentials(t *testing.T) {
 	w := httptest.NewRecorder()
 	dashboard.Page(w, httptest.NewRequest("GET", "/", nil))
 	body := w.Body.String()
-	if w.Code != 200 || !strings.Contains(body, "fetch('/api/admin/") || strings.Contains(body, "Authorization") || strings.Contains(body, "type=\"password\"") || strings.Contains(body, "localStorage") {
+	// The browser keeps only the pane widths (#510), never a credential.
+	if w.Code != 200 || !strings.Contains(body, "fetch('/api/admin/") || strings.Contains(body, "Authorization") || strings.Contains(body, "type=\"password\"") || strings.Count(body, "localStorage") != strings.Count(body, "localStorage.getItem(PANE_KEY)")+strings.Count(body, "localStorage.setItem(PANE_KEY,") {
 		t.Fatalf("dashboard is not same-origin/read-only: %d", w.Code)
 	}
 	// Message content must be rendered as text; the body opens in the detail panel (#229).
