@@ -31,7 +31,8 @@ func TestFrameKind(t *testing.T) {
 		}
 		t.Skip("node not installed")
 	}
-	fn := regexp.MustCompile(`(?m)^function frameKind\(role\)\{.*\}$`).Find(src)
+	// No $: a CRLF checkout (Windows) leaves \r before the line end.
+	fn := regexp.MustCompile(`(?m)^function frameKind\(role\)\{.*\}`).Find(src)
 	if fn == nil {
 		t.Fatal("frame.js has no one-line frameKind")
 	}
