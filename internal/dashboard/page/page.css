@@ -468,44 +468,16 @@ input:focus,select:focus,textarea:focus{border-color:var(--color-accent);outline
 .sc-app-page{padding:8px}
 .gspanel{left:8px;right:8px;width:auto}
 }
-/* 목록 칸 + 본문 (#515): a panel with data-lv is the list column; the detail
-   fills the rest. Below 720px the list is the screen and the detail covers it. */
-.sc-app-main:has(>.sc-app-page:not([hidden])>[data-lv]:not([data-lv=full]):not([hidden])){grid-template-columns:var(--lv-w,248px) minmax(0,1fr)}
-.sc-app-main:has(>.sc-app-page:not([hidden])>[data-lv]:not([data-lv=full]):not([hidden]))>.sc-app-page{padding:0;background:var(--color-paper);border-right:1px solid var(--color-line);overflow-x:hidden}
-.sc-app-main:has(>.sc-app-page:not([hidden])>[data-lv]:not([data-lv=full]):not([hidden]))>.detail{border-left:0}
-.lv-head{position:sticky;top:0;z-index:1;height:28px;display:flex;align-items:center;gap:4px;padding:0 6px 0 12px;background:var(--color-paper);font-size:11px;font-weight:600;color:var(--color-muted)}
-.lv-head h2{flex:1 1 auto;min-width:0;margin:0;font-size:11px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.lv-filter{display:flex;gap:4px;padding:0 8px 6px}
-.lv-filter input,.lv-filter select{flex:1 1 0;min-width:0;height:22px;padding:0 6px;font-size:11.5px}
-.lv-note{display:block;padding:0 12px 4px;font-size:11px}
-.lv-note:empty{display:none}
-.lv-grp{display:flex;align-items:center;gap:6px;width:100%;height:24px;padding:0 8px 0 12px;border:0;border-radius:0;background:none;color:var(--fr-sub);font-size:11.5px;font-weight:600;text-align:left}
-.lv-grp:hover{background:var(--fr-hover);color:var(--color-ink)}
-.lv-grp-mark{flex:none;width:10px;font-size:9px;color:var(--color-muted)}
-.lv-grp-name{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.lv-grp-n{flex:none;font-weight:400;color:var(--color-muted);font-variant-numeric:tabular-nums}
-.lv-grp-row{display:flex;align-items:center}
-.lv-grp-row .lv-grp{flex:1 1 auto;min-width:0}
-.lv-grp-row .fr-ib{margin-right:6px}
-.ml{display:block;padding:5px 12px;border-bottom:1px solid var(--color-line);cursor:pointer;min-width:0}
-.ml:hover{background:var(--fr-hover)}
-.ml[aria-current=true]{background:var(--color-accent-tint);box-shadow:inset 2px 0 var(--color-accent)}
-.ml:focus-visible{outline:2px solid var(--color-focus);outline-offset:-2px}
-.ml.done .ml-nm{color:var(--color-muted)}
-.ml-meta,.ml-l2{display:flex;align-items:center;gap:6px;min-width:0;white-space:nowrap}
-.ml-meta{font-size:11px;color:var(--color-muted)}
-.ml-meta>span{min-width:0;overflow:hidden;text-overflow:ellipsis}
-.ml-nm{flex:1 1 auto;min-width:0;font-weight:600;overflow:hidden;text-overflow:ellipsis}
-.ml-st{flex:none;font-size:11px;color:var(--color-muted)}
-.ml-st.success{color:var(--color-success)}.ml-st.info{color:var(--color-accent)}.ml-st.warning{color:var(--color-warning)}.ml-st.danger{color:var(--color-danger)}
-.lv-empty{padding:4px 12px 8px;font-size:11.5px;color:var(--color-muted)}
+/* 목록 칸 (#515): a row's state tone, a group head with a button. */
+.ml-t.tone-success{color:var(--color-success)}.ml-t.tone-info{color:var(--color-accent)}.ml-t.tone-warning{color:var(--color-warning)}.ml-t.tone-danger{color:var(--color-danger)}
+.grp-row{display:flex;align-items:center}
+.grp-row .grp{flex:1 1 auto;min-width:0}
+.grp-row .fr-ib{margin-right:6px}
 .fld{display:grid;grid-template-columns:120px minmax(0,300px);gap:6px 12px;align-items:center;margin:0 0 var(--space-3)}
 .fld>label{color:var(--color-muted)}
 .fld input,.fld select{height:24px;min-width:0}
 .dsec{margin:16px 0 4px;font-size:11px;font-weight:600;color:var(--color-muted)}
 .dsec:first-child{margin-top:0}
 @media (max-width:720px){
-.sc-app-main:has(>.sc-app-page:not([hidden])>[data-lv]:not([data-lv=full]):not([hidden])){grid-template-columns:minmax(0,1fr)}
-.sc-app-main:has(>.sc-app-page:not([hidden])>[data-lv]:not([data-lv=full]):not([hidden]))>.sc-app-page{border-right:0}
 .fld{grid-template-columns:minmax(0,1fr)}
 }

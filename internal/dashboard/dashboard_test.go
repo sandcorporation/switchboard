@@ -578,17 +578,18 @@ func TestDashboardSettingsDetail(t *testing.T) {
 	for _, want := range []string{
 		// #515: one list column of groups beside the item's detail; every
 		// earlier action stays in the detail.
-		`<section id="panel-settings" role="tabpanel" aria-labelledby="tab-settings" tabindex="0" class="card" data-lv hidden>`,
-		`<div class="lv-head"><h2>설정</h2>`, `<div id="settingsList" class="lv-list"></div>`,
-		"setGroup(box,'roles','역할',d.roles,", "setGroup(box,'nodes','기계',d.nodes,", "setGroup(box,'groups','묶음',d.groups,",
-		"setGroup(box,'logins','로그인',d.logins,", "setGroup(box,'qsettings','질문 설정',d.qs,", "setGroup(box,'reminders','다시 알림',",
-		"lvRow('settings','refusals:24h',['24시간'],'최근 거절',",
+		`<section id="panel-settings" role="tabpanel" aria-labelledby="tab-settings" tabindex="0" class="lsec" hidden>`,
+		`<div class="ls-h"><h2>설정</h2>`, `<div id="settingsList" class="ls-list"></div>`,
+		"setGroup(items,'roles','역할',d.roles,", "setGroup(items,'nodes','기계',d.nodes,", "setGroup(items,'groups','묶음',d.groups,",
+		"setGroup(items,'logins','로그인',d.logins,", "setGroup(items,'qsettings','질문 설정',d.qs,", "setGroup(items,'reminders','다시 알림',",
+		"setRow('refusals:24h',['24시간'],'최근 거절',",
+		"const listTabs=['requests','questions','mail','reports','jobs','settings'];", "const fullTabs=['metrics'];",
 		"host?get(api('nodes')):null,host?get(api('terminals/work-groups')):null",
 		"api('question-refusals')", "api('logins')", "perms.title='바꾸기: switchboard admin allow';",
 		`<dialog id="setAdd" class="sc-drawer" aria-labelledby="setAddTitle">`,
 		"const setViewHash={qsettings:'settings',roles:'settings-roles',nodes:'settings-nodes',groups:'settings-groups',logins:'settings-logins',reminders:'settings-reminders'};",
 		"registerDetail('settings',{",
-		"lvRow('settings','qs:'+v.target,", "lvRow('settings','role:'+v.role,", "lvRow('settings','node:'+v.name,", "lvRow('settings','login:'+v.name,", "lvRow('settings','group:'+g.name,",
+		"setRow('qs:'+v.target,", "setRow('role:'+v.role,", "setRow('node:'+v.name,", "setRow('login:'+v.name,", "setRow('group:'+g.name,",
 		"back:id=>setViewHash[setKindView[id.slice(0,id.indexOf(':'))]]||'settings',",
 		"function closeDetail(){if(detailCur){const b=details[detailCur.tab].back;location.hash=b?b(detailCur.id):detailCur.tab}}",
 		"if(parts[0]==='settings')showSettingsView(setKindView[id.slice(0,id.indexOf(':'))]);",
@@ -643,10 +644,10 @@ func TestDashboardJobsTab(t *testing.T) {
 	for _, want := range []string{
 		// #515: one list column of groups (예약 · 돌고 있는 작업 · 끝난 작업),
 		// no tabs or splits; the actions sit in the item's detail.
-		`<section id="panel-jobs" role="tabpanel" aria-labelledby="tab-jobs" tabindex="0" class="card" data-lv hidden>`,
-		`<div class="lv-head"><h2>작업 · 예약</h2>`, `<select id="jobRole" aria-label="역할" title="역할">`,
-		`<input id="jobFind" type="search"`, "lvGroup(box,'jobs-sched','예약'", "lvGroup(box,'jobs-live','돌고 있는 작업'",
-		"lvGroup(box,'jobs-ended','끝난 작업'",
+		`<section id="panel-jobs" role="tabpanel" aria-labelledby="tab-jobs" tabindex="0" class="lsec" hidden>`,
+		`<div class="ls-h"><h2>작업 · 예약</h2>`, `<select id="jobRole" aria-label="역할" title="역할">`,
+		`<input id="jobFind" type="search"`, "listGroup('jobs-sched','예약'", "listGroup('jobs-live','돌고 있는 작업'",
+		"listGroup('jobs-ended','끝난 작업'",
 		"api('jobs'", "apiSend('POST','jobs/'", "apiSend('DELETE','jobs/'", "jobs:loadJobs",
 		"api('schedules'", "apiSend('DELETE','schedules/'", "apiSend('POST','schedules/'+id+'/resume'",
 		"'/autos'", "apiSend('POST','terminals/'+encodeURIComponent(v.id)+'/autos/'+a.id+'/run')",
@@ -755,8 +756,8 @@ func TestDashboardWorkspaceLoadsWithHosting(t *testing.T) {
 	for _, want := range []string{
 		"if(hostingOn)loadWorkspace(Array.isArray(m.workspace_assets)?m.workspace_assets:[]);",
 		// A list screen (#514) stays in the page; the others are panels.
-		"$('panel-'+n).hidden=ws&&!listTab(n)?false:!on;",
-		"if(ws&&!listTab(name))ws.showMenu(name);",
+		"$('panel-'+n).hidden=ws&&!pageTab(n)?false:!on;",
+		"frameFull(fullTabs.includes(name));", "if(ws&&!pageTab(name))ws.showMenu(name);",
 		"frameSplit(listTab(name)&&!(name==='questions'&&questionView==='decisions'));",
 		// With hosting on, the list column shows only the list screen, and
 		// opening a terminal from the left pane leaves it for the workspace.
@@ -764,7 +765,7 @@ func TestDashboardWorkspaceLoadsWithHosting(t *testing.T) {
 		// A session card opens the session screen (#519) through the address.
 		"const h='#session='+encodeURIComponent(r.role);",
 		"if(r&&r.term&&ws){frameScreen('');ws.followRole('');ws.openTerm(r.term)}",
-		"wsLoading=loadAssets(list).then(()=>{ws=wsStart();if(listTab(curTab))frameSplit(true);if(curTab)frameScreen('menu');frameSessionTry()})",
+		"wsLoading=loadAssets(list).then(()=>{ws=wsStart();if(listTab(curTab))frameSplit(true);frameFull(fullTabs.includes(curTab));if(curTab)frameScreen('menu');frameSessionTry()})",
 		"if(tabShown(k))liveDirty.add(k);",
 		"if(ws)ws.live(kinds);",
 		"api('admin-actions?target='+id+'&limit=20').catch(()=>null)",
@@ -782,8 +783,8 @@ func TestDashboardWorkspaceLoadsWithHosting(t *testing.T) {
 	for _, want := range []string{
 		"main.before(box);main.hidden=true;",
 		"try{const s=L.parse(localStorage.getItem(KEY)||'',valid);if(s)return s}catch(e){}",
-		"return L.initial(curTab&&!listTab(curTab)?'menu:'+curTab:null);",
-		"if(p.startsWith('menu:'))return visibleTabs().includes(p.slice(5))&&!listTab(p.slice(5));",
+		"return L.initial(curTab&&!pageTab(curTab)?'menu:'+curTab:null);",
+		"if(p.startsWith('menu:'))return visibleTabs().includes(p.slice(5))&&!pageTab(p.slice(5));",
 		"window.matchMedia('(max-width:600px)')",
 		"if(m)main.append($('panel-'+m));",
 		"else{const id=p.slice(5),t=terms.get(id);if(t){termStop(t);terms.delete(id)}",
@@ -978,7 +979,7 @@ func TestDashboardSettingsHoldsViews(t *testing.T) {
 		`const setTabs=['progress','sessions','terminals'];`,
 		`setTabs.includes(name)?'settings':name;`,
 		`filter(n=>!$('tab-'+n).hidden&&!setTabs.includes(n))`,
-		`setGroup(box,'views','화면',views,setViewRow);`,
+		`setGroup(items,'views','화면',views,setViewRow);`,
 		`const go=()=>{location.hash=x[0]};`,
 		`if(ws&&ws.nodes)views.push(['nodes','노드','노드 → 세션',true]);`,
 		`view:(v,box)=>{const n=ws.nodes();box.append(n.el);n.show()}`,

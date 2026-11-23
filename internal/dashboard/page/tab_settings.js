@@ -9,7 +9,7 @@ let setView='qsettings',setJump=false,setData=null;
 const setNotes=new Map(),setForms=new Map();
 function showSettingsView(v){
   if(!setViewHash[v]||((v==='nodes'||v==='groups')&&!hostingOn))v='qsettings';
-  setView=v;setJump=true;lvFold.set('set-'+v,false);
+  setView=v;setJump=true;listFolds.set('set-'+v,false);
   if(setData)drawSettings();
 }
 function settingsViewOfHash(h){for(const [v,x] of Object.entries(setViewHash))if(x===h)return v;return ''}
@@ -25,24 +25,35 @@ async function loadSettingsView(){
   drawSettings();
 }
 tabLoaders.settings=loadSettingsView;
-$('setFind').oninput=()=>lvFind($('panel-settings'),$('setFind').value);
-// setGroup draws one group: rows is a list, {err} or null (not shown).
-function setGroup(box,v,name,rows,each,empty,add){
-  if(rows===null)return null;
-  const ok=Array.isArray(rows),g=lvGroup(box,'set-'+v,name,ok?rows.length:'',{add:add});
-  if(!ok){lvEmpty(g,rows.err);return g}
-  for(const x of rows)g.append(each(x));
-  if(!rows.length&&empty)lvEmpty(g,empty);
-  return g;
+$('setFind').oninput=()=>{if(setData)drawSettings()};
+// setGroup is one group's head and rows: rows is a list, {err} or null
+// (not shown); 거르기 keeps the rows whose text holds it.
+const setNames={};
+function setGroup(items,v,name,rows,each,empty,add,extra){
+  if(rows===null)return;
+  setNames[v]=name;
+  const q=$('setFind').value;
+  let rs;
+  if(!Array.isArray(rows))rs=[node('p',rows.err,'empty ls-empty')];
+  else{
+    rs=rows.map(each).concat(extra||[]).filter(r=>listMatch(q,r.textContent));
+    if(!rs.length&&empty&&!q)rs=[node('p',empty,'empty ls-empty')];
+  }
+  const n=rs.filter(r=>r.classList.contains('ml')).length;
+  items.push(...listGroup('set-'+v,name,rs,{count:Array.isArray(rows)?n:'',add:add,redraw:drawSettings}));
+}
+// setRow is one list row: top is the small line's parts, st an optional
+// [text,tone] at its right.
+function setRow(id,top,title,st){
+  return listRow('settings',id,{top:top.filter(Boolean).join(' · '),title:title,right:st?st[0]:'',tone:st?st[1]:''});
 }
 // setViewRow is a 화면 row: 진행·세션 표·터미널 open their own tab (the
-// address stays #progress …); 노드 opens in the detail beside the list.
+// address stays #progress …); 노드 opens in the body beside the list.
 function setViewRow(x){
-  if(x[3])return lvRow('settings','view:'+x[0],[x[2]],x[1]);
-  const r=node('div','','ml');r.setAttribute('role','link');r.tabIndex=0;
-  const m=node('div','','ml-meta');m.append(node('span',x[2]));
-  const l2=node('div','','ml-l2');l2.append(node('span',x[1],'ml-nm'));
-  r.append(m,l2);r.dataset.find=(x[1]+' '+x[2]).toLowerCase();
+  if(x[3])return setRow('view:'+x[0],[x[2]],x[1]);
+  const r=node('div','','ml');r.setAttribute('role','link');r.tabIndex=0;r.title=x[1]+' 화면을 연다';
+  const top=node('span','','ml-r');top.append(node('span',x[2],'ml-a'),node('span','','ml-t'));
+  r.append(top,node('b',x[1],'ml-b'));
   const go=()=>{location.hash=x[0]};
   r.onclick=go;r.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();go()}};
   return r;
@@ -53,26 +64,22 @@ function setAddButton(title,run){
 function openSetAdd(){setMsg($('setAddMsg'),'');$('setAdd').showModal();$('setTarget').focus()}
 const permName={view:'보기',type:'입력',files:'파일',sessions:'세션',discard:'버리기'};
 function drawSettings(){
-  const d=setData,box=$('settingsList');
-  keepRowFocus(box,()=>{
-    box.replaceChildren();
-    setGroup(box,'roles','역할',d.roles,v=>lvRow('settings','role:'+v.role,[v.last_machine||'',v.last_used_at?'최근 '+shortWhen(v.last_used_at):''],v.role,v.revoked_at||v.retired_at?roleBadge(v):null),'역할 없음');
-    setGroup(box,'nodes','기계',d.nodes,v=>lvRow('settings','node:'+v.name,[v.machine||'',v.os||'',v.version||''],v.name,v.revoked_at?['끊김','danger']:null),'기계 없음');
-    setGroup(box,'groups','묶음',d.groups,g=>lvRow('settings','group:'+g.name,[g.threshold===null||g.threshold===undefined?'문턱 없음':'문턱 '+g.threshold+'%','세션 '+g.sessions],g.name),'묶음 없음',setAddButton('묶음 추가',()=>openDetail('settings','group:+','edit')));
-    setGroup(box,'logins','로그인',d.logins,v=>lvRow('settings','login:'+v.name,[v.kind==='builtin'?'내장':'외부',v.perms.length?v.perms.map(p=>permName[p]||p).join(' · '):'권한 없음'],v.name,v.disabled?['꺼짐','danger']:null),'로그인 없음');
-    const q=setGroup(box,'qsettings','질문 설정',d.qs,v=>lvRow('settings','qs:'+v.target,[v.can_ask?'질문 가능':'질문 불가',v.discord?'디스코드':'',v.watchers.length?'지켜봄 '+v.watchers.length:''],v.target),'설정 없음',setAddButton('질문 설정 추가',openSetAdd));
-    if(q&&Array.isArray(d.ref))q.append(lvRow('settings','refusals:24h',['24시간'],'최근 거절',d.ref.length?[d.ref.length+'건','warning']:null));
-    const views=[['progress','진행','서비스별 세션·지시·남긴 것'],['sessions','세션 표','상태·컨텍스트·기계·판']];
-    if(hostingOn)views.push(['terminals','터미널','호스트된 세션·구독 한도']);
-    if(ws&&ws.nodes)views.push(['nodes','노드','노드 → 세션',true]);
-    setGroup(box,'views','화면',views,setViewRow);
-    setGroup(box,'reminders','다시 알림',d.srv&&!d.srv.err?[d.srv]:d.srv,s=>lvRow('settings','server:now',[s.reminders.on?'켬':'끔','판 '+s.version],'다시 알림 · 서버'),'');
-  });
-  lvFind($('panel-settings'),$('setFind').value);
+  const d=setData,items=[];
+  setGroup(items,'roles','역할',d.roles,v=>setRow('role:'+v.role,[v.last_machine,v.last_used_at?'최근 '+shortWhen(v.last_used_at):''],v.role,v.revoked_at||v.retired_at?roleBadge(v):null),'역할 없음');
+  setGroup(items,'nodes','기계',d.nodes,v=>setRow('node:'+v.name,[v.machine,v.os,v.version],v.name,v.revoked_at?['끊김','danger']:null),'기계 없음');
+  setGroup(items,'groups','묶음',d.groups,g=>setRow('group:'+g.name,[g.threshold===null||g.threshold===undefined?'문턱 없음':'문턱 '+g.threshold+'%','세션 '+g.sessions],g.name),'묶음 없음',setAddButton('묶음 추가',()=>openDetail('settings','group:+','edit')));
+  setGroup(items,'logins','로그인',d.logins,v=>setRow('login:'+v.name,[v.kind==='builtin'?'내장':'외부',v.perms.length?v.perms.map(p=>permName[p]||p).join(' · '):'권한 없음'],v.name,v.disabled?['꺼짐','danger']:null),'로그인 없음');
+  setGroup(items,'qsettings','질문 설정',d.qs,v=>setRow('qs:'+v.target,[v.can_ask?'질문 가능':'질문 불가',v.discord?'디스코드':'',v.watchers.length?'지켜봄 '+v.watchers.length:''],v.target),'설정 없음',setAddButton('질문 설정 추가',openSetAdd),Array.isArray(d.ref)?[setRow('refusals:24h',['24시간'],'최근 거절',d.ref.length?[d.ref.length+'건','warning']:null)]:[]);
+  const views=[['progress','진행','서비스별 세션·지시·남긴 것'],['sessions','세션 표','상태·컨텍스트·기계·판']];
+  if(hostingOn)views.push(['terminals','터미널','호스트된 세션·구독 한도']);
+  if(ws&&ws.nodes)views.push(['nodes','노드','노드 → 세션',true]);
+  setGroup(items,'views','화면',views,setViewRow);
+  setGroup(items,'reminders','다시 알림',d.srv&&!d.srv.err?[d.srv]:d.srv,s=>setRow('server:now',[s.reminders.on?'켬':'끔','판 '+s.version],'다시 알림 · 서버'),'');
+  const box=$('settingsList');
+  listFill(box,items,'');
   if(setJump){
     setJump=false;
-    const g=box.querySelector('[data-grp="set-'+setView+'"]');
-    if(g&&g.previousElementSibling&&g.previousElementSibling.scrollIntoView)g.previousElementSibling.scrollIntoView({block:'nearest'});
+    for(const g of box.querySelectorAll('.grp'))if(g.querySelector('.grp-nm').textContent===setNames[setView]){if(g.scrollIntoView)g.scrollIntoView({block:'nearest'});break}
   }
 }
 // setNote keeps a result line for an item's detail across the redraws of

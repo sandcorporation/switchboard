@@ -73,7 +73,7 @@ var pageFS embed.FS
 // in a function that runs after the whole script has loaded. A new tab is a
 // new file added here.
 var scriptParts = []string{
-	"core.js", "detail.js", "lists.js", "listpane.js", "tab_sessions.js", "tab_mail.js", "tabs.js", "tab_requests.js",
+	"core.js", "detail.js", "lists.js", "tab_sessions.js", "tab_mail.js", "tabs.js", "tab_requests.js",
 	"tab_metrics.js", "search.js", "tab_progress.js", "tab_questions.js",
 	"tab_reports.js", "tab_jobs.js", "tab_rules.js", "tab_terminals.js",
 	"tab_settings.js", "tab_permissions.js", "frame.js", "live.js",

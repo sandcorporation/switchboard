@@ -323,7 +323,7 @@ async function loadAssets(list){
 let wsLoading=null;
 function loadWorkspace(list){
   if(ws||wsLoading||!list.length)return;
-  wsLoading=loadAssets(list).then(()=>{ws=wsStart();if(listTab(curTab))frameSplit(true);if(curTab)frameScreen('menu');frameSessionTry()}).catch(e=>{wsFailed=e.message}).then(()=>{if(detailCur)drawDetail();if(setData)drawSettings()});
+  wsLoading=loadAssets(list).then(()=>{ws=wsStart();if(listTab(curTab))frameSplit(true);frameFull(fullTabs.includes(curTab));if(curTab)frameScreen('menu');frameSessionTry()}).catch(e=>{wsFailed=e.message}).then(()=>{if(detailCur)drawDetail();if(setData)drawSettings()});
 }
 $('termForm').onsubmit=async e=>{
   e.preventDefault();

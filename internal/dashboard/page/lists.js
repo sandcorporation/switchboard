@@ -2,11 +2,12 @@
 // The list screens (listTabs) draw their list column with these: listRow is
 // one two-line row (a small top line, the title under it) that shows its item
 // in the body beside the list (detailRow); listGroup is a group head that
-// folds, followed by its rows; listMatch is the 거르기 field's test.
+// folds, followed by its rows (o.add: a button at its end, #515); listMatch is the 거르기 field's test.
 function listRow(tab,id,o){
   const r=node('div','','ml'+(o.cls?' '+o.cls:''));r.setAttribute('role','button');
   const top=node('span','','ml-r'),a=node('span',o.top||'','ml-a'),t=node('span',o.right||'','ml-t');
   if(o.rightHover)t.title=o.rightHover;
+  if(o.tone)t.classList.add('tone-'+o.tone);
   top.append(a,t);
   const b=node('b',o.title||'(제목 없음)','ml-b');
   r.append(top,b);r.title=o.hover||o.title||'';
@@ -22,7 +23,9 @@ function listGroup(key,label,rows,o){
   h.title=(o.hover||label)+' '+rows.length+' — 눌러 접거나 편다';
   h.append(node('span',folded?'▸':'▾','grp-mark'),node('span',label,'grp-nm'),node('span',String(o.count===undefined?rows.length:o.count),'grp-n'));
   h.onclick=()=>{listFolds.set(key,!folded);if(o.redraw)o.redraw()};
-  return folded?[h]:[h,...rows];
+  // add (#515) is a button at the head's end (작업 추가 …).
+  let head=h;if(o.add){head=node('div','','grp-row');head.append(h,o.add)}
+  return folded?[head]:[head,...rows];
 }
 function listMatch(q,...texts){
   q=(q||'').trim().toLowerCase();

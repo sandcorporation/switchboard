@@ -155,7 +155,7 @@ function frameScreen(kind){
   html.classList.toggle('fr-menu',kind==='menu');
   html.classList.toggle('fr-sess',kind==='sess');
   if(kind!=='sess'){frameSessRole='';$('sessScreen').hidden=true}
-  if(ws)document.querySelector('.sc-app-page').hidden=!(html.classList.contains('fr-split')||kind==='sess');
+  if(ws)document.querySelector('.sc-app-page').hidden=!(html.classList.contains('fr-split')||html.classList.contains('fr-full')||kind==='sess');
 }
 // frameSession opens role's screen once the list (and, for a hosted one,
 // the workspace) is there; frameLoad and the workspace start call it again.
@@ -178,8 +178,8 @@ function frameSessionTry(){
 // is marked and the detail closes.
 function frameLeaveMenu(){
   hideDetail();
-  if(curTab)$('panel-'+curTab).hidden=!(ws&&!listTab(curTab));
-  frameSplit(false);
+  if(curTab)$('panel-'+curTab).hidden=!(ws&&!pageTab(curTab));
+  frameSplit(false);frameFull(false);
   for(const n of tabNames){const t=$('tab-'+n);t.setAttribute('aria-selected','false');t.tabIndex=n==='requests'?0:-1}
   curTab='';
 }

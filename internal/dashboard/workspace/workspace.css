@@ -219,6 +219,6 @@
 .ws-x{flex:none}
 .ws-tablist .ws-tabcell:not(.on):not(:hover):not(:focus-within) .ws-x{display:none}
 /* A page section (#515) fills the centre; the right column steps aside. */
-.ws-page #ws,.ws-page .ws-side,.ws-page .fr-grip-r{display:none}
-.ws-on.ws-page .sc-app-main:not(.detail-wide)>.sc-app-page:not([hidden]){display:block}
-.ws-on.ws-page .sc-app-main:not(.has-detail){grid-template-columns:minmax(0,1fr)}
+.fr-full #ws,.fr-full .ws-side,.fr-full .fr-grip-r{display:none}
+.ws-on.fr-full .sc-app-main:not(.detail-wide)>.sc-app-page:not([hidden]){display:block}
+.ws-on.fr-full .sc-app-main:not(.has-detail){grid-template-columns:minmax(0,1fr)}

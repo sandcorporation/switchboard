@@ -32,44 +32,51 @@ async function jobAutos(role){
   return lists.flat();
 }
 const byNewest=(a,b)=>String(b.created_at).localeCompare(String(a.created_at));
+// jobsLast keeps the last read, so 거르기 redraws without reading again.
+let jobsLast=null;
 function drawJobs(jobs,scheds,autos){
-  const box=$('jobs');
+  jobsLast=[jobs,scheds,autos];
+  const q=$('jobFind').value,redraw=()=>drawJobs(jobs,scheds,autos);
   const sched=scheds.filter(j=>jobLive(j.state)).sort(byNewest);
   const live=jobs.filter(j=>jobLive(j.state)).sort(byNewest);
   const ended=jobs.filter(j=>!jobLive(j.state)).concat(scheds.filter(j=>!jobLive(j.state))).sort(byNewest);
-  keepRowFocus(box,()=>{
-    box.replaceChildren();
-    const g1=lvGroup(box,'jobs-sched','예약',sched.length+autos.length);
-    for(const j of sched)g1.append(schedRow(j));
-    for(const x of autos)g1.append(autoRow(x.v,x.a));
-    if(!sched.length&&!autos.length)lvEmpty(g1,'예약 없음');
-    const g2=lvGroup(box,'jobs-live','돌고 있는 작업',live.length);
-    for(const j of live)g2.append(jobRow(j));
-    if(!live.length)lvEmpty(g2,'돌고 있는 작업 없음');
-    const g3=lvGroup(box,'jobs-ended','끝난 작업',ended.length,{folded:true});
-    for(const j of ended)g3.append(j.schedule?schedRow(j):jobRow(j));
-    if(!ended.length)lvEmpty(g3,'끝난 작업 없음');
-  });
-  lvFind($('panel-jobs'),$('jobFind').value);
+  const hit=j=>listMatch(q,j.label,j.role,j.machine,'#'+j.id);
+  const rows=(list,each,empty)=>list.length?list.map(each):[node('p',empty,'empty ls-empty')];
+  const sRows=sched.filter(hit).map(schedRow).concat(autos.filter(x=>listMatch(q,autoName(x.a),termRole(x.v),x.v.label)).map(x=>autoRow(x.v,x.a)));
+  listFill($('jobs'),[
+    ...listGroup('jobs-sched','예약',sRows.length?sRows:[node('p','예약 없음','empty ls-empty')],{count:sRows.length,redraw:redraw}),
+    ...listGroup('jobs-live','돌고 있는 작업',rows(live.filter(hit),jobRow,'돌고 있는 작업 없음'),{count:live.filter(hit).length,redraw:redraw}),
+    ...listGroup('jobs-ended','끝난 작업',rows(ended.filter(hit),j=>j.schedule?schedRow(j):jobRow(j),'끝난 작업 없음'),{count:ended.filter(hit).length,fold:true,redraw:redraw}),
+  ],'');
   setTabCount('jobs',sched.length+live.length||null);
   $('jobsNote').textContent='';
 }
+// jobRowOf is one list row: top is the small line's parts, st an optional
+// [text,tone] at its right.
+function jobRowOf(id,top,title,st){
+  return listRow('jobs',id,{top:top.filter(Boolean).join(' · '),title:title,right:st?st[0]:'',tone:st?st[1]:''});
+}
+// jobAge: how long ago t was, as 「n분째」 for a thing still going.
+function jobAge(t){
+  if(!t)return '';
+  const m=Math.max(0,Math.floor((Date.now()-new Date(t).getTime())/60000));
+  return m<60?m+'분째':m<1440?Math.floor(m/60)+'시간째':Math.floor(m/1440)+'일째';
+}
 function jobRow(j){
   const st=jobBadge(j),live=jobLive(j.state);
-  const meta=['#'+j.id+' · '+(jobKinds[j.kind]||j.kind),j.role,j.machine,live?lvAge(j.started_at||j.created_at):shortWhen(j.ended_at||j.created_at)];
-  const r=lvRow('jobs','job:'+j.id,meta,j.label,live&&st[1]==='info'?null:st);
+  const r=jobRowOf('job:'+j.id,['#'+j.id,jobKinds[j.kind]||j.kind,j.role,j.machine,live?jobAge(j.started_at||j.created_at):shortWhen(j.ended_at||j.created_at)],j.label,live&&st[1]==='info'?null:st);
   if(!live)r.classList.add('done');
   return r;
 }
 function schedRow(j){
   const st=jobBadge(j),next=j.next_fire_at&&j.state==='active'?'다음 '+shortWhen(j.next_fire_at):'';
-  const r=lvRow('jobs','sched:'+j.id,['#'+j.id+' · '+(j.kind==='cron'?j.cron:'1회'),j.role,next],j.label,j.state==='active'?null:st);
+  const r=jobRowOf('sched:'+j.id,['#'+j.id,j.kind==='cron'?j.cron:'1회',j.role,next],j.label,j.state==='active'?null:st);
   if(!jobLive(j.state))r.classList.add('done');
   return r;
 }
 function autoRow(v,a){
   const st=a.state==='paused'?['멈춤','warning']:a.alert?[autoResult[a.alert]||a.alert,autoTone[a.alert]||'neutral']:null;
-  return lvRow('jobs','auto:'+v.id+':'+a.id,['세션 예약 · '+a.cron,termRole(v),a.state==='paused'?'':'다음 '+shortWhen(a.next_fire_at)],autoName(a),st,[v.label||'']);
+  return jobRowOf('auto:'+v.id+':'+a.id,['세션 예약',a.cron,termRole(v),a.state==='paused'?'':'다음 '+shortWhen(a.next_fire_at)],autoName(a),st);
 }
 // A paused schedule (#404) names who paused it, when and why; 멈춤 asks for
 // an optional reason, 다시 resumes. A once schedule whose time passed while

@@ -12,8 +12,16 @@ const tabLoaded=new Set();
 // list column and the open item's body beside it (html.fr-split). A row
 // shows its item at once; with hosting on the workspace steps aside while
 // one is on screen.
-const listTabs=['requests','questions','mail','reports'];
+const listTabs=['requests','questions','mail','reports','jobs','settings'];
 function listTab(name){return listTabs.includes(name)}
+// fullTabs (#515) are one body with no list column (지표): like a list
+// screen they take the centre, no panels or splits (html.fr-full).
+const fullTabs=['metrics'];
+function pageTab(name){return listTab(name)||fullTabs.includes(name)}
+function frameFull(on){
+  document.documentElement.classList.toggle('fr-full',on);
+  if(ws&&on)document.querySelector('.sc-app-page').hidden=false;
+}
 // frameSplit turns the list screen layout on or off.
 function frameSplit(on){
   document.documentElement.classList.toggle('fr-split',on);

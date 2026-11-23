@@ -59,24 +59,15 @@ function wsStart(){
   frameScrimClose.push(()=>sideDrawer(false));
   const terms=new Map(),wraps=new Map(),titles=new Map(),items=new Map(),files=new Map(),trees=new Map();
   let autoFor=null,dragging=false;
-  // A section marked data-lv (작업 · 예약, 설정, #515) is a page, not a
-  // panel: it fills the centre on its own, without tabs or splits, and the
-  // right column steps aside for its detail. page is the one on screen.
-  let page='';
-  const lvTab=n=>{const el=$('panel-'+n);return !!el&&el.hasAttribute('data-lv')};
-  function pageMode(name){
-    page=name;html.classList.toggle('ws-page',!!name);
-    box.hidden=!!name;main.hidden=!name;
-    if(name)for(const el of main.children)if(el.getAttribute('role')==='tabpanel')el.hidden=el.id!=='panel-'+name;
-  }
   function valid(p){
-    // A list screen (listTab, #514) is never a panel: it takes the centre.
-    if(p.startsWith('menu:'))return visibleTabs().includes(p.slice(5))&&!listTab(p.slice(5));
+    // A list screen (listTab, #514) or a full one (지표, #515) is never a
+    // panel: it takes the centre.
+    if(p.startsWith('menu:'))return visibleTabs().includes(p.slice(5))&&!pageTab(p.slice(5));
     return (p.startsWith('term:')&&p.length>5)||!!S.itemOf(p)||!!F.fileOf(p);
   }
   function load(){
     try{const s=L.parse(localStorage.getItem(KEY)||'',valid);if(s)return s}catch(e){}
-    return L.initial(curTab&&!listTab(curTab)?'menu:'+curTab:null);
+    return L.initial(curTab&&!pageTab(curTab)?'menu:'+curTab:null);
   }
   function save(){try{localStorage.setItem(KEY,L.serialize(st))}catch(e){}}
   let st=load();
@@ -281,7 +272,6 @@ function wsStart(){
   // openTerm shows a terminal's panel; a new one joins the group that holds
   // terminals, else opens to the right of the focused group.
   function openTerm(v){
-    if(page)pageMode('');
     const p='term:'+v.id;
     term(v.id,v);
     if(L.groupOf(st,p)||mq.matches){st=L.open(st,p)}
@@ -781,14 +771,13 @@ function wsStart(){
     if(mq.matches)drawer(false);
   }});
   for(const p of L.panels(st))if(p.startsWith('term:'))term(p.slice(5));
-  if(location.hash.length>1&&curTab&&!listTab(curTab))st=L.open(st,'menu:'+curTab);
+  if(location.hash.length>1&&curTab&&!pageTab(curTab))st=L.open(st,'menu:'+curTab);
   side.session=S.follow(side.session,st.focus);
   render();drawSess();loadNeeds();
-  if(curTab&&lvTab(curTab))pageMode(curTab);
   return {
     // showMenu opens (or goes to) the section of tab name.
     showMenu(name){
-      if(listTab(name))return;
+      if(pageTab(name))return;
       const p='menu:'+name,g=L.groupOf(st,p);
       if(g&&g.active===p&&(st.focus===p||!mq.matches)&&(!st.max||st.max===p))return;
       st=L.open(st,p);if(st.max&&st.max!==p)st=L.setMax(st,null);commit();
@@ -803,7 +792,7 @@ function wsStart(){
     // nodes is the 노드 index, drawn inside 설정 (#515).
     nodes(){return nodeIdx},
     // shown says whether tab name's section is on screen now.
-    shown(name){return page===name||shownPanels().includes('menu:'+name)},
+    shown(name){return shownPanels().includes('menu:'+name)},
     // termPaneFor stands in a detail body for the terminal screen: it opens
     // the terminal's panel the first time the detail shows it.
     termPaneFor(v){

@@ -61,14 +61,15 @@ function showTab(name){
     t.tabIndex=n===mark?0:-1;
     // In the workspace every section shows wherever its panel is, except a
     // list screen's (listTab), which stays in the page.
-    $('panel-'+n).hidden=ws&&!listTab(n)?false:!on;
+    $('panel-'+n).hidden=ws&&!pageTab(n)?false:!on;
     if(n===mark)$('crumbTab').textContent=t.querySelector('.tab-name').textContent;
   }
   frameSplit(listTab(name)&&!(name==='questions'&&questionView==='decisions'));
   // A menu is on screen (#519): no session screen, no right column.
   frameScreen('menu');
+  frameFull(fullTabs.includes(name));
   loadTab(name);
-  if(ws&&!listTab(name))ws.showMenu(name);
+  if(ws&&!pageTab(name))ws.showMenu(name);
 }
 // loadTab loads a tab's section the first time it shows, and again when a
 // live change marked it stale meanwhile.
@@ -167,7 +168,7 @@ $('ruleForm').onsubmit=e=>{
 };
 $('reloadJobs').onclick=()=>loadJobs();
 $('jobRole').onchange=()=>loadJobs();
-$('jobFind').oninput=()=>lvFind($('panel-jobs'),$('jobFind').value);
+$('jobFind').oninput=()=>{if(jobsLast)drawJobs(...jobsLast)};
 $('reloadQuestions').onclick=()=>{setMsg($('questionsMsg'),'');loadQuestions()};
 $('reloadSettings').onclick=()=>{setMsg($('settingsMsg'),'');loadSettingsView()};
 $('reset').onclick=()=>{$('thread').value='';$('task').value='';mailID='';$('search').value='';$('status').value='';$('role').value='';$('box').value='all';load()};
