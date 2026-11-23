@@ -20,6 +20,35 @@
 // <video> streaming /files/raw (Range seeks), else the editor (#448), saved
 // with 저장 or Ctrl+S; a file changed elsewhere since it was read offers
 // 다시 읽기 and 그래도 저장.
+// wsIcons are the right column's icon paths (#510), drawn by wsIcon.
+const wsIcons={
+  files:'M5.5 2.5h6l3.5 3.5v11.5h-9.5zM11.5 2.5V6H15',
+  log:'M6 5h10M6 10h10M6 15h10M3 5h.01M3 10h.01M3 15h.01',
+  mail:'M4 4.5h12a1.5 1.5 0 011.5 1.5v8a1.5 1.5 0 01-1.5 1.5H4A1.5 1.5 0 012.5 14V6A1.5 1.5 0 014 4.5zM3 6l7 5 7-5',
+  needs:'M10 3a5 5 0 00-5 5v3l-1.5 2.5h13L15 11V8a5 5 0 00-5-5zM8.5 16a1.5 1.5 0 003 0',
+  autos:'M17 10a7 7 0 11-14 0 7 7 0 0114 0zM10 6v4l2.5 2',
+  settings:'M12.5 10a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0zM10 2.5v2M10 15.5v2M2.5 10h2M15.5 10h2M4.7 4.7l1.4 1.4M13.9 13.9l1.4 1.4M4.7 15.3l1.4-1.4M13.9 6.1l1.4-1.4',
+};
+// wsMail lists the latest mail to or from role (#510); a row opens the
+// message. Every server string goes in as text.
+async function wsMail(role,out){
+  const d=await api('messages?'+new URLSearchParams({box:'all',role:role,limit:'30'}));
+  const rows=Array.isArray(d)?d:[];
+  const ul=node('ul','','ws-mail');
+  for(const m of rows){
+    const b=node('button','','ws-mailrow');b.type='button';b.title=m.subject+' — '+m.sender+' → '+m.recipient;
+    const top=node('span','','ws-mail1');top.append(node('strong',m.subject),node('span',shortWhen(m.created_at),'muted'));
+    b.append(top,node('span',m.sender+' → '+m.recipient,'ws-mail2 muted'));
+    b.onclick=()=>openMessage(m.id);
+    const li=node('li','');li.append(b);ul.append(li);
+  }
+  out.append(rows.length?ul:node('p','메일 없음','empty'));
+}
+function wsIcon(k){
+  const NS='http://www.w3.org/2000/svg',svg=document.createElementNS(NS,'svg'),p=document.createElementNS(NS,'path');
+  svg.setAttribute('viewBox','0 0 20 20');svg.setAttribute('aria-hidden','true');p.setAttribute('d',wsIcons[k]||'');svg.append(p);
+  return svg;
+}
 function wsStart(){
   const L=wsLayout,S=wsSide,F=wsFiles,KEY='switchboard.workspace',SKEY=KEY+'.side',DT='application/x-switchboard-panel';
   const mq=window.matchMedia('(max-width:600px)');
@@ -27,7 +56,7 @@ function wsStart(){
   const box=node('div','','ws');box.id='ws';
   main.before(box);main.hidden=true;
   const html=document.documentElement;html.classList.add('ws-on');
-  const scrim=node('div','','ws-scrim');scrim.onclick=()=>{drawer(false);sideDrawer(false)};document.body.append(scrim);
+  frameScrimClose.push(()=>sideDrawer(false));
   const terms=new Map(),wraps=new Map(),titles=new Map(),items=new Map(),files=new Map(),trees=new Map();
   let autoFor=null,dragging=false;
   function valid(p){
@@ -130,7 +159,7 @@ function wsStart(){
     if(st.max&&g.tabs.includes(st.max))el.classList.add('ws-max');
     const bar=node('div','','ws-tabs');
     if(narrow){
-      const m=node('button','☰','ws-menu');m.type='button';m.title='메뉴';m.setAttribute('aria-label','메뉴');m.setAttribute('aria-expanded',String(html.classList.contains('ws-left-open')));
+      const m=node('button','☰','ws-menu');m.type='button';m.title='메뉴';m.setAttribute('aria-label','메뉴');m.setAttribute('aria-expanded',String(html.classList.contains('lp-open')));
       m.onclick=()=>drawer(true);bar.append(m);
     }
     const side=()=>{
@@ -213,23 +242,19 @@ function wsStart(){
     st=L.close(st,p);commit();
   }
   function maximize(p){st=L.setMax(st,st.max===p?null:p);commit()}
-  function drawer(on){
-    html.classList.toggle('ws-left-open',on);
-    for(const b of box.querySelectorAll('.ws-menu'))b.setAttribute('aria-expanded',String(on));
-  }
+  function drawer(on){frameDrawer(on)}
   function sideDrawer(on){
     html.classList.toggle('ws-right-open',on);
     for(const b of box.querySelectorAll('.ws-sidebtn'))b.setAttribute('aria-expanded',String(on));
     if(on)sideX.focus({preventScroll:true});
   }
-  $('tabs').addEventListener('click',e=>{if(e.target.closest('[role=tab]'))drawer(false)});
   // Esc: a typing terminal keeps it; otherwise the drawer closes, then
   // 넓히기 returns to the normal size, and only then does the detail panel's
   // own Esc close the detail.
   document.addEventListener('keydown',e=>{
     if(e.key!=='Escape'||e.defaultPrevented)return;
     if(e.target.closest&&e.target.closest('dialog'))return;
-    if(html.classList.contains('ws-left-open')){e.preventDefault();drawer(false);return}
+    if(html.classList.contains('lp-open')){e.preventDefault();drawer(false);return}
     if(html.classList.contains('ws-right-open')){e.preventDefault();sideDrawer(false);return}
     if(!st.max)return;
     const t=terms.get(st.max.slice(5));
@@ -254,18 +279,36 @@ function wsStart(){
   let side=S.initial();
   try{side=S.parse(localStorage.getItem(SKEY)||'')}catch(e){}
   function saveSide(){try{localStorage.setItem(SKEY,S.serialize(side))}catch(e){}}
-  const sideEl=node('aside','','ws-side');sideEl.id='wsSide';sideEl.setAttribute('aria-label','답이 필요함 · 세션');
+  const sideEl=node('aside','','ws-side');sideEl.id='wsSide';sideEl.setAttribute('aria-label','이 세션의 곁 칸');
   const sideX=node('button','×','ws-side-x');sideX.type='button';sideX.title='닫기';sideX.setAttribute('aria-label','닫기');sideX.onclick=()=>sideDrawer(false);
-  const needBox=node('section','','ws-needs'),needHead=node('h2','답이 필요함 '),needCount=node('span','','sc-chip-count');
-  const needList=node('ul','','ws-needlist');
-  needHead.append(needCount);needBox.append(needHead,needList);
-  const sessBox=node('section','','ws-sess'),sessHead=node('div','','ws-sess-head'),sessTitle=node('h2',''),sessBadge=node('span','','sc-badge');
-  const sessTabs=node('div','','ws-subs'),sessBody=node('div','','ws-sess-body');
-  sessTabs.setAttribute('role','tablist');sessBody.setAttribute('role','tabpanel');sessBody.id='wsSessBody';sessBadge.hidden=true;
-  sessHead.append(sessTitle,sessBadge);sessBox.append(sessHead,sessTabs,sessBody);
-  sideEl.append(sideX,needBox,sessBox);
+  // The column's top row (#510) is one icon per view (S.SUBS); only the
+  // chosen view shows. 질문 · 권한 요청 lists the followed session's waiting
+  // questions and permission requests (every session's when none is followed).
+  const ix=node('div','','ix');ix.setAttribute('role','tablist');ix.setAttribute('aria-label','곁 칸');
+  const ixBtn={};
+  for(const [k,label] of S.SUBS){
+    const b=node('button','','ix-b');b.type='button';b.dataset.sub=k;b.title=S.TIPS[k];
+    b.setAttribute('role','tab');b.setAttribute('aria-label',label);b.setAttribute('aria-controls','wsSessBody');
+    b.append(wsIcon(k),node('span','','ix-n'));b.onclick=()=>pickSub(k);ixBtn[k]=b;ix.append(b);
+  }
+  ix.addEventListener('keydown',e=>{
+    const ks=S.SUBS.map(s=>s[0]),i=ks.indexOf(side.sub),d={ArrowLeft:-1,ArrowRight:1}[e.key];
+    if(!d)return;
+    e.preventDefault();pickSub(ks[(i+d+ks.length)%ks.length]);
+  });
+  ix.append(sideX);
+  const sessHead=node('div','','ixh'),sessTitle=node('h2',''),sessBadge=node('span','','sc-badge'),sessWhere=node('span','','ixc');
+  sessHead.append(sessTitle,sessBadge,sessWhere);
+  const needBox=node('section','','ws-needs'),needList=node('ul','','ws-needlist');needBox.append(needList);
+  const sessBody=node('div','','ws-sess-body');
+  sessBody.setAttribute('role','tabpanel');sessBody.id='wsSessBody';sessBadge.hidden=true;
+  sideEl.append(ix,sessHead,needBox,sessBody);
+  const gripR=node('div','','fr-grip fr-grip-r');gripR.tabIndex=0;gripR.title='끌어서 오른쪽 칸 너비를 바꾼다 (← → 키도 된다)';
+  gripR.setAttribute('role','separator');gripR.setAttribute('aria-orientation','vertical');gripR.setAttribute('aria-label','오른쪽 칸 너비');gripR.setAttribute('aria-controls','wsSide');
+  $('appMain').append(gripR);frameGrip(gripR,'r');
   $('appMain').append(sideEl);
-  let needN=0,needSeq=0,sessSeq=0,sessShown='';
+  let needN=0,needSeq=0,sessSeq=0,sessShown='',needRows=[],sessRole='';
+  function pickSub(k){side.sub=k;saveSide();drawSess().then(()=>ixBtn[k].focus())}
   // markNeeds marks the row whose panel has focus.
   function markNeeds(){for(const b of needList.querySelectorAll('.ws-need'))if(b.dataset.p===st.focus)b.setAttribute('aria-current','true');else b.removeAttribute('aria-current')}
   async function loadNeeds(){
@@ -274,9 +317,19 @@ function wsStart(){
       const [q,pm,tm]=await Promise.all([api('questions?status=pending&limit=500'),api('permissions?status=pending'),api('terminals').catch(()=>[])]);
       if(seq!==needSeq)return;
       const sess=Array.isArray(tm)?tm:[];
-      const rows=S.needs(q.questions,pm.permissions,sess),a=document.activeElement,was=needList.contains(a)?a.dataset.p:'';
-      needN=rows.length;needCount.textContent=String(rows.length);
+      needRows=S.needs(q.questions,pm.permissions,sess);needSess=sess;
+      needN=needRows.length;
       for(const c of box.querySelectorAll('.ws-sidecount'))c.textContent=needN?String(needN):'';
+      drawNeeds();
+    }catch(e){if(seq===needSeq)needList.replaceChildren(node('li',e.message,'msg err'))}
+  }
+  let needSess=[];
+  // drawNeeds lists the waiting rows of the followed session (all with none).
+  function drawNeeds(){
+    const sess=needSess,id=side.session,a=document.activeElement,was=needList.contains(a)?a.dataset.p:'';
+    const rows=id?needRows.filter(r=>r.pid==='term:'+id||(!!sessRole&&r.who===sessRole)):needRows;
+    ixBtn.needs.querySelector('.ix-n').textContent=rows.length?String(rows.length):'';
+    {
       needList.replaceChildren(...rows.map(r=>{
         const li=node('li',''),b=node('button','','ws-need');b.type='button';b.dataset.p=r.pid;b.title=r.title;
         const ask=r.kind==='ask',det=r.kind==='detached';
@@ -286,7 +339,7 @@ function wsStart(){
       if(!rows.length)needList.append(node('li','대기 없음','empty'));
       markNeeds();
       if(was)for(const b of needList.querySelectorAll('.ws-need'))if(b.dataset.p===was)b.focus({preventScroll:true});
-    }catch(e){if(seq===needSeq)needList.replaceChildren(node('li',e.message,'msg err'))}
+    }
   }
   // openItem shows a question or permission request as a centre panel.
   function openItem(p){
@@ -296,7 +349,7 @@ function wsStart(){
   }
   function follow(){
     const id=S.follow(side.session,st.focus);
-    if(id!==side.session){side.session=id;saveSide();drawSess()}
+    if(id!==side.session){side.session=id;saveSide();drawSess();document.dispatchEvent(new CustomEvent('ws-follow'))}
   }
   function subTabs(el,subs,cur,pick){
     el.replaceChildren();
@@ -310,19 +363,23 @@ function wsStart(){
   // an open detail holds the same views, so the column stays empty meanwhile.
   async function drawSess(){
     const id=side.session,seq=++sessSeq;
-    subTabs(sessTabs,id?S.SUBS:[],side.sub,k=>{side.sub=k;saveSide();drawSess().then(()=>{const b=sessTabs.querySelector('[aria-selected=true]');if(b)b.focus()})});
+    for(const [k,b] of Object.entries(ixBtn)){const on=k===side.sub;b.setAttribute('aria-selected',String(on));b.tabIndex=on?0:-1}
+    const needs=side.sub==='needs';needBox.hidden=!needs;
     if(detailCur){sessShown='';sessBody.replaceChildren();return}
     sessShown=id||'-';
-    if(!id){sessTitle.textContent='세션';sessBadge.hidden=true;sessBody.replaceChildren(node('p','세션 없음','empty'));return}
+    if(!id){sessRole='';sessTitle.textContent=needs?'답을 기다리는 것':'세션';sessWhere.textContent='';sessBadge.hidden=true;sessBody.replaceChildren(needs?'':node('p','세션 없음','empty'));drawNeeds();return}
     const out=document.createElement('div');
     let v=null;
     try{
       v=await termLoad(id);
       if(seq!==sessSeq)return;
       if(v){
-        termActs(v,out);
-        if(side.sub==='files')out.append(fileTree(v.id));
+        sessRole=termRole(v);
+        if(!needs)termActs(v,out);
+        if(needs){}
+        else if(side.sub==='files')out.append(fileTree(v.id));
         else if(side.sub==='autos')await termAutos(v,out);
+        else if(side.sub==='mail')await wsMail(termRole(v),out);
         else if(side.sub==='settings')termSettings(v,out);
         else await termHistory(v,out);
       }else out.append(node('p','없음 · 지워졌거나 바뀜','empty'));
@@ -330,6 +387,8 @@ function wsStart(){
     if(seq!==sessSeq)return;
     const h=v?details.terminals.head(v):{title:titles.get('term:'+id)||id,badge:null};
     sessTitle.textContent=h.title;sessBadge.hidden=!h.badge;
+    sessWhere.textContent=v&&v.directory||'';sessWhere.title=v?(v.node||'')+' › '+(v.directory||''):'';
+    drawNeeds();
     if(h.badge){sessBadge.textContent=h.badge[0];sessBadge.className='sc-badge '+(toneClass[h.badge[1]]||toneClass.neutral)}
     const top=sideEl.scrollTop,a=document.activeElement,inBody=sessBody.contains(a);
     sessBody.replaceChildren(...out.childNodes);
@@ -702,6 +761,10 @@ function wsStart(){
       if(g&&g.active===p&&(st.focus===p||!mq.matches)&&(!st.max||st.max===p))return;
       st=L.open(st,p);if(st.max&&st.max!==p)st=L.setMax(st,null);commit();
     },
+    // openTerm shows a hosted session's terminal panel (the left pane's
+    // session cards, #510); session is the session the column follows.
+    openTerm(v){openTerm(v);if(mq.matches)drawer(false)},
+    session(){return side.session},
     // shown says whether tab name's section is on screen now.
     shown(name){return shownPanels().includes('menu:'+name)},
     // termPaneFor stands in a detail body for the terminal screen: it opens

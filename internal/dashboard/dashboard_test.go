@@ -16,10 +16,11 @@ func TestDashboardTabsSkeleton(t *testing.T) {
 	if !strings.Contains(body, `role="tablist"`) {
 		t.Fatal("dashboard has no tablist")
 	}
-	// Tab order matters: 운영 (지시, 진행, 세션, 메일, 보고, 작업), 응답 (질문, 권한 요청, 규칙),
-	// 관리 (지표, 터미널, 설정).
+	// Tab order matters (#510): the left pane's menu rows (지시, 답이 필요함
+	// with 권한 요청 and 규칙 under it, 메일, 보고, 작업 · 예약, 지표), then its
+	// foot (설정, 진행, 세션 표, 터미널).
 	last := -1
-	for _, name := range []string{"requests", "progress", "sessions", "mail", "reports", "jobs", "questions", "permissions", "rules", "metrics", "terminals", "settings"} {
+	for _, name := range []string{"requests", "questions", "permissions", "rules", "mail", "reports", "jobs", "metrics", "settings", "progress", "sessions", "terminals"} {
 		tab := `id="tab-` + name + `" data-tab="` + name + `" aria-controls="panel-` + name + `"`
 		i := strings.Index(body, tab)
 		if i < 0 {
@@ -53,7 +54,7 @@ func TestDashboardMetricsTab(t *testing.T) {
 	Page(w, httptest.NewRequest("GET", "/", nil))
 	body := w.Body.String()
 	for _, want := range []string{
-		`<span class="tab-name sc-sidenav-label">지표</span>`,
+		`<span class="tab-name nv-label">지표</span>`,
 		"tabLoaders.metrics=loadMetrics",
 		"api('metrics?days='+metricsDays)",
 		`id="metDays7" data-days="7"`, `id="metDays30" data-days="30"`, `id="reloadMetrics"`,
@@ -73,7 +74,7 @@ func TestDashboardProgressTab(t *testing.T) {
 	Page(w, httptest.NewRequest("GET", "/", nil))
 	body := w.Body.String()
 	for _, want := range []string{
-		`<span class="tab-name sc-sidenav-label">진행</span>`,
+		`<span class="tab-name nv-label">진행</span>`,
 		`id="tab-progress" data-tab="progress" aria-controls="panel-progress" aria-selected="false"`,
 		`id="panel-progress" role="tabpanel" aria-labelledby="tab-progress" tabindex="0" class="card" hidden>`,
 		`id="panel-sessions" role="tabpanel" aria-labelledby="tab-sessions" tabindex="0" class="card" hidden>`,
@@ -212,7 +213,7 @@ func TestDashboardTerminalsTabOnlyWithHosting(t *testing.T) {
 		`tabLoaders.terminals=loadTerminals;`,
 		`api('terminals')`,
 		`confirm(`,
-		`<button type="button" data-view="nodes" aria-pressed="false" hidden>노드</button>`,
+		`<button type="button" data-view="nodes" aria-pressed="false" hidden title="노드">노드</button>`,
 		`setViewButton('nodes').hidden=!hostingOn;`,
 		`if(!setViewHash[v]||((v==='nodes'||v==='groups')&&!hostingOn))v='qsettings';`,
 		`api('nodes')`,
@@ -298,13 +299,14 @@ func TestDashboardDesignFrame(t *testing.T) {
 		t.Fatalf("mark %q is not the first letter of %q", productMark, productName)
 	}
 	order := []string{
-		`<div class="sc-app">`, `<aside class="sc-sidenav" aria-label="주 메뉴">`, `<h1>` + headerText + `</h1>`,
-		`<div id="tabs" class="tabs" role="tablist" aria-label="탭">`,
-		`>운영</div>`, `id="tab-progress"`, `id="tab-sessions"`, `id="tab-mail"`, `id="tab-reports"`, `id="tab-jobs"`,
-		`>응답</div>`, `id="tab-questions"`, `id="tab-permissions"`,
-		`>관리</div>`, `id="tab-metrics"`, `id="tab-terminals"`, `id="tab-settings"`,
-		`<div class="sc-app-main" id="appMain">`, `<header class="sc-topbar">`, `<li id="crumbTab" aria-current="page">지시</li>`,
-		`id="live"`, `id="whoName"`, `id="logout"`, `<main class="sc-app-page">`, `id="panel-progress"`, `</main>`, `<script>`,
+		`<div class="sc-app" id="app">`, `<header class="fr-title">`, `<h1>` + headerText + `</h1>`, `id="crumbTab" aria-current="page"`,
+		`id="newSession"`, `id="whoName"`, `id="logout"`, `</header>`,
+		`<aside class="lp" id="lp" aria-label="주 메뉴">`, `id="gsQ"`,
+		`<div id="tabs" class="tabs" role="tablist" aria-label="메뉴" aria-orientation="vertical">`,
+		`id="tab-requests"`, `id="tab-questions"`, `id="tab-permissions"`, `id="tab-rules"`, `id="tab-mail"`, `id="tab-reports"`, `id="tab-jobs"`, `id="tab-metrics"`,
+		`id="sessWait"`, `id="sessList"`, `id="lpFoot"`, `id="tab-settings"`, `id="tab-progress"`, `id="tab-sessions"`, `id="tab-terminals"`, `</aside>`,
+		`id="gripL" role="separator"`, `<div class="sc-app-main" id="appMain">`, `<main class="sc-app-page">`, `id="panel-progress"`, `</main>`,
+		`<footer class="fr-status" id="frStatus" aria-label="상태">`, `id="live"`, `id="stCount"`, `id="stHour"`, `id="stUsage"`, `</footer>`, `<script>`,
 	}
 	last := -1
 	for _, want := range order {
@@ -322,7 +324,7 @@ func TestDashboardDesignFrame(t *testing.T) {
 		}
 	}
 	for _, want := range []string{
-		".sc-sidenav-item[data-wait][data-nonzero] .sc-sidenav-count{display:block",
+		".nv[data-wait][data-nonzero] .nv-count{color:var(--color-warning)",
 		"t.toggleAttribute('data-nonzero',!!n);",
 		"$('crumbTab').textContent=t.querySelector('.tab-name').textContent;",
 		"--st-idle:var(--color-success);", "--st-error:var(--color-danger);", "--st-blocked:var(--color-warning);",
@@ -332,8 +334,14 @@ func TestDashboardDesignFrame(t *testing.T) {
 			t.Fatalf("frame missing %q", want)
 		}
 	}
-	// The page's own colours all come from the design tokens.
+	// The page's own colours all come from the design tokens; the frame's
+	// palette (#510) is one :root token block, and no rule names a colour.
 	own := dashboardHTML[strings.Index(dashboardHTML, "<style>"):strings.Index(dashboardHTML, "</style>")]
+	if i := strings.Index(own, ":root{color-scheme:dark;"); i < 0 {
+		t.Error("frame palette token block missing")
+	} else {
+		own = own[:i] + own[i+strings.Index(own[i:], "}")+1:]
+	}
 	if m := regexp.MustCompile(`:#[0-9a-fA-F]{3,6}\b|--(bg|surface|surface-2|border|border-strong|text|muted|accent|accent-soft|idle|busy|compacting|error|blocked|offline|s[1-6]|r|r-sm|mono)[:)]`).FindString(own); m != "" {
 		t.Errorf("page styles define their own colour or spacing %q", m)
 	}
@@ -350,7 +358,7 @@ func TestDashboardDetailPanel(t *testing.T) {
 	order := []string{
 		`<main class="sc-app-page">`, `</main>`,
 		`<aside id="detail" class="detail" aria-labelledby="detailTitle" hidden>`,
-		`<button type="button" id="detailBack" class="detail-back">`, `<h2 id="detailTitle" tabindex="-1">`,
+		`<button type="button" id="detailBack" class="detail-back" title="상세를 닫고 목록으로">`, `<h2 id="detailTitle" tabindex="-1">`,
 		`id="detailBadge" class="sc-badge"`, `id="detailClose"`, `<nav id="detailTabs" class="sc-tabs"`, `id="detailBody"`, `<script>`,
 	}
 	last := -1
@@ -362,9 +370,9 @@ func TestDashboardDetailPanel(t *testing.T) {
 		last = i
 	}
 	for _, want := range []string{
-		// Layout: 440px right column, sticky top bar, full screen below 720px.
+		// Layout: 440px right column scrolling on its own, full screen below 720px.
 		".sc-app-main.has-detail{grid-template-columns:minmax(0,1fr) 440px}",
-		".sc-topbar{position:sticky;top:0;",
+		".detail{grid-column:2;grid-row:1;align-self:stretch;min-height:0;overflow-y:auto;",
 		"@media (max-width:720px){\n.sc-app-main.has-detail{grid-template-columns:minmax(0,1fr)}\n.detail{position:fixed;inset:0;",
 		".detail-back{display:inline-block}",
 		// Hash restore: #<tab>/<id>/<sub>.
@@ -557,7 +565,7 @@ func TestDashboardSettingsDetail(t *testing.T) {
 	Page(w, httptest.NewRequest("GET", "/", nil))
 	body := w.Body.String()
 	for _, want := range []string{
-		`<div class="viewswitch" id="setViews" role="group" aria-label="설정 고르기"><button type="button" data-view="qsettings" aria-pressed="true">질문 설정</button><button type="button" data-view="roles" aria-pressed="false">역할</button><button type="button" data-view="nodes" aria-pressed="false" hidden>노드</button><button type="button" data-view="groups" aria-pressed="false" hidden>묶음</button><button type="button" data-view="reminders" aria-pressed="false">다시 알림</button></div>`,
+		`<div class="viewswitch" id="setViews" role="group" aria-label="설정 고르기"><button type="button" data-view="qsettings" aria-pressed="true" title="질문 설정">질문 설정</button><button type="button" data-view="roles" aria-pressed="false" title="역할">역할</button><button type="button" data-view="nodes" aria-pressed="false" hidden title="노드">노드</button><button type="button" data-view="groups" aria-pressed="false" hidden title="묶음">묶음</button><button type="button" data-view="reminders" aria-pressed="false" title="다시 알림">다시 알림</button></div>`,
 		`<table id="settingsTbl" class="stack list cards">`,
 		`<table id="refusalsTbl" class="stack list cards"><thead><tr><th>역할</th><th>맞은 대상</th><th>대신 물을 역할</th><th class="num">횟수</th><th>마지막 거절</th></tr></thead><tbody id="refusalsTable"></tbody></table>`,
 		"const [rows,refused]=await Promise.all([api('question-settings'),api('question-refusals')]);",
@@ -618,7 +626,7 @@ func TestDashboardJobsTab(t *testing.T) {
 	Page(w, httptest.NewRequest("GET", "/", nil))
 	body := w.Body.String()
 	for _, want := range []string{
-		`<select id="jobRole" aria-label="역할">`, `<select id="jobState" aria-label="상태">`,
+		`<select id="jobRole" aria-label="역할" title="역할">`, `<select id="jobState" aria-label="상태" title="상태">`,
 		`<th>종류</th><th>이름</th><th>역할</th><th>기계</th><th>상태</th><th>시작</th><th>만료</th><th>마지막 줄</th>`,
 		"api('jobs'", "apiSend('POST','jobs/'", "apiSend('DELETE','jobs/'", "jobs:loadJobs",
 		"api('schedules'", "apiSend('DELETE','schedules/'",
@@ -736,8 +744,10 @@ func TestDashboardWorkspaceLoadsWithHosting(t *testing.T) {
 			t.Errorf("page missing %q", want)
 		}
 	}
-	if strings.Contains(body, "workspace/") || strings.Contains(body, "localStorage") {
-		t.Error("the page itself names the workspace or stores in the browser")
+	// The page itself keeps only the pane widths (#510) in the browser.
+	frame, _ := pageFS.ReadFile("page/frame.js")
+	if strings.Contains(body, "workspace/") || strings.Count(body, "localStorage") != strings.Count(string(frame), "localStorage") || strings.Count(string(frame), "localStorage") != 2 {
+		t.Error("the page itself names the workspace or stores more than the pane widths in the browser")
 	}
 	src := workspaceSource(t)
 	for _, want := range []string{
@@ -748,7 +758,7 @@ func TestDashboardWorkspaceLoadsWithHosting(t *testing.T) {
 		"if(m)main.append($('panel-'+m));",
 		"else{const id=p.slice(5),t=terms.get(id);if(t){termStop(t);terms.delete(id)}",
 		"const nodeIdx=wsNodeIndex({openSession(v){",
-		"tabs.before(idx);tabs.after(box);",
+		"$('lpFoot').prepend(idx);tabs.after(box);",
 		"apiSend('POST','node-invites',{name:invName.value.trim()})",
 		"if(!confirm(n.name+' 노드를 끊을까요?",
 		"if(!confirm(g.role+' 역할의 '+n.name+' 허가를 거둘까요?'))return;",
@@ -787,7 +797,7 @@ func TestDashboardWorkspaceSide(t *testing.T) {
 		"$('appMain').append(sideEl);",
 		"const id=S.follow(side.session,st.focus);",
 		"api('questions?status=pending&limit=500'),api('permissions?status=pending')",
-		"if(side.sub==='autos')await termAutos(v,out);\n        else if(side.sub==='settings')termSettings(v,out);\n        else await termHistory(v,out);",
+		"if(side.sub==='autos')await termAutos(v,out);\n        else if(side.sub==='mail')await wsMail(termRole(v),out);\n        else if(side.sub==='settings')termSettings(v,out);\n        else await termHistory(v,out);",
 		"const spec=details[x.tab],seq=++it.seq,out=document.createElement('div');",
 		"return (p.startsWith('term:')&&p.length>5)||!!S.itemOf(p)||!!F.fileOf(p);",
 		"if(side.sub==='files')out.append(fileTree(v.id));",
@@ -825,14 +835,14 @@ func TestWorkspaceLayout(t *testing.T) {
 	}
 }
 
-// The search box sits in the top bar with its result list (#481), calls the
-// admin search API and puts every server string in as text.
+// The search box sits atop the left pane (#510) with its result list (#481),
+// calls the admin search API and puts every server string in as text.
 func TestDashboardSearchBox(t *testing.T) {
-	head := dashboardHTML[strings.Index(dashboardHTML, `<header class="sc-topbar">`):]
-	head = head[:strings.Index(head, "</header>")]
+	head := dashboardHTML[strings.Index(dashboardHTML, `<aside class="lp"`):]
+	head = head[:strings.Index(head, `<div class="sc-app-main"`)]
 	for _, want := range []string{`id="gsQ"`, `role="search"`, `id="gsPanel"`, `id="gsList"`, `id="gsMore"`} {
 		if !strings.Contains(head, want) {
-			t.Errorf("top bar lacks %s", want)
+			t.Errorf("left pane lacks %s", want)
 		}
 	}
 	js := dashboardHTML[strings.Index(dashboardHTML, "// ---- 검색 (#481) ----"):]
@@ -861,8 +871,8 @@ func TestDashboardRequestsTab(t *testing.T) {
 	body := w.Body.String()
 	for _, want := range []string{
 		`id="tab-requests" data-tab="requests" aria-controls="panel-requests" aria-selected="true" tabindex="0"`,
-		`<span class="tab-name sc-sidenav-label">지시</span>`,
-		`<li id="crumbTab" aria-current="page">지시</li>`,
+		`<span class="tab-name nv-label">지시</span>`,
+		`<span class="fr-crumb" id="crumbTab" aria-current="page" title="지금 연 메뉴">지시</span>`,
 		`id="panel-requests" role="tabpanel" aria-labelledby="tab-requests" tabindex="0" class="card">`,
 		`<option value="request">지시</option>`,
 		"const requestGroups=[['waiting','대표 답 기다림','warning'],['done','끝 — 안 봄','success'],['progress','진행','info'],['checked','확인함','neutral']];",
@@ -880,5 +890,38 @@ func TestDashboardRequestsTab(t *testing.T) {
 	src, _ := pageFS.ReadFile("page/tab_requests.js")
 	if strings.Contains(string(src), "innerHTML") {
 		t.Fatal("tab_requests.js sets innerHTML")
+	}
+}
+
+// The frame (#510): pane widths kept in the browser within their bounds,
+// a status row from current data, and a hover text on every control.
+func TestDashboardFrame(t *testing.T) {
+	frame, _ := pageFS.ReadFile("page/frame.js")
+	for _, want := range []string{
+		"const paneBounds={l:[180,480,248],r:[200,520,292]};",
+		"function fillTitles(root){",
+		"new MutationObserver(",
+		"$('stCount')", "$('stUsage')", "api('metrics/hourly')", "'지난 한 시간 메일 '+h.mail+' · 보고 '+h.reports", "k==='metrics'",
+	} {
+		if !strings.Contains(string(frame), want) {
+			t.Errorf("frame.js lacks %q", want)
+		}
+	}
+	for _, bad := range []string{"innerHTML", "insertAdjacentHTML", "outerHTML"} {
+		if strings.Contains(string(frame), bad) {
+			t.Errorf("frame.js uses %s", bad)
+		}
+	}
+	body, _ := pageFS.ReadFile("page/body.html")
+	for _, tag := range regexp.MustCompile(`<(?:button|input|select|textarea)\b[^>]*>`).FindAllString(string(body), -1) {
+		if !strings.Contains(tag, ` title="`) && !strings.Contains(tag, `type="hidden"`) {
+			t.Errorf("control without a hover text: %s", tag)
+		}
+	}
+	css := dashboardHTML[strings.Index(dashboardHTML, "<style>"):strings.Index(dashboardHTML, "</style>")]
+	for _, want := range []string{".fr-title{flex:none;height:34px;", ".fr-status{flex:none;height:24px;", "--text-sm:12.5px;", ".lp{flex:none;width:var(--lp-w,248px);"} {
+		if !strings.Contains(css, want) {
+			t.Errorf("frame styles lack %q", want)
+		}
 	}
 }

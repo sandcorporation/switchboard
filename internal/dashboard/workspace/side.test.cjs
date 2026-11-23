@@ -35,7 +35,7 @@ test('needs lists pending questions and permission requests, oldest first',()=>{
 test('a stored state that does not read back gives the initial one',()=>{
   const s={session:'a1',sub:'autos'};
   assert.deepStrictEqual(S.parse(S.serialize(s)),s);
-  assert.deepStrictEqual(S.parse('{"session":"a1","sub":"screen"}'),{session:'a1',sub:'log'});
+  assert.deepStrictEqual(S.parse('{"session":"a1","sub":"screen"}'),{session:'a1',sub:'mail'});
   for(const t of ['','{','null','[]','{"session":3}'])assert.deepStrictEqual(S.parse(t),S.initial(),t);
 });
 

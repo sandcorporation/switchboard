@@ -75,7 +75,7 @@ var scriptParts = []string{
 	"core.js", "detail.js", "tab_sessions.js", "tab_mail.js", "tabs.js", "tab_requests.js",
 	"tab_metrics.js", "search.js", "tab_progress.js", "tab_questions.js",
 	"tab_reports.js", "tab_jobs.js", "tab_rules.js", "tab_terminals.js",
-	"tab_settings.js", "tab_permissions.js", "live.js",
+	"tab_settings.js", "tab_permissions.js", "frame.js", "live.js",
 }
 
 // buildPage joins the parts: the markup, then the script parts of scriptParts
