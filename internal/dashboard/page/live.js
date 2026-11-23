@@ -165,7 +165,8 @@ $('ruleForm').onsubmit=e=>{
   postRule(body,$('ruleAddMsg'),r=>{for(const id of ['ruleText','ruleSource','ruleWhenTool','ruleWhenCommand','ruleWhenPath'])$(id).value='';loadRules();openDetail('rules',String(r.id))});
 };
 $('reloadJobs').onclick=()=>loadJobs();
-$('jobRole').onchange=$('jobState').onchange=()=>loadJobs();
+$('jobRole').onchange=()=>loadJobs();
+$('jobFind').oninput=()=>lvFind($('panel-jobs'),$('jobFind').value);
 $('reloadQuestions').onclick=()=>{setMsg($('questionsMsg'),'');loadQuestions()};
 $('reloadSettings').onclick=()=>{setMsg($('settingsMsg'),'');loadSettingsView()};
 $('reset').onclick=()=>{$('thread').value='';$('task').value='';mailID='';$('search').value='';$('status').value='';$('role').value='';$('box').value='all';load()};

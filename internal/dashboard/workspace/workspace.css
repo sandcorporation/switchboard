@@ -221,3 +221,6 @@
    a narrow inactive tab shows its close button on hover or focus only. */
 .ws-x{flex:none}
 .ws-tablist .ws-tabcell:not(.on):not(:hover):not(:focus-within) .ws-x{display:none}
+/* A page section (#515) fills the centre; the right column steps aside. */
+.ws-page #ws,.ws-page .ws-side,.ws-page .fr-grip-r{display:none}
+.ws-on.ws-page .sc-app-main:not(.detail-wide)>.sc-app-page:not([hidden]){display:block}

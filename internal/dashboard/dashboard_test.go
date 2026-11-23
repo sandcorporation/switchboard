@@ -638,16 +638,21 @@ func TestDashboardJobsTab(t *testing.T) {
 	Page(w, httptest.NewRequest("GET", "/", nil))
 	body := w.Body.String()
 	for _, want := range []string{
-		`<select id="jobRole" aria-label="역할" title="역할">`, `<select id="jobState" aria-label="상태" title="상태">`,
-		`<th>종류</th><th>이름</th><th>역할</th><th>기계</th><th>상태</th><th>시작</th><th>만료</th><th>마지막 줄</th>`,
+		// #515: one list column of groups (예약 · 돌고 있는 작업 · 끝난 작업),
+		// no tabs or splits; the actions sit in the item's detail.
+		`<section id="panel-jobs" role="tabpanel" aria-labelledby="tab-jobs" tabindex="0" class="card" data-lv hidden>`,
+		`<div class="lv-head"><h2>작업 · 예약</h2>`, `<select id="jobRole" aria-label="역할" title="역할">`,
+		`<input id="jobFind" type="search"`, "lvGroup(box,'jobs-sched','예약'", "lvGroup(box,'jobs-live','돌고 있는 작업'",
+		"lvGroup(box,'jobs-ended','끝난 작업'",
 		"api('jobs'", "apiSend('POST','jobs/'", "apiSend('DELETE','jobs/'", "jobs:loadJobs",
-		"api('schedules'", "apiSend('DELETE','schedules/'",
+		"api('schedules'", "apiSend('DELETE','schedules/'", "apiSend('POST','schedules/'+id+'/resume'",
+		"'/autos'", "apiSend('POST','terminals/'+encodeURIComponent(v.id)+'/autos/'+a.id+'/run')",
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("jobs tab missing %q", want)
 		}
 	}
-	for _, want := range []string{"if(!confirm('#'+j.id+' '+j.label+' 작업을 멈출까요?'))return;", "if(!confirm('#'+j.id+' '+j.label+' 기록을 지울까요? 되돌릴 수 없습니다.'))return;", "if(!confirm('#'+j.id+' '+j.label+' 예약을 지울까요? 되돌릴 수 없습니다.'))return;"} {
+	for _, want := range []string{"confirm('#'+j.id+' '+j.label+' 작업을 멈출까요?')?undefined:false", "confirm('#'+j.id+' '+j.label+' 기록을 지울까요? 되돌릴 수 없습니다.')?undefined:false", "confirm('#'+j.id+' '+j.label+' 예약을 지울까요? 되돌릴 수 없습니다.')?undefined:false"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("job stop and remove need a confirm: %q", want)
 		}

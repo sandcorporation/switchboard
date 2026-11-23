@@ -59,6 +59,16 @@ function wsStart(){
   frameScrimClose.push(()=>sideDrawer(false));
   const terms=new Map(),wraps=new Map(),titles=new Map(),items=new Map(),files=new Map(),trees=new Map();
   let autoFor=null,dragging=false;
+  // A section marked data-lv (작업 · 예약, 설정, #515) is a page, not a
+  // panel: it fills the centre on its own, without tabs or splits, and the
+  // right column steps aside for its detail. page is the one on screen.
+  let page='';
+  const lvTab=n=>{const el=$('panel-'+n);return !!el&&el.hasAttribute('data-lv')};
+  function pageMode(name){
+    page=name;html.classList.toggle('ws-page',!!name);
+    box.hidden=!!name;main.hidden=!name;
+    if(name)for(const el of main.children)if(el.getAttribute('role')==='tabpanel')el.hidden=el.id!=='panel-'+name;
+  }
   function valid(p){
     // A list screen (listTab, #514) is never a panel: it takes the centre.
     if(p.startsWith('menu:'))return visibleTabs().includes(p.slice(5))&&!listTab(p.slice(5));
@@ -271,6 +281,7 @@ function wsStart(){
   // openTerm shows a terminal's panel; a new one joins the group that holds
   // terminals, else opens to the right of the focused group.
   function openTerm(v){
+    if(page)pageMode('');
     const p='term:'+v.id;
     term(v.id,v);
     if(L.groupOf(st,p)||mq.matches){st=L.open(st,p)}
@@ -773,6 +784,7 @@ function wsStart(){
   if(location.hash.length>1&&curTab&&!listTab(curTab))st=L.open(st,'menu:'+curTab);
   side.session=S.follow(side.session,st.focus);
   render();drawSess();loadNeeds();
+  if(curTab&&lvTab(curTab))pageMode(curTab);
   return {
     // showMenu opens (or goes to) the section of tab name.
     showMenu(name){
@@ -789,7 +801,7 @@ function wsStart(){
     // screen is on the centre, #519); '' follows the focused panel again.
     followRole(role){if(role===pageRole)return;pageRole=role;drawSess()},
     // shown says whether tab name's section is on screen now.
-    shown(name){return shownPanels().includes('menu:'+name)},
+    shown(name){return page===name||shownPanels().includes('menu:'+name)},
     // termPaneFor stands in a detail body for the terminal screen: it opens
     // the terminal's panel the first time the detail shows it.
     termPaneFor(v){
