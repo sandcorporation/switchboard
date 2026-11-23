@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -129,18 +130,119 @@ func leftNote(w http.ResponseWriter, r *http.Request) (wire.LeftNote, bool) {
 
 // LeftAPI serves the role side of the ledger (#470), path after /api/left:
 //
-//	POST /api/left    left add: LeftAdd, items found after the caller ended
-//	                  the directive (its recipient or sender)
+//	POST /api/left               left add: LeftAdd, items found after the
+//	                             caller ended the directive (its recipient
+//	                             or sender)
+//	POST /api/left/{id}/issue    LeftEnd.URL: raised as an issue
+//	POST /api/left/{id}/pass     LeftEnd.Directive: passed on in that
+//	                             directive, which the caller sent
+//
+// Only the role (base) that sent the item's directive may raise or pass it.
+// Dropping is the dashboard admin's (AdminLeftAPI).
 func (s *Service) LeftAPI(w http.ResponseWriter, r *http.Request, p identity.Principal, rest string) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	if rest != "" {
+	if rest == "" {
+		s.addLeft(w, r, p)
+		return
+	}
+	item, action, in, ok := s.leftTarget(w, r, rest)
+	if !ok {
+		return
+	}
+	if action != "issue" && action != "pass" {
 		http.NotFound(w, r)
 		return
 	}
-	s.addLeft(w, r, p)
+	d, err := s.Get(item.Directive)
+	if err != nil || identity.BaseOf(s.db, d.Sender) != p.Base {
+		http.Error(w, "only the role that sent the directive may raise or pass what it left", http.StatusForbidden)
+		return
+	}
+	s.endBy(w, item, action, in, p.Base, p.Role)
+}
+
+// AdminLeftAPI serves POST /api/admin/left/{id}/{issue,pass,drop} for a
+// signed-in dashboard admin (#470): issue and pass as the directive's
+// sender would, drop with LeftEnd.Reason (required). The admin routes also
+// take a boss role's token (boss write, #399): admin is false then and all
+// three are refused; a role raises and passes with its CLI, and only a
+// person drops what is left.
+func (s *Service) AdminLeftAPI(w http.ResponseWriter, r *http.Request, admin bool, user, rest string) {
+	if !admin {
+		http.Error(w, "the ledger's dashboard actions are for a signed-in admin", http.StatusForbidden)
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	item, action, in, ok := s.leftTarget(w, r, rest)
+	if !ok {
+		return
+	}
+	by := "admin:" + user
+	switch action {
+	case "drop":
+		reason := strings.TrimSpace(in.Reason)
+		if reason == "" {
+			http.Error(w, "reason: why it is dropped", http.StatusBadRequest)
+			return
+		}
+		s.endLeft(w, item.ID, wire.LeftDropped, by, reason)
+	case "issue", "pass":
+		d, err := s.Get(item.Directive)
+		if err != nil {
+			http.Error(w, "no such directive", http.StatusNotFound)
+			return
+		}
+		s.endBy(w, item, action, in, identity.BaseOf(s.db, d.Sender), by)
+	default:
+		http.NotFound(w, r)
+	}
+}
+
+// leftTarget reads "{id}/{action}" and the LeftEnd body; it answers the
+// error itself when ok is false.
+func (s *Service) leftTarget(w http.ResponseWriter, r *http.Request, rest string) (item wire.LeftItem, action string, in wire.LeftEnd, ok bool) {
+	idPart, action, _ := strings.Cut(rest, "/")
+	id, err := wire.ParseID(idPart)
+	if err != nil {
+		http.Error(w, "invalid id", http.StatusBadRequest)
+		return item, action, in, false
+	}
+	if json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<16)).Decode(&in) != nil {
+		http.Error(w, "invalid JSON", http.StatusBadRequest)
+		return item, action, in, false
+	}
+	if item, err = s.leftItem(id); err != nil {
+		http.Error(w, "no such item", http.StatusNotFound)
+		return item, action, in, false
+	}
+	return item, action, in, true
+}
+
+// endBy raises item as an issue (in.URL) or passes it on (in.Directive, a
+// directive sent by base, not the item's own), for by.
+func (s *Service) endBy(w http.ResponseWriter, item wire.LeftItem, action string, in wire.LeftEnd, base, by string) {
+	switch action {
+	case "issue":
+		u, e := url.Parse(strings.TrimSpace(in.URL))
+		if e != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+			http.Error(w, "url: an http(s) issue URL", http.StatusBadRequest)
+			return
+		}
+		s.endLeft(w, item.ID, wire.LeftIssue, by, u.String())
+	case "pass":
+		m, e := s.Get(CurrentID(s.db, in.Directive))
+		if in.Directive <= 0 || e != nil || !isDirectiveMail(m) || identity.BaseOf(s.db, m.Sender) != base || m.ID == item.Directive {
+			http.Error(w, "directive: a directive sent by the same role as the item's, other than that one", http.StatusBadRequest)
+			return
+		}
+		s.endLeft(w, item.ID, wire.LeftPassed, by, fmt.Sprint(m.ID))
+	}
 }
 
 // addLeft serves POST /api/left.
@@ -202,6 +304,27 @@ func (s *Service) addLeft(w http.ResponseWriter, r *http.Request, p identity.Pri
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	writeJSON(w, out)
+}
+
+// endLeft moves open item id to state, recording who, when and value, and
+// answers the row. A row that is not open (or a none row) answers 409.
+func (s *Service) endLeft(w http.ResponseWriter, id int64, state, by, value string) {
+	res, err := s.db.Exec(`UPDATE left_items SET state=?,ended_by=?,ended_at=?,value=? WHERE id=? AND state=? AND kind<>?`, state, by, s.now().UTC().Format(time.RFC3339Nano), value, id, wire.LeftOpen, wire.LeftKindNone)
+	if err != nil {
+		http.Error(w, "update failed", http.StatusInternalServerError)
+		return
+	}
+	n, _ := res.RowsAffected()
+	it, err := s.leftItem(id)
+	if err != nil {
+		http.Error(w, "no such item", http.StatusNotFound)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if n == 0 {
+		w.WriteHeader(http.StatusConflict)
+	}
+	writeJSON(w, it)
 }
 
 const leftCols = `l.id,l.directive_id,l.kind,l.text,l.recorded_by,l.recorded_at,l.state,l.ended_by,l.ended_at,l.value,COALESCE(m.sender,''),COALESCE(m.subject,'')`

@@ -64,12 +64,21 @@ func withLeft(p parsedArgs, msg map[string]any) error {
 	return nil
 }
 
-// cliLeft runs left add N TEXT.
+// cliLeft runs left add N TEXT, left issue ID URL and left pass ID
+// --directive M.
 func cliLeft(c Config, p parsedArgs, out io.Writer) (int, error) {
 	if len(p.pos) == 0 {
-		return 0, usagef("left: add N TEXT")
+		return 0, usagef("left: add N TEXT | issue ID URL | pass ID --directive M")
 	}
 	action, args := p.pos[0], p.pos[1:]
+	if action == "issue" || action == "pass" {
+		if len(args) == 0 {
+			return 0, usagef("left %s: ID is an item ID", action)
+		}
+		if id, err := strconv.ParseInt(args[0], 10, 64); err != nil || id <= 0 {
+			return 0, usagef("left %s: ID is an item ID", action)
+		}
+	}
 	var path string
 	var body any
 	switch action {
@@ -82,8 +91,22 @@ func cliLeft(c Config, p parsedArgs, out io.Writer) (int, error) {
 			return 0, usagef("left add: N is a directive ID")
 		}
 		path, body = "/api/left", wire.LeftAdd{Directive: n, Left: []string{args[1]}}
+	case "issue":
+		if len(args) != 2 {
+			return 0, usagef("left issue ID URL")
+		}
+		path, body = "/api/left/"+args[0]+"/issue", wire.LeftEnd{URL: args[1]}
+	case "pass":
+		if len(args) != 1 {
+			return 0, usagef("left pass ID --directive M")
+		}
+		m, err := strconv.ParseInt(p.values["--directive"], 10, 64)
+		if err != nil || m <= 0 {
+			return 0, usagef("left pass: --directive M, a directive you sent")
+		}
+		path, body = "/api/left/"+args[0]+"/pass", wire.LeftEnd{Directive: m}
 	default:
-		return 0, usagef("left: unknown action %q (add)", action)
+		return 0, usagef("left: unknown action %q (add, issue, pass)", action)
 	}
 	b, err := slotCall(c, "POST", path, body)
 	if err != nil {
@@ -103,5 +126,10 @@ func cliLeft(c Config, p parsedArgs, out io.Writer) (int, error) {
 		}
 		return ExitOK, nil
 	}
-	return 0, nil
+	var it wire.LeftItem
+	if err := json.Unmarshal(b, &it); err != nil {
+		return 0, fmt.Errorf("unexpected response from server: %v", err)
+	}
+	fmt.Fprintf(out, "left #%d %s: %s\n", it.ID, it.State, it.Value)
+	return ExitOK, nil
 }

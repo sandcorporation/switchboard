@@ -194,6 +194,84 @@ func (s *Server) mailCompleted(id int64) (bool, error) {
 	return m.Status == "complete", err
 }
 
+// Ending an item (#470 T2): the directive's sender raises it as an issue or
+// passes it on in a directive it sent; only a signed-in admin drops it,
+// with a reason. An ended item answers 409 and leaves 진행.
+func TestLeftEnd(t *testing.T) {
+	t.Parallel()
+	s, clock := slotsWithRoles(t)
+	s.admin.ProxyToken = "proxy-secret"
+	if err := seedOther(s); err != nil {
+		t.Fatal(err)
+	}
+	d := directiveTo(t, s, clock, "work")
+	if w := callNew(s, "POST", fmt.Sprintf("/api/messages/%d/reply", d.ID), "team/worker", map[string]any{"body": "done", "done": true, "left": []string{"a", "b", "c", "d"}}); w.Code != 201 {
+		t.Fatalf("reply: %d %s", w.Code, w.Body)
+	}
+	ids := map[string]int64{}
+	for _, it := range openLeft(t, s) {
+		ids[it.Text] = it.ID
+	}
+	post := func(role, path string, body any) *httptest.ResponseRecorder {
+		return callNew(s, "POST", path, role, body)
+	}
+	issue := fmt.Sprintf("/api/left/%d/issue", ids["a"])
+	if w := post("team/worker", issue, wire.LeftEnd{URL: "https://example.com/i/1"}); w.Code != 403 {
+		t.Fatalf("issue by the recipient: %d %s", w.Code, w.Body)
+	}
+	if w := post("hq/boss", issue, wire.LeftEnd{URL: "not a url"}); w.Code != 400 {
+		t.Fatalf("issue without a URL: %d %s", w.Code, w.Body)
+	}
+	w := post("hq/boss", issue, wire.LeftEnd{URL: "https://example.com/i/1"})
+	var it wire.LeftItem
+	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &it) != nil || it.State != wire.LeftIssue || it.Value != "https://example.com/i/1" || it.EndedBy != "hq/boss" || it.EndedAt == nil {
+		t.Fatalf("issue: %d %s", w.Code, w.Body)
+	}
+	if w := post("hq/boss", issue, wire.LeftEnd{URL: "https://example.com/i/2"}); w.Code != 409 {
+		t.Fatalf("issue again: %d %s", w.Code, w.Body)
+	}
+
+	pass := fmt.Sprintf("/api/left/%d/pass", ids["b"])
+	other := apiMail(t, s, clock, "partner-a/coordinator", "/api/messages", map[string]any{"recipient": "team/worker", "subject": "not boss's"})
+	if w := post("hq/boss", pass, wire.LeftEnd{Directive: other.ID}); w.Code != 400 {
+		t.Fatalf("pass to another sender's directive: %d %s", w.Code, w.Body)
+	}
+	if w := post("hq/boss", pass, wire.LeftEnd{Directive: d.ID}); w.Code != 400 {
+		t.Fatalf("pass to its own directive: %d %s", w.Code, w.Body)
+	}
+	next := directiveTo(t, s, clock, "take over b")
+	if w := post("hq/boss", pass, wire.LeftEnd{Directive: next.ID}); w.Code != 200 || !strings.Contains(w.Body.String(), fmt.Sprintf(`"value":"%d"`, next.ID)) {
+		t.Fatalf("pass: %d %s", w.Code, w.Body)
+	}
+
+	// Drop: a role token is refused, through the boss routes too; the
+	// admin needs the write guard and a reason.
+	drop := fmt.Sprintf("/api/admin/left/%d/drop", ids["c"])
+	if w := post("hq/boss", "/api/boss/"+strings.TrimPrefix(drop, "/api/admin/"), wire.LeftEnd{Reason: "x"}); w.Code < 400 {
+		t.Fatalf("drop by a boss token: %d %s", w.Code, w.Body)
+	}
+	if w := post("hq/boss", drop, wire.LeftEnd{Reason: "x"}); w.Code != 401 && w.Code != 403 {
+		t.Fatalf("drop by a role token at the admin path: %d %s", w.Code, w.Body)
+	}
+	if w := adminRequest(s, "POST", drop, `{"reason":"x"}`, nil); w.Code != 403 {
+		t.Fatalf("drop without the write guard: %d %s", w.Code, w.Body)
+	}
+	if w := adminWrite(s, "POST", drop, `{"reason":" "}`); w.Code != 400 {
+		t.Fatalf("drop without a reason: %d %s", w.Code, w.Body)
+	}
+	w = adminWrite(s, "POST", drop, `{"reason":"done elsewhere"}`)
+	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &it) != nil || it.State != wire.LeftDropped || it.Value != "done elsewhere" || !strings.HasPrefix(it.EndedBy, "admin:") {
+		t.Fatalf("drop: %d %s", w.Code, w.Body)
+	}
+	// The dashboard's [이슈] for the admin.
+	if w := adminWrite(s, "POST", fmt.Sprintf("/api/admin/left/%d/issue", ids["d"]), `{"url":"https://example.com/i/3"}`); w.Code != 200 {
+		t.Fatalf("admin issue: %d %s", w.Code, w.Body)
+	}
+	if got := openLeft(t, s); len(got) != 0 {
+		t.Fatalf("open after ending all: %+v", got)
+	}
+}
+
 func openLeft(t *testing.T, s *Server) []wire.LeftItem {
 	t.Helper()
 	items, err := mail.OpenLeft(s.db)
@@ -205,7 +283,7 @@ func openLeft(t *testing.T, s *Server) []wire.LeftItem {
 
 // The CLI says what is left (#470): an ending answer without --left or
 // --left-none is refused with the one-line how-to, both together is a usage
-// error, --left repeats, and left add reaches the ledger.
+// error, --left repeats, and left add, issue and pass reach the ledger.
 func TestCLILeft(t *testing.T) {
 	t.Parallel()
 	h := newCLIHarness(t)
@@ -227,5 +305,21 @@ func TestCLILeft(t *testing.T) {
 	items := openLeft(t, h.s)
 	if len(items) != 3 || items[0].Text != "delete files" || items[2].Text != "upload" {
 		t.Fatalf("open %+v", items)
+	}
+	id := func(i int) string { return fmt.Sprint(items[i].ID) }
+	if r := h.run(nil, "left", "issue", id(0), "https://example.com/i/1"); r.code == 0 {
+		t.Fatalf("issue by the recipient: %+v", r)
+	}
+	if out := h.mustRun(nil, "--profile", "a", "left", "issue", id(0), "https://example.com/i/1"); !strings.Contains(out, "issue: https://example.com/i/1") {
+		t.Fatalf("left issue: %q", out)
+	}
+	if out := h.mustRun(nil, "--profile", "a", "left", "pass", id(1), "--directive", "2"); !strings.Contains(out, "passed: 2") {
+		t.Fatalf("left pass: %q", out)
+	}
+	if r := h.run(nil, "--profile", "a", "left", "pass", id(2)); r.code == 0 {
+		t.Fatalf("left pass without --directive: %+v", r)
+	}
+	if got := openLeft(t, h.s); len(got) != 1 || got[0].Text != "upload" {
+		t.Fatalf("open after issue and pass: %+v", got)
 	}
 }

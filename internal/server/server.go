@@ -540,6 +540,11 @@ func (s *Server) adminRoutes(w http.ResponseWriter, r *http.Request, path string
 		s.ids().AdminInvitesAPI(w, r, who.User, strings.TrimPrefix(rest, "/"))
 		return
 	}
+	if rest, ok := strings.CutPrefix(path, "left/"); ok {
+		// POST /api/admin/left/{id}/{issue,pass,drop}: only a signed-in admin (#470).
+		s.mail().AdminLeftAPI(w, r, boss == nil, who.User, rest)
+		return
+	}
 	if rest, ok := strings.CutPrefix(path, "messages/"); ok && r.Method == http.MethodPost {
 		// POST /api/admin/messages/{id}/close: the dashboard closes a directive.
 		idText, action, _ := strings.Cut(rest, "/")
