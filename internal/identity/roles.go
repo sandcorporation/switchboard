@@ -37,6 +37,10 @@ type RoleView struct {
 	Role      string  `json:"role"`
 	CreatedAt string  `json:"created_at"`
 	RevokedAt *string `json:"revoked_at"`
+	// RotatedAt is when an operator last replaced the token, RetiredAt when
+	// the role was retired (#7); null when never.
+	RotatedAt *string `json:"rotated_at"`
+	RetiredAt *string `json:"retired_at"`
 	Group     string  `json:"group"`
 	// LastUsedAt and LastMachine are the latest slot report of the role
 	// (RFC 3339); empty when it never reported.
@@ -45,7 +49,7 @@ type RoleView struct {
 }
 
 func (s *Service) ListRoles() ([]RoleView, error) {
-	rows, err := s.db.Query(`SELECT role,created_at,revoked_at FROM roles ORDER BY role`)
+	rows, err := s.db.Query(`SELECT role,created_at,revoked_at,rotated_at,retired_at FROM roles ORDER BY role`)
 	if err != nil {
 		return nil, err
 	}
@@ -53,13 +57,11 @@ func (s *Service) ListRoles() ([]RoleView, error) {
 	out := []RoleView{}
 	for rows.Next() {
 		var v RoleView
-		var at sql.NullString
-		if err = rows.Scan(&v.Role, &v.CreatedAt, &at); err != nil {
+		var at, rotated, retired sql.NullString
+		if err = rows.Scan(&v.Role, &v.CreatedAt, &at, &rotated, &retired); err != nil {
 			return nil, err
 		}
-		if at.Valid {
-			v.RevokedAt = &at.String
-		}
+		v.RevokedAt, v.RotatedAt, v.RetiredAt = nullString(at), nullString(rotated), nullString(retired)
 		if g, ok := s.GroupOf(v.Role); ok {
 			v.Group = g.Prefix
 		}
@@ -78,7 +80,8 @@ func (s *Service) ListRoles() ([]RoleView, error) {
 
 var errNoRole = errors.New("no such role")
 
-// SetRevoked revokes (or restores) role. Revoking releases every live slot of
+// SetRevoked revokes (or restores) role. A retired role is not restored
+// (errRetired). Revoking releases every live slot of
 // the role at once, as an intended stop (no offline notice), so its sessions
 // drop off presence; from then on Authenticate refuses the role and all its
 // -N names. Revoking a revoked role keeps the first revoked_at. A first
@@ -88,15 +91,18 @@ func (s *Service) SetRevoked(ctx context.Context, role string, revoke bool) (Rol
 	var v RoleView
 	var after func()
 	err := store.InTx(ctx, s.db, func(tx *sql.Tx) error {
-		var at sql.NullString
-		if err := tx.QueryRow(`SELECT created_at,revoked_at FROM roles WHERE role=?`, role).Scan(&v.CreatedAt, &at); err != nil {
+		var at, rotated, retired sql.NullString
+		if err := tx.QueryRow(`SELECT created_at,revoked_at,rotated_at,retired_at FROM roles WHERE role=?`, role).Scan(&v.CreatedAt, &at, &rotated, &retired); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				return errNoRole
 			}
 			return err
 		}
-		v.Role = role
+		v.Role, v.RotatedAt, v.RetiredAt = role, nullString(rotated), nullString(retired)
 		if !revoke {
+			if retired.Valid {
+				return errRetired
+			}
 			_, err := tx.Exec(`UPDATE roles SET revoked_at=NULL WHERE role=?`, role)
 			return err
 		}
@@ -157,6 +163,8 @@ func (s *Service) SetRevoked(ctx context.Context, role string, revoke bool) (Rol
 //	POST /api/admin/roles/{role}/revoke
 //	POST /api/admin/roles/{role}/restore
 //	POST /api/admin/roles/{role}/rename   {"to": NEW}
+//	POST /api/admin/roles/{role}/rotate   {"credential": NEW}
+//	POST /api/admin/roles/{role}/retire[?force=1]
 //
 // Role names keep their slashes as path separators.
 func (s *Service) AdminRolesAPI(w http.ResponseWriter, r *http.Request, rest string) {
@@ -185,6 +193,9 @@ func (s *Service) AdminRolesAPI(w http.ResponseWriter, r *http.Request, rest str
 		s.adminRename(w, r, old)
 		return
 	}
+	if s.lifecycleAPI(w, r, rest) {
+		return
+	}
 	role, revoke := strings.CutSuffix(rest, "/revoke")
 	if !revoke {
 		var restore bool
@@ -207,6 +218,10 @@ func (s *Service) AdminRolesAPI(w http.ResponseWriter, r *http.Request, rest str
 	v, err := s.SetRevoked(r.Context(), role, revoke)
 	if errors.Is(err, errNoRole) {
 		http.Error(w, "no such role", 404)
+		return
+	}
+	if errors.Is(err, errRetired) {
+		http.Error(w, "role retired", 409)
 		return
 	}
 	if err != nil {
@@ -262,7 +277,7 @@ func (s *Service) Register(w http.ResponseWriter, r *http.Request) {
 	}
 	enrollment := config.EnvAlias("ENROLLMENT_TOKEN")
 	provided := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
-	if len(req.Credential) < 24 || enrollment == "" || len(enrollment) != len(provided) || subtle.ConstantTimeCompare([]byte(enrollment), []byte(provided)) != 1 {
+	if len(req.Credential) < minCredentialLen || enrollment == "" || len(enrollment) != len(provided) || subtle.ConstantTimeCompare([]byte(enrollment), []byte(provided)) != 1 {
 		http.Error(w, "enrollment authorization required", 401)
 		return
 	}

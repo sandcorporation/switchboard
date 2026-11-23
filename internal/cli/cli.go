@@ -289,9 +289,12 @@ var commands = []command{
 			{"--state", "STATE", "only jobs and schedules in STATE (live: not ended)"},
 			optYes, optJSON, optProfile,
 		}},
-	{name: "roles", args: "[revoke ROLE | restore ROLE]", nargs: 2, optArgs: true,
-		summary: "List roles (group, revoked or not), leased numbered slots and groups, or revoke (needs --yes) or restore a role (boss roles only; a group boss sees and changes its groups)",
-		options: []option{optYes, optJSON, optProfile}},
+	{name: "roles", args: "[revoke ROLE | restore ROLE | rotate ROLE | retire ROLE]", nargs: 2, optArgs: true,
+		summary: "List roles (group, revoked, retired), leased numbered slots and groups, or revoke (needs --yes) or restore a role, rotate its token (needs --yes and --token-file) or retire it for good, keeping its mail (needs --yes) (boss roles only; a group boss sees and changes its groups)",
+		options: []option{
+			{"--token-file", "PATH", "rotate: the new role credential; an empty or missing file gets a new random one, written there owner-only before it is sent (never printed)"},
+			optYes, optJSON, optProfile,
+		}},
 	{name: "settings", args: "[set TARGET | rm TARGET]", nargs: 2, optArgs: true,
 		summary: "Show the dashboard's settings: question settings, recent refused questions and, for a global boss, the server summary and which secret settings are set (names only, never values); set or remove (needs --yes) a question setting of a role, PREFIX/* or * (boss roles only; a group boss its groups, * is a global boss's)",
 		options: []option{

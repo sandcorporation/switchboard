@@ -62,6 +62,8 @@ var bossWriteRoutes = []bossWriteRoute{
 	{http.MethodPost, pathShape("schedules/*/resume"), scheduleOwner},
 	{http.MethodPost, roleAction("/revoke"), roleOwner("/revoke")},
 	{http.MethodPost, roleAction("/restore"), roleOwner("/restore")},
+	{http.MethodPost, roleAction("/rotate"), roleOwner("/rotate")},
+	{http.MethodPost, roleAction("/retire"), roleOwner("/retire")},
 	{http.MethodPut, prefixed("question-settings/"), settingOwner},
 	{http.MethodDelete, prefixed("question-settings/"), settingOwner},
 	{http.MethodPost, pathShape("terminals"), func(s *Server, _ string, body []byte) (string, error) {

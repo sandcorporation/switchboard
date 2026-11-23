@@ -162,6 +162,7 @@ type bossRolesView struct {
 	Roles []struct {
 		Role      string  `json:"role"`
 		RevokedAt *string `json:"revoked_at"`
+		RetiredAt *string `json:"retired_at"`
 		Group     string  `json:"group"`
 	} `json:"roles"`
 	Slots  []wire.SlotView `json:"slots"`
@@ -189,7 +190,11 @@ func cliRoles(c Config, p parsedArgs) (int, error) {
 	tw := tabwriter.NewWriter(os.Stdout, 0, 2, 2, ' ', 0)
 	fmt.Fprintln(tw, "ROLE\tGROUP\tSTATE")
 	for _, r := range v.Roles {
-		fmt.Fprintf(tw, "%s\t%s\t%s\n", r.Role, dash(r.Group), revokedText(r.RevokedAt))
+		state := revokedText(r.RevokedAt)
+		if r.RetiredAt != nil {
+			state = "retired"
+		}
+		fmt.Fprintf(tw, "%s\t%s\t%s\n", r.Role, dash(r.Group), state)
 	}
 	if len(v.Slots) > 0 {
 		fmt.Fprintln(tw, "\nSLOT\tMACHINE\tDIRECTORY")

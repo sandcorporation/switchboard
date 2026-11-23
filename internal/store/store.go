@@ -194,7 +194,20 @@ func Init(db *sql.DB) error {
 	if e = migrateRuleProposals(db); e != nil {
 		return e
 	}
-	return migrateLeftItems(db)
+	if e = migrateLeftItems(db); e != nil {
+		return e
+	}
+	return migrateRoleLifecycle(db)
+}
+
+// migrateRoleLifecycle adds roles.rotated_at (when an operator last replaced
+// the role's token) and roles.retired_at (when the role was retired: revoked
+// for good, its row and mail kept), both RFC 3339 text, null when never (#7).
+func migrateRoleLifecycle(db *sql.DB) error {
+	return addColumns(db, []columnAdd{
+		{"roles", "rotated_at", `TEXT`},
+		{"roles", "retired_at", `TEXT`},
+	})
 }
 
 // migrateRuleProposals adds the rules ledger's running gear (#409,
