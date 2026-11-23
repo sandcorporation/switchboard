@@ -544,6 +544,35 @@ func (s *Service) recordView(viewer, mailbox string, id int64) error {
 	return err
 }
 
+// Listing page size: the default, and the most a caller may ask for (#9).
+const (
+	listLimitDefault = 100
+	listLimitMax     = 500
+)
+
+// listPaging reads limit (1..listLimitMax, default listLimitDefault) and
+// before (only messages with a smaller ID) from the query. bad is the 400
+// text when either is not a positive integer or limit is too big.
+func listPaging(r *http.Request) (limit int, before int64, bad string) {
+	limit = listLimitDefault
+	q := r.URL.Query()
+	if v := q.Get("limit"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 1 || n > listLimitMax {
+			return 0, 0, fmt.Sprintf("limit: a number from 1 to %d", listLimitMax)
+		}
+		limit = n
+	}
+	if v := q.Get("before"); v != "" {
+		n, err := strconv.ParseInt(v, 10, 64)
+		if err != nil || n < 1 {
+			return 0, 0, "before: a message ID"
+		}
+		before = n
+	}
+	return limit, before, ""
+}
+
 // list writes the box of role; viewOnly marks each message ViewOnly.
 func (s *Service) list(w http.ResponseWriter, r *http.Request, role string, viewOnly bool) {
 	box := r.URL.Query().Get("box")
@@ -552,7 +581,11 @@ func (s *Service) list(w http.ResponseWriter, r *http.Request, role string, view
 	}
 	q := strings.TrimSpace(r.URL.Query().Get("q"))
 	status := r.URL.Query().Get("status")
-	limit := 100
+	limit, before, bad := listPaging(r)
+	if bad != "" {
+		http.Error(w, bad, http.StatusBadRequest)
+		return
+	}
 	query := `SELECT ` + messageCols(StatusExpr) + ` FROM messages m ` + StatusJoin + ` WHERE `
 	args := []any{}
 	if box == "outbox" {
@@ -570,6 +603,10 @@ func (s *Service) list(w http.ResponseWriter, r *http.Request, role string, view
 		values := statusValues(status)
 		query += `AND ` + StatusExpr + ` IN (?` + strings.Repeat(",?", len(values)-1) + `) `
 		args = append(args, values...)
+	}
+	if before > 0 {
+		query += `AND m.id<? `
+		args = append(args, before)
 	}
 	query += `ORDER BY m.id DESC LIMIT ?`
 	args = append(args, limit)
