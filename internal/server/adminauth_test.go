@@ -457,3 +457,74 @@ func TestAdminCommandNeedsNoClientConfig(t *testing.T) {
 		t.Fatalf("bad action: %v", code)
 	}
 }
+
+// admin disable is undone by admin enable, which keeps the password and the
+// TOTP secret; admin list shows name, created, disabled and last login and
+// no secret (#91).
+func TestAdminEnableAndList(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "data", "mail.db")
+	t.Setenv("DB_PATH", path)
+	if _, err := adminCLI(t, "correct horse battery\n", "create", "alice"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := adminCLI(t, "", "disable", "alice"); err != nil {
+		t.Fatal(err)
+	}
+	type row struct {
+		Name      string `json:"name"`
+		CreatedAt string `json:"created_at"`
+		Disabled  bool   `json:"disabled"`
+		LastLogin string `json:"last_login"`
+	}
+	list := func() []row {
+		t.Helper()
+		out, err := adminCLI(t, "", "list", "", "--json")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(out, "argon2") || strings.Contains(out, "secret") {
+			t.Fatalf("list carries a secret: %s", out)
+		}
+		var rows []row
+		if err := json.Unmarshal([]byte(out), &rows); err != nil {
+			t.Fatalf("%v %s", err, out)
+		}
+		return rows
+	}
+	if rows := list(); len(rows) != 1 || rows[0].Name != "alice" || !rows[0].Disabled || rows[0].CreatedAt == "" || rows[0].LastLogin != "" {
+		t.Fatalf("after disable: %+v", rows)
+	}
+	db, err := store.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	var hash, secret string
+	if err := db.QueryRow(`SELECT password_hash,totp_secret FROM admin_users WHERE name='alice'`).Scan(&hash, &secret); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`UPDATE admin_users SET totp_last_step=3000000 WHERE name='alice'`); err != nil {
+		t.Fatal(err)
+	}
+	out, err := adminCLI(t, "", "enable", "alice", "--json")
+	var got map[string]string
+	if err != nil || json.Unmarshal([]byte(out), &got) != nil || got["action"] != "enable" || got["name"] != "alice" || got["secret"] != "" {
+		t.Fatalf("enable --json: %v %s", err, out)
+	}
+	var hash2, secret2 string
+	if err := db.QueryRow(`SELECT password_hash,totp_secret FROM admin_users WHERE name='alice'`).Scan(&hash2, &secret2); err != nil {
+		t.Fatal(err)
+	}
+	if hash2 != hash || secret2 != secret {
+		t.Fatal("enable changed the password or the TOTP secret")
+	}
+	if rows := list(); rows[0].Disabled || rows[0].LastLogin != "1972-11-07T16:00:00Z" {
+		t.Fatalf("after enable: %+v", rows)
+	}
+	if text, err := adminCLI(t, "", "list", ""); err != nil || !strings.Contains(text, "alice\tenabled") {
+		t.Fatalf("list text: %v %q", err, text)
+	}
+	if _, err := adminCLI(t, "", "enable", "carol"); err == nil {
+		t.Fatal("enable of missing user accepted")
+	}
+}

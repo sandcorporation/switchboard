@@ -164,13 +164,22 @@ func (s *Service) checkBuiltinLogin(req loginRequest, now time.Time) bool {
 
 var adminNamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._@-]{0,63}$`)
 
-// CLI serves `admin create|passwd|totp-reset|disable NAME`. It opens
+// CLI serves `admin create|passwd|totp-reset|disable|enable NAME` and
+// `admin list`. It opens
 // DB_PATH (the server's database) directly.
 func CLI(action, name string, jsonOut bool, stdin io.Reader, stdout, stderr io.Writer) (int, error) {
 	switch action {
-	case "create", "passwd", "totp-reset", "disable":
+	case "create", "passwd", "totp-reset", "disable", "enable":
+		if name == "" {
+			return 0, cli.Usagef("admin %s: NAME needed", action)
+		}
+	case "list":
+		if name != "" {
+			return 0, cli.Usagef("admin list takes no name")
+		}
+		return listAdmins(jsonOut, stdout)
 	default:
-		return 0, cli.Usagef("admin: unknown action %q (create, passwd, totp-reset, disable)", action)
+		return 0, cli.Usagef("admin: unknown action %q (create, passwd, totp-reset, disable, enable, list)", action)
 	}
 	if !adminNamePattern.MatchString(name) {
 		return 0, cli.Usagef("admin: invalid name %q (1-64 of A-Z a-z 0-9 . _ @ -)", name)
@@ -234,8 +243,13 @@ func CLI(action, name string, jsonOut bool, stdin io.Reader, stdout, stderr io.W
 		if _, err = db.Exec(`UPDATE admin_users SET disabled_at=COALESCE(disabled_at,?) WHERE name=?`, now, name); err != nil {
 			return 0, err
 		}
+	case "enable":
+		// Password, TOTP secret and last step stay; only the flag clears.
+		if _, err = db.Exec(`UPDATE admin_users SET disabled_at=NULL WHERE name=?`, name); err != nil {
+			return 0, err
+		}
 	}
-	if action != "create" {
+	if action != "create" && action != "enable" {
 		if err = endSessions(); err != nil {
 			return 0, err
 		}
@@ -258,6 +272,8 @@ func CLI(action, name string, jsonOut bool, stdin io.Reader, stdout, stderr io.W
 		fmt.Fprintf(stdout, "new TOTP secret for %s; sessions ended\n", name)
 	case "disable":
 		fmt.Fprintf(stdout, "disabled %s; sessions ended\n", name)
+	case "enable":
+		fmt.Fprintf(stdout, "enabled %s\n", name)
 	}
 	if secret != "" {
 		fmt.Fprintf(stdout, "otpauth URI (shown once): %s\nsecret (shown once): %s\n", out["otpauth_uri"], secret)
@@ -312,4 +328,58 @@ func checkNewPassword(pw string) error {
 		return fmt.Errorf("password must be at most %d bytes", maxPasswordLen)
 	}
 	return nil
+}
+
+// adminRow is one line of `admin list`: no password hash, no TOTP secret.
+type adminRow struct {
+	Name      string `json:"name"`
+	CreatedAt string `json:"created_at"`
+	Disabled  bool   `json:"disabled"`
+	// LastLogin is the time of the last accepted TOTP step, i.e. of the last
+	// successful login; "" when the user never logged in.
+	LastLogin string `json:"last_login"`
+}
+
+func listAdmins(jsonOut bool, stdout io.Writer) (int, error) {
+	db, err := store.Open(config.Env("DB_PATH", "/data/mail.db"))
+	if err != nil {
+		return 0, err
+	}
+	defer db.Close()
+	rows, err := db.Query(`SELECT name,created_at,disabled_at IS NOT NULL,totp_last_step FROM admin_users ORDER BY name`)
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close()
+	out := []adminRow{}
+	for rows.Next() {
+		var r adminRow
+		var step int64
+		if err := rows.Scan(&r.Name, &r.CreatedAt, &r.Disabled, &step); err != nil {
+			return 0, err
+		}
+		if step > 0 {
+			r.LastLogin = time.Unix(step*TOTPStep, 0).UTC().Format(time.RFC3339)
+		}
+		out = append(out, r)
+	}
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+	if jsonOut {
+		b, _ := json.Marshal(out)
+		fmt.Fprintln(stdout, string(b))
+		return 0, nil
+	}
+	for _, r := range out {
+		state, last := "enabled", r.LastLogin
+		if r.Disabled {
+			state = "disabled"
+		}
+		if last == "" {
+			last = "never"
+		}
+		fmt.Fprintf(stdout, "%s\t%s\tcreated %s\tlast login %s\n", r.Name, state, r.CreatedAt, last)
+	}
+	return 0, nil
 }
