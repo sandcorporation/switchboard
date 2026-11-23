@@ -33,10 +33,16 @@
 <button type="button" class="nv nv-set" title="세션 표 — 모든 세션의 상태·컨텍스트·기계·판" role="tab" id="tab-sessions" data-tab="sessions" aria-controls="panel-sessions" aria-selected="false" tabindex="-1"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 3.5h11v7h-11zM6 13.5h4" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="tab-name nv-label">세션 표</span><span class="tab-count nv-count"></span></button>
 <button type="button" class="nv nv-set" title="터미널 — 호스트된 세션 표와 구독 한도" role="tab" id="tab-terminals" data-tab="terminals" aria-controls="panel-terminals" aria-selected="false" tabindex="-1" hidden><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3h12v10H2zM4.5 6l2 2-2 2M8 10h3.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="tab-name nv-label">터미널</span><span class="tab-count nv-count"></span></button>
 </div></div>
+<nav class="sn" id="setNav" aria-label="설정 메뉴">
+<div class="sn-top"><button type="button" class="sn-back" id="setBack" title="설정을 닫고 들어오기 전 화면으로 (Esc)">← 돌아가기</button></div>
+<div class="lp-find sn-find"><span class="lp-find-mark" aria-hidden="true">⌕</span><input id="setFind" type="search" autocomplete="off" spellcheck="false" placeholder="설정 찾기" aria-label="설정 찾기" title="분류·항목·역할 이름으로 찾기" maxlength="200"></div>
+<div id="setMenu" class="sn-menu"></div>
+</nav>
 </aside>
 <div class="fr-grip" id="gripL" role="separator" aria-orientation="vertical" aria-controls="lp" aria-label="왼쪽 칸 너비" title="끌어서 왼쪽 칸 너비를 바꾼다 (← → 키도 된다)" tabindex="0"></div>
 <div id="gsPanel" class="gspanel" hidden><div class="gshead"><span id="gsCount" role="status"></span><select id="gsKind" aria-label="종류" title="종류"><option value="">전체</option><option value="mail">메일</option><option value="report">보고</option><option value="question">질문</option><option value="left">남긴 것</option><option value="request">지시</option></select><label class="gsre" title="Go 정규식(RE2) · 대소문자 무시"><input type="checkbox" id="gsRe" title="검색어를 정규식으로 읽는다"> 정규식</label></div><ul id="gsList" class="gslist"></ul><button type="button" id="gsMore" class="gsmore" hidden title="더 보기">더 보기</button></div>
 <div class="sc-app-main" id="appMain">
+<div class="sh" id="setHead"><button type="button" class="fr-ib sh-menu" id="setMenuBack" title="설정 메뉴로 (Esc)" aria-label="설정 메뉴로">‹</button><nav id="setPath" class="sh-path" aria-label="경로"></nav><button type="button" id="setClose" class="detail-close" aria-label="설정 닫기" title="설정 닫기 (Esc)">×</button></div>
 <main class="sc-app-page">
 <section id="sessScreen" class="ss" aria-label="세션 화면" hidden></section>
 <section id="panel-requests" role="tabpanel" aria-labelledby="tab-requests" tabindex="0" class="lsec">
@@ -180,22 +186,11 @@
 <div id="decisions"></div>
 </div>
 </section>
-<section id="panel-settings" role="tabpanel" aria-labelledby="tab-settings" tabindex="0" class="lsec" hidden>
-<div class="ls-h"><h2>설정</h2><button type="button" id="reloadSettings" class="fr-ib" title="다시 불러오기" aria-label="다시 불러오기">↻</button></div>
-<input id="setFind" class="ls-filter" type="search" autocomplete="off" spellcheck="false" placeholder="거르기" aria-label="거르기" title="이름으로 거르기">
-<span id="settingsNote" class="ls-note-line" role="status" aria-live="polite"></span>
-<div id="settingsMsg" class="msg ls-msg" role="status" aria-live="polite"></div>
-<div id="settingsList" class="ls-list"></div>
-<dialog id="setAdd" class="sc-drawer" aria-labelledby="setAddTitle"><div class="sc-drawer-head"><h3 id="setAddTitle" class="sc-drawer-title">질문 설정 추가</h3><button type="button" id="setAddClose" class="detail-close" aria-label="닫기" title="닫기">×</button></div><div class="sc-drawer-body">
-<div id="setAddMsg" class="msg" role="status" aria-live="polite"></div>
-<form id="settingsForm" class="settings-form termform">
-<label title="default, 역할(svc/coordinator — svc/coordinator-N 포함), 접두사(svc/*). 정확한 대상 → 가장 긴 접두사 → default 순으로 하나만 적용">대상 <input id="setTarget" required autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="svc/coordinator 또는 svc/*" title="svc/coordinator 또는 svc/*"></label>
-<label class="check"><input type="checkbox" id="setCanAsk" title="이 역할이 대표에게 질문할 수 있다"> 질문할 수 있음 (can_ask)</label>
-<label class="check"><input type="checkbox" id="setDiscord" title="이 역할의 질문을 디스코드로도 알린다"> 디스코드 알림 (discord)</label>
-<label>지켜보는 역할 (쉼표로 구분, 최대 20) <input id="setWatchers" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="team/boss, ops/lead" title="team/boss, ops/lead"></label>
-<div class="row"><button type="submit" title="저장">저장</button><button type="button" id="setClear" title="비우기">비우기</button></div>
-</form>
-</div></dialog>
+<section id="panel-settings" role="tabpanel" aria-labelledby="tab-settings" tabindex="0" class="sb" hidden>
+<div class="sb-h"><h1 id="setTitle" class="sb-t"></h1><button type="button" id="setAddBtn" class="fr-ib" title="추가" aria-label="추가" hidden>+</button><button type="button" id="reloadSettings" class="fr-ib" title="다시 불러오기" aria-label="다시 불러오기">↻</button></div>
+<p id="settingsNote" class="sb-st" role="status" aria-live="polite"></p>
+<div id="settingsMsg" class="msg" role="status" aria-live="polite"></div>
+<div id="setItems" class="sb-list"></div>
 </section>
 <section id="panel-terminals" role="tabpanel" aria-labelledby="tab-terminals" tabindex="0" class="card" hidden>
 <div class="toolbar"><h2>터미널</h2><button id="reloadTerminals" title="다시 불러오기">새로 고침</button><span id="terminalsNote" class="muted"></span></div>
