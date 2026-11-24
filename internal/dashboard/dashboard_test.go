@@ -16,12 +16,12 @@ func TestDashboardTabsSkeleton(t *testing.T) {
 	if !strings.Contains(body, `role="tablist"`) {
 		t.Fatal("dashboard has no tablist")
 	}
-	// Tab order matters (#510): the left pane's menu rows (지시, 답이 필요함
-	// with 권한 요청 and 규칙 under it, hidden since #514 put them in 답이
-	// 필요함, 메일, 보고, 작업 · 예약, 지표), then its foot (설정, 진행, 세션
-	// 표, 터미널).
+	// Tab order matters (#510): the left pane's menu rows (지시, 진행 under
+	// it since #576, 답이 필요함 with 권한 요청 and 규칙 under it, hidden
+	// since #514 put them in 답이 필요함, 메일, 보고, 작업 · 예약, 지표), then
+	// its foot (설정, 세션 표, 터미널).
 	last := -1
-	for _, name := range []string{"requests", "questions", "permissions", "rules", "mail", "reports", "jobs", "metrics", "settings", "progress", "sessions", "terminals"} {
+	for _, name := range []string{"requests", "progress", "questions", "permissions", "rules", "mail", "reports", "jobs", "metrics", "settings", "sessions", "terminals"} {
 		tab := `id="tab-` + name + `" data-tab="` + name + `" aria-controls="panel-` + name + `"`
 		i := strings.Index(body, tab)
 		if i < 0 {
@@ -303,8 +303,8 @@ func TestDashboardDesignFrame(t *testing.T) {
 		`id="newSession"`, `id="whoName"`, `id="logout"`, `</header>`,
 		`<aside class="lp" id="lp" aria-label="주 메뉴">`, `id="gsQ"`,
 		`<div id="tabs" class="tabs" role="tablist" aria-label="메뉴" aria-orientation="vertical">`,
-		`id="tab-requests"`, `id="tab-questions"`, `id="tab-permissions"`, `id="tab-rules"`, `id="tab-mail"`, `id="tab-reports"`, `id="tab-jobs"`, `id="tab-metrics"`,
-		`id="sessWait"`, `id="sessList"`, `id="lpFoot"`, `id="tab-settings"`, `id="tab-progress"`, `id="tab-sessions"`, `id="tab-terminals"`, `</aside>`,
+		`id="tab-requests"`, `id="tab-progress"`, `id="tab-questions"`, `id="tab-permissions"`, `id="tab-rules"`, `id="tab-mail"`, `id="tab-reports"`, `id="tab-jobs"`, `id="tab-metrics"`,
+		`id="sessWait"`, `id="sessList"`, `id="lpFoot"`, `id="tab-settings"`, `id="tab-sessions"`, `id="tab-terminals"`, `</aside>`,
 		`id="gripL" role="separator"`, `<div class="sc-app-main" id="appMain">`, `<main class="sc-app-page">`, `id="panel-progress"`, `</main>`,
 		`<footer class="fr-status" id="frStatus" aria-label="상태">`, `id="live"`, `id="stCount"`, `id="stHour"`, `id="stUsage"`, `</footer>`, `<script>`,
 	}
@@ -926,7 +926,7 @@ func TestDashboardRequestsTab(t *testing.T) {
 		"for(const x of d.report_list||[])rows.push(",
 		"for(const x of d.mail_list||[])rows.push(",
 		"else if(h.kind==='request')openRequest(h.id);",
-		"liveCounts={requests:refreshRequestCount,",
+		"liveCounts={progress:refreshProgressCount,requests:refreshRequestCount,",
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("requests tab missing %q", want)
@@ -972,14 +972,18 @@ func TestDashboardFrame(t *testing.T) {
 	}
 }
 
-// The left pane's foot shows only 설정 (#515): 진행·세션 표·터미널 keep
-// their tabs and addresses but open from 설정's 화면 rows, and the 노드
-// index opens in 설정's detail instead of a 메뉴/노드 switch.
+// The left pane's foot shows only 설정 (#515): 세션 표·터미널 keep their
+// tabs and addresses but open from 설정's 화면 rows, and the 노드 index
+// opens in 설정's detail instead of a 메뉴/노드 switch. 진행 is a menu row
+// under 지시 with the 대기 count (#576), no longer in 화면.
 func TestDashboardSettingsHoldsViews(t *testing.T) {
 	w := httptest.NewRecorder()
 	Page(w, httptest.NewRequest("GET", "/", nil))
 	body := w.Body.String()
-	for _, tab := range []string{"progress", "sessions", "terminals"} {
+	if b := regexp.MustCompile(`<button[^>]*id="tab-progress"[^>]*>`).FindString(body); !strings.Contains(b, `class="nv"`) {
+		t.Errorf("tab progress button %q is not a menu row", b)
+	}
+	for _, tab := range []string{"sessions", "terminals"} {
 		b := regexp.MustCompile(`<button[^>]*id="tab-` + tab + `"[^>]*>`).FindString(body)
 		if !strings.Contains(b, `class="nv nv-set"`) {
 			t.Errorf("tab %s button %q is not a 설정 view", tab, b)
@@ -987,17 +991,24 @@ func TestDashboardSettingsHoldsViews(t *testing.T) {
 	}
 	for _, want := range []string{
 		`.lp-more .nv-set{display:none}`,
-		`const setTabs=['progress','sessions','terminals'];`,
+		`const setTabs=['sessions','terminals'];`,
 		`setTabs.includes(name)?'settings':name;`,
 		`filter(n=>!$('tab-'+n).hidden&&!setTabs.includes(n))`,
 		"setScreens().filter(s=>listMatch(q,s[1])).map(([k,name,href])=>{",
-		`const s=[['progress','진행','#progress'],['sessions','세션 표','#sessions']];`,
+		`const s=[['sessions','세션 표','#sessions']];`,
 		`if(ws&&ws.nodes)s.push(['view:nodes','노드',detailHash('settings','view:nodes','')]);`,
 		`view:(v,box)=>{const n=ws.nodes();box.append(n.el);n.show()}`,
+		"setTabCount('progress',items.length||null);",
+		"if(!tabLoaded.has('progress'))refreshProgressCount();",
+		"function doneButton(v,msg){",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("page missing %q", want)
 		}
+	}
+	// [끝남] asks on the row, not in a browser confirm (#576).
+	if strings.Contains(body, "confirm('#'+v.id+' 끝남") {
+		t.Error("[끝남] still uses confirm()")
 	}
 	if src := workspaceSource(t); strings.Contains(src, "ws-idx") || strings.Contains(src, "lpFoot") {
 		t.Error("the workspace still adds a 메뉴/노드 switch to the left pane")
