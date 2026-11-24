@@ -299,8 +299,6 @@ table.cards td.cardhide{display:none}
 #detailTabs[hidden]{display:none}
 .lsec{display:flex;flex-direction:column;min-height:0;flex:1 1 auto;overflow:hidden}
 .lsec[hidden]{display:none}
-.lsec>#questionsView{display:flex;flex-direction:column;min-height:0;flex:1 1 auto}
-.lsec>#decisionsView{overflow:auto;padding:8px 12px}
 .ls-h{flex:none;height:28px;display:flex;align-items:center;gap:4px;padding:0 6px 0 12px}
 .ls-h h2{flex:1 1 auto;min-width:0;margin:0;font-size:11px;font-weight:600;letter-spacing:.4px;color:var(--color-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ls-note{flex:none;font-size:11px;color:var(--color-muted);font-variant-numeric:tabular-nums;max-width:9em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -585,3 +583,28 @@ input:focus,select:focus,textarea:focus{border-color:var(--color-accent);outline
 .fr-set .sd-form .pdl,.fr-set .sd-form form.fld,.fr-set .sd-form .settings-form>label:not(.check){grid-template-columns:minmax(0,1fr);gap:4px}
 .fr-set .sd-form .settings-form>label.check{padding-left:0}
 }
+/* askOn (#581): the in-screen question standing in for confirm()/prompt(). */
+.ask{display:inline-flex;flex-wrap:wrap;align-items:center;gap:var(--space-2);min-width:0;max-width:100%}
+.ask-q{font-weight:600;overflow-wrap:anywhere}
+.ask input{flex:1 1 160px;min-width:0}
+.ask .msg{margin:0}
+/* docTable (#581): heads of its own, wrapping cells; a row with no link stays still. */
+.dc-g{table-layout:auto}
+.dc-g th:nth-child(n){width:auto}
+.dc-g td{white-space:normal;overflow-wrap:anywhere;height:auto;padding:4px 8px;vertical-align:top}
+.dc-g th:first-child{width:5em}
+.dc-g tr.dc-still{cursor:default}.dc-g tbody tr.dc-still:hover td{background:none}
+.dc-g .ok{color:var(--color-success)}
+.ls-filters[hidden]{display:none}
+.ls-chips{flex-wrap:wrap}
+/* #581: the body's foot sits at the bottom of the pane; links in its tables read as links; 결정 and 규칙 selects one per line. */
+.fr-split .detail:not([hidden]){display:flex;flex-direction:column}
+.fr-split .detail>*{flex:none}
+.fr-split .detail>.detail-body{flex:1 0 auto}
+.fr-split .detail-body:has(>.dc-bar){display:flex;flex-direction:column}
+.fr-split .detail-body:has(>.dc-bar)>*{flex:none}
+.fr-split .detail-body>.dc-bar{margin-top:auto}
+.dc-g a{color:var(--color-accent);text-decoration:underline}
+.dc-bar a.button.btn-p{background:var(--color-accent);color:var(--color-on-accent)}
+#decFilters,#panel-rules .ls-filters{grid-template-columns:1fr}
+.dc-bar .ask{flex:1 1 auto;justify-content:flex-end;margin:4px 0}

@@ -21,8 +21,8 @@ type CLIPair struct {
 // (docs/rules-hints.md); the dashboard shows their result as each row's
 // hit count and conditions in the 규칙 tab (GET rules, GET rules/{}).
 // So do the ledger's other role APIs (#409): GET and POST rules/proposers
-// are `rules proposer`, POST rules/classify `rules classify`; the 규칙 tab
-// shows proposals (approve, reject) and the unclassified count.
+// are `rules proposer`; 답이 필요함 shows proposals (approve, reject) and,
+// in its 결정 view, each answer's class (GET rules/classes, #581).
 //
 // CLIPairs is the table. Keep it in the dashboard's order.
 var CLIPairs = []CLIPair{
@@ -48,11 +48,12 @@ var CLIPairs = []CLIPair{
 	{Method: "GET", Path: "questions", CLI: "question list"},
 	{Method: "POST", Path: "questions/{}/answer", CLI: "question answer"},
 	{Method: "GET", Path: "decisions", CLI: "decisions"},
+	{Method: "GET", Path: "rules/classes", Why: "the 결정 view's class of every answer (#581); a role reads its own with `rules unclassified`"},
+	{Method: "POST", Path: "rules/classify", CLI: "rules classify"},
 	{Method: "GET", Path: "rules", CLI: "rules list"},
 	{Method: "GET", Path: "rules/topics", CLI: "rules topics"},
 	{Method: "POST", Path: "rules", CLI: "rules add"},
 	{Method: "POST", Path: "rules/{}/void", CLI: "rules void"},
-	{Method: "GET", Path: "rules/unclassified", CLI: "rules unclassified"},
 	{Method: "GET", Path: "rules/{}", CLI: "rules show"},
 	{Method: "POST", Path: "rules/{}/approve", CLI: "rules approve"},
 	{Method: "POST", Path: "rules/{}/reject", CLI: "rules reject"},

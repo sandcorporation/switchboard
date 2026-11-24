@@ -128,8 +128,8 @@ function drawWatch(v,box){
       try{await apiSend('POST','watches/'+v.id+'/'+(v.enabled?'off':'on'));setForms.delete(id);setNote(id,v.enabled?'껐음':'켰음','ok')}
       catch(e){setNote(id,e.message,'err')}
       loadSettingsView();drawDetail();
-    },v.enabled?'조회를 멈춤':'다시 조회'),setButton('지우기','',async()=>{
-      if(!confirm(v.name+' 규칙을 지울까요? 저장한 키도 지워집니다.'))return;
+    },v.enabled?'조회를 멈춤':'다시 조회'),setButton('지우기','',async e=>{
+      if(!await askOn(e.currentTarget,{text:v.name+' 규칙을 지울까요? 저장한 키도 지워집니다.'}))return;
       try{await apiSend('DELETE','watches/'+v.id);setForms.delete(id);setMsg($('settingsMsg'),v.name+' 규칙을 지웠습니다.','ok');closeDetail()}
       catch(e){setNote(id,e.message,'err');drawDetail()}
       loadSettingsView();

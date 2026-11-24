@@ -4,16 +4,16 @@
 // #42 sets tabLoaders.questions / tabLoaders.settings (null = nothing to load).
 // The order is the left pane's (#510): the menu rows, then the foot.
 // setTabs open from 설정's 화면 rows, inside the 설정 screen (#515, #538);
-// 진행 is a menu row under 지시 since #576.
+// 진행 is a menu row under 지시 since #576, 규칙 one under 보고 since #581.
 const setTabs=['sessions','terminals'];
-const tabNames=['requests','progress','questions','permissions','rules','mail','reports','jobs','metrics','settings','sessions','terminals'];
+const tabNames=['requests','progress','questions','permissions','mail','reports','rules','jobs','metrics','settings','sessions','terminals'];
 const tabLoaders={requests:loadRequests,progress:null,sessions:loadSessions,reports:loadReports,jobs:loadJobs,metrics:null,mail:initMail,permissions:null,questions:null,rules:loadRules,settings:null};
 const tabLoaded=new Set();
 // listTabs are the list screens (#514, #509 계약 4): no panels or splits, a
 // list column and the open item's body beside it (html.fr-split). A row
 // shows its item at once; with hosting on the workspace steps aside while
 // one is on screen.
-const listTabs=['requests','questions','mail','reports','jobs'];
+const listTabs=['requests','questions','mail','reports','rules','jobs'];
 function listTab(name){return listTabs.includes(name)}
 // fullTabs (#515) are one body with no list column (지표, 진행, 설정 and its
 // 화면 rows, #523, #538, #576): like a list screen they take the centre, no panels or

@@ -238,8 +238,10 @@ function wsStart(){
     st=L.open(st,p);commit();
     const m=menuOf(p);if(m&&m!==curTab)selectTab(m);
   }
-  function closePanel(p){
-    if(F.fileOf(p)&&fileDirty(files.get(p))&&!confirm('저장하지 않은 고침을 버림'))return;
+  // Unsaved edits are asked about in the file's head (#581), by 저장.
+  async function closePanel(p){
+    const fd=F.fileOf(p)&&files.get(p);
+    if(fd&&fileDirty(fd)&&!await askOn(fd.save,{text:'저장하지 않은 고침을 버림',ok:'버림'}))return;
     const m=menuOf(p),w=wraps.get(p);
     if(m)main.append($('panel-'+m));
     else if(S.itemOf(p)){const it=items.get(p);if(it)it.seq++;items.delete(p)}
@@ -490,7 +492,7 @@ function wsStart(){
       try{await send(false)}
       catch(e){
         if(e.code!=='exists')throw e;
-        if(!confirm(F.join(dir,file.name)+' 덮어씀'))return(treeMsg(t,''),true);
+        if(!await askOn(t.up,{text:F.join(dir,file.name)+' 덮어씀',ok:'덮어쓰기'}))return(treeMsg(t,''),true);
         await send(true);
       }
       treeMsg(t,'');return true;
@@ -539,10 +541,10 @@ function wsStart(){
   }
   // gone closes the panel of a file deleted (to null) or renamed, and opens
   // the renamed one in its place.
-  function gone(id,path,to){
+  async function gone(id,path,to){
     const p=F.pid(id,path);
     if(!files.has(p))return;
-    closePanel(p);
+    await closePanel(p);
     if(to&&!files.has(p))openFile(id,to);
   }
   // fillDir lists dir of session id into ul: folders first, each opening
@@ -597,7 +599,7 @@ function wsStart(){
     bar.hidden=true;bar.setAttribute('role','status');
     head.append(h,meta,save,re);el.append(head,bar,body);
     f={el:el,meta:meta,save:save,bar:bar,body:body,seq:0,ed:null,fp:'',busy:false};files.set(p,f);
-    re.onclick=()=>{if(fileDirty(f)&&!confirm('저장하지 않은 고침을 버림'))return;drawFile(p)};
+    re.onclick=async()=>{if(fileDirty(f)&&!await askOn(f.save,{text:'저장하지 않은 고침을 버림',ok:'버림'}))return;drawFile(p)};
     save.onclick=()=>saveFile(p,false);
     drawFile(p);
     return el;

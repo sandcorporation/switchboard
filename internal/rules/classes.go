@@ -103,6 +103,22 @@ func (s *Service) unclassifiedAPI(w http.ResponseWriter, r *http.Request, c Call
 	_, _ = w.Write(append(body, '\n'))
 }
 
+// classesAPI is GET /api/rules/classes (#581): every counted answer, oldest
+// first, with its class and rule, so the dashboard's 결정 view can mark each
+// decision 결정 (a rule's source), 한 번 or 미분류. Full callers only.
+func (s *Service) classesAPI(w http.ResponseWriter, c Caller) {
+	if !c.Full {
+		http.Error(w, forbidden, http.StatusForbidden)
+		return
+	}
+	answers, err := queryClasses(s.db, `1=1`)
+	if err != nil {
+		http.Error(w, "query failed", http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, wire.AnswerClasses{Answers: answers})
+}
+
 // unclassifiedByRole is the count of unclassified answers per asker.
 func (s *Service) unclassifiedByRole() ([]wire.RoleCount, error) {
 	rows, err := s.db.Query(`SELECT asker, COUNT(*) FROM rule_classes WHERE class=? GROUP BY asker ORDER BY asker`, wire.AnswerUnclassified)

@@ -105,8 +105,8 @@ function termActs(v,box){
     add('멈춤',()=>termAct(v,'PUT','',{desired:'stopped'},v.base+' 멈춤'));
     add('재시작',()=>termAct(v,'POST','/restart',undefined,v.base+' 재시작'));
   }
-  add('새 대화',()=>{if(confirm(v.node+' '+v.base+' '+v.directory+' 세션을 새 대화로 시작할까요? 지금 대화로는 돌아가지 않습니다.'))termAct(v,'POST','/new-conversation',undefined,v.base+' 새 대화')});
-  add('지우기',()=>{if(confirm(v.node+' '+v.base+' '+v.directory+' 세션을 지울까요?'))termAct(v,'DELETE','',undefined,v.base+' 삭제')});
+  add('새 대화',async e=>{if(await askOn(e.currentTarget,{text:v.node+' '+v.base+' '+v.directory+' 세션을 새 대화로 시작할까요? 지금 대화로는 돌아가지 않습니다.',ok:'새 대화 확인'}))termAct(v,'POST','/new-conversation',undefined,v.base+' 새 대화')});
+  add('지우기',async e=>{if(await askOn(e.currentTarget,{text:v.node+' '+v.base+' '+v.directory+' 세션을 지울까요?',ok:'지우기 확인',danger:true}))termAct(v,'DELETE','',undefined,v.base+' 삭제')});
   box.append(acts);
   if(termNote&&termNote.id===v.id)box.append(node('p',termNote.text,'msg '+termNote.cls));
 }
@@ -247,7 +247,7 @@ async function termAutos(v,box){
     add('지금 실행',()=>autoAct(v,a,'POST','/run',autoName(a)+' 실행'));
     if(a.state==='paused')add('다시',()=>autoAct(v,a,'POST','/resume',autoName(a)+' 다시'));
     else add('멈춤',()=>autoAct(v,a,'POST','/pause',autoName(a)+' 멈춤'));
-    add('지우기',()=>{if(confirm(autoName(a)+'을(를) 지울까요? 실행 기록도 함께 지워지고 되돌릴 수 없습니다.'))autoAct(v,a,'DELETE','',autoName(a)+' 삭제')});
+    add('지우기',async e=>{if(await askOn(e.currentTarget,{text:autoName(a)+'을(를) 지울까요? 실행 기록도 함께 지워지고 되돌릴 수 없습니다.',ok:'지우기 확인',danger:true}))autoAct(v,a,'DELETE','',autoName(a)+' 삭제')});
     sec.append(acts,autoRuns(a.runs||[]));
     box.append(sec);
   }

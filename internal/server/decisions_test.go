@@ -271,8 +271,8 @@ func TestDashboardDecisionsView(t *testing.T) {
 	dashboard.Page(w, httptest.NewRequest("GET", "/", nil))
 	body := w.Body.String()
 	for _, want := range []string{
-		`id="viewQuestions"`, `id="viewDecisions"`, `aria-pressed`, `id="decisionsView"`, `id="decPeriod"`, `value="7"`, `value="30"`, `value="90"`, `value="custom"`,
-		`id="decFrom" type="date"`, `id="decTo" type="date"`, `id="decRole"`, `id="decSearch"`, `id="decExport"`, "download", "JSON 내보내기",
+		`id="viewQuestions"`, `id="viewDecisions"`, `aria-pressed`, `id="decisions"`, `id="decPeriod"`, `value="7"`, `value="30"`, `value="90"`, `value="custom"`,
+		`id="decFrom" type="date"`, `id="decTo" type="date"`, `id="decClass"`, `id="needsFilter"`, "ex.download=", "JSON 내보내기",
 		"'/api/admin/decisions?'", "p.set('format','ndjson')", "api('decisions?'", "h==='decisions'", "selectTab('decisions')",
 	} {
 		if !strings.Contains(body, want) {

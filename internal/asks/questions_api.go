@@ -81,14 +81,14 @@ var (
 
 // questionColumns ends with whether the answer mail waits for a session
 // (internal/mail/handoff.go).
-var questionColumns = `id,asker,asker_base,questions,answers,status,answered_by,created_at,answered_at,withdrawn_at,seq,answerer,relay_to,` + mail.HandoffWaitingSQL("questions.id")
+var questionColumns = `id,asker,asker_base,questions,answers,status,answered_by,created_at,answered_at,withdrawn_at,seq,answerer,relay_to,COALESCE(request_id,0),` + mail.HandoffWaitingSQL("questions.id")
 
 func scanQuestion(sc interface{ Scan(...any) error }) (wire.QuestionView, error) {
 	var v wire.QuestionView
 	var qs, as, relay string
 	var created, answered, withdrawn int64
 	var waiting bool
-	if err := sc.Scan(&v.ID, &v.Asker, &v.AskerBase, &qs, &as, &v.Status, &v.AnsweredBy, &created, &answered, &withdrawn, &v.Seq, &v.Answerer, &relay, &waiting); err != nil {
+	if err := sc.Scan(&v.ID, &v.Asker, &v.AskerBase, &qs, &as, &v.Status, &v.AnsweredBy, &created, &answered, &withdrawn, &v.Seq, &v.Answerer, &relay, &v.RequestID, &waiting); err != nil {
 		return v, err
 	}
 	if relay != "" {
