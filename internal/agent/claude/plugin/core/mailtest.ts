@@ -13,8 +13,11 @@ export const TOKEN = 'tok-SECRET-123'
 export const PROFILE = '/home/u/.config/switchboard/worker.json'
 
 /** 가짜 switchboard 서버: 계약(#73 댓글)의 긴 대기를 흉내 낸다. pending 만, id 오름차순, after 보다 큰 것만. */
+/** 이벤트 칸 덧붙이기(보낸이·제목·다시 알림 항목 등). */
+export type MailExtra = { sender?: string; subject?: string; left_remind?: number[] }
+
 export const fakeMail = (host: FakeHost) => {
-  const mails: { id: number; status: 'pending' | 'read'; priority: string; body: string; directive?: { id: number; state: string } }[] = []
+  const mails: { id: number; status: 'pending' | 'read'; priority: string; body: string; directive?: { id: number; state: string }; extra?: MailExtra }[] = []
   /** 서버에 들어온 읽음 처리(POST …/read, GET 메일 하나). */
   const reads: number[] = []
   /** true 면 긴급 이벤트에 본문을 싣지 않는다(본문을 따로 받아 오는 길 시험). */
@@ -32,6 +35,7 @@ export const fakeMail = (host: FakeHost) => {
         subject: `s${m.id}`,
         priority: m.priority,
         ...(m.directive === undefined ? {} : { answers_directive: m.directive }),
+        ...m.extra,
         // 계약: body 는 urgent 일 때만.
         ...(m.priority === 'urgent' && !omitBody ? { body: m.body } : {}),
       }))
@@ -86,9 +90,9 @@ export const fakeMail = (host: FakeHost) => {
     reads,
     status: (id: number) => mails.find(x => x.id === id)?.status,
     setOmitBody: (v: boolean) => void (omitBody = v),
-    send: (priority = 'normal', body = '', directive?: { id: number; state: string }) => {
+    send: (priority = 'normal', body = '', directive?: { id: number; state: string }, extra?: MailExtra) => {
       const id = nextId++
-      mails.push({ id, status: 'pending', priority, body, ...(directive === undefined ? {} : { directive }) })
+      mails.push({ id, status: 'pending', priority, body, ...(directive === undefined ? {} : { directive }), ...(extra === undefined ? {} : { extra }) })
       const w = waiters
       waiters = []
       for (const done of w) done()

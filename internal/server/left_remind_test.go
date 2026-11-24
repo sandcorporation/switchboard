@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -253,6 +254,26 @@ func TestLeftRemindVerdicts(t *testing.T) {
 	if w := callNew(s, "POST", fmt.Sprintf("/api/left/%d/done", e), "hq/boss", wire.LeftEnd{}); w.Code != 200 {
 		t.Fatalf("left done: %d %s", w.Code, w.Body)
 	}
+	// Its event names the open items to judge, for the plugin's tail (#571).
+	w := callNew(s, "GET", "/api/events/poll?timeout=0", "hq/boss", nil)
+	var poll mail.PollResponse
+	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &poll) != nil {
+		t.Fatalf("poll: %d %s", w.Code, w.Body)
+	}
+	found := false
+	for _, ev := range poll.Events {
+		if ev.ID == rid {
+			found = true
+			if want := []int64{a, b, c, d}; !slices.Equal(ev.LeftRemind, want) {
+				t.Fatalf("left_remind = %v, want %v", ev.LeftRemind, want)
+			}
+		} else if ev.LeftRemind != nil {
+			t.Fatalf("mail #%d is not a reminder: left_remind %v", ev.ID, ev.LeftRemind)
+		}
+	}
+	if !found {
+		t.Fatalf("no event for reminder #%d: %s", rid, w.Body)
+	}
 	complete := fmt.Sprintf("/api/messages/%d/complete", rid)
 	v := func(item int64, verdict, value string) wire.LeftVerdict {
 		return wire.LeftVerdict{Item: item, Verdict: verdict, Value: value}
@@ -331,6 +352,26 @@ func TestLeftRemindVerdicts(t *testing.T) {
 
 // complete ID --verdict ITEM=VERDICT (#565) from the CLI; a refusal names
 // the items and the command.
+// A reminder whose items all ended since carries left_remind [] (#571), so a
+// plugin does not fall back to the verdicts on its last line.
+func TestLeftRemindEventNoneOpen(t *testing.T) {
+	t.Parallel()
+	s, clock := slotsWithRoles(t)
+	leftSweep(t, s, clock, 0)
+	_, ids := leftWithItems(t, s, clock, "build", "a")
+	rid, _ := remindOf(t, s, clock, 25*time.Hour)
+	if w := callNew(s, "POST", fmt.Sprintf("/api/left/%d/done", ids["a"]), "hq/boss", wire.LeftEnd{}); w.Code != 200 {
+		t.Fatalf("left done: %d %s", w.Code, w.Body)
+	}
+	w := callNew(s, "GET", "/api/events/poll?timeout=0", "hq/boss", nil)
+	if want := fmt.Sprintf(`"id":%d,`, rid); !strings.Contains(w.Body.String(), want) || !strings.Contains(w.Body.String(), `"left_remind":[]`) {
+		t.Fatalf("want reminder #%d with left_remind []: %s", rid, w.Body)
+	}
+	if n := strings.Count(w.Body.String(), `"left_remind"`); n != 1 {
+		t.Fatalf("left_remind on %d events, want only the reminder: %s", n, w.Body)
+	}
+}
+
 func TestCLILeftVerdict(t *testing.T) {
 	t.Parallel()
 	h := newCLIHarness(t)

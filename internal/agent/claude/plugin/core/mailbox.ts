@@ -24,7 +24,7 @@ import { httpWhy, roleHeaders } from './wire'
 export type MailProfile = { endpoint: string; role: string; token: string }
 
 /** 서버 이벤트 하나(SSE message data 와 같다). 코어가 쓰는 칸만 적는다. */
-export type MailEvent = { id: number; sender?: string; subject?: string; priority?: string; body?: string; task_id?: string; answers_directive?: { id: number; state: string } }
+export type MailEvent = { id: number; sender?: string; subject?: string; priority?: string; body?: string; task_id?: string; answers_directive?: { id: number; state: string }; left_remind?: number[] }
 
 /**
  * call 의 바깥 길(선택): http 는 다른 fetch(Claude 모드에서는 그 훅의 `$` — 훅 예산은 `$` 를 기다리는 동안 멈춘다),
@@ -204,6 +204,47 @@ export const noticeText = (e: MailEvent, body: string, max = NOTICE_MAX_CHARS): 
   ].join('\n')
 }
 
+/** 다시 알림(`[남긴 것] N건 처리 안 됨`, #565) 제목 머리. 보낸이는 시스템이다. */
+export const LEFT_REMIND_SUBJECT_PREFIX = '[남긴 것] '
+/**
+ * 다시 알림을 `complete <ID> --verdict ITEM=…` 으로 끝내는 CLI 판 문턱(#565·#571). 낮거나 못 읽으면 올리라는 안내.
+ * 0.65.0 부터 있지만 v0.66.0 태그는 #565 앞 커밋에 잘못 찍혀 --verdict 가 없어, 그 판까지 거르는 0.66.1 로 둔다.
+ */
+export const MAIL_VERDICT_MIN_VERSION = '0.66.1'
+/** 판정 꼴(서버 left_verdict.go 의 verdictUsage 와 같다). */
+const VERDICTS = 'done|keep|drop:까닭|issue:URL'
+
+/**
+ * 다시 알림이 판정을 받아야 하는 열린 항목. 서버가 이벤트에 준 left_remind(#571)가 먼저고,
+ * 그 칸이 없는 서버면 시스템 보낸이의 `[남긴 것] ` 메일 본문 끝내기 줄(`--verdict 3=판정`)에서 읽는다. 다시 알림이 아니면 빈 배열.
+ */
+export const remindItems = (e: MailEvent, body: string): number[] => {
+  if (Array.isArray(e.left_remind)) return e.left_remind.filter(n => Number.isInteger(n) && n > 0)
+  if (!isSystemSender(e.sender) || !(e.subject ?? '').startsWith(LEFT_REMIND_SUBJECT_PREFIX)) return []
+  const end = body.split('\n').find(l => l.startsWith('끝내기: complete ')) ?? ''
+
+  return [...end.matchAll(/--verdict (\d+)=/g)].map(m => Number(m[1]))
+}
+
+/**
+ * 다시 알림 꼬리(#571): 읽음 처리만으로는 끝나지 않으니 항목마다 판정을 붙인 complete 명령을 보인다.
+ * CLI 가 MAIL_VERDICT_MIN_VERSION 보다 낮거나 판을 못 읽으면 --verdict 를 모르므로 새 판으로 올리라고 한다.
+ */
+export const remindTail = (id: number, items: readonly number[], verdictOk: boolean, version?: string): string => {
+  const command = `switchboard complete ${id} ${items.map(it => `--verdict ${it}=${VERDICTS}`).join(' ')}`
+  if (verdictOk) {
+    return [
+      `메일 #${id} 은 남긴 것 다시 알림이다. 읽음 처리만 했고, 열린 항목(${items.map(it => `#${it}`).join(' ')})마다 판정해야 끝난다 — 판정: done 끝남 · keep 그대로 둠(다음 알림에 다시) · drop:까닭 버림 · issue:URL 이슈로 넘김.`,
+      `끝내기(항목마다 하나를 고른다): ${command}`,
+    ].join('\n')
+  }
+
+  return [
+    `메일 #${id} 은 남긴 것 다시 알림이다. 열린 항목(${items.map(it => `#${it}`).join(' ')})마다 --verdict 판정을 붙여 complete 해야 끝나는데, 이 세션의 switchboard CLI(${version ?? '판 모름'})는 --verdict 를 모른다(${MAIL_VERDICT_MIN_VERSION} 부터).`,
+    `switchboard CLI 를 새 판으로 올린 뒤 끝낸다: ${command}`,
+  ].join('\n')
+}
+
 /** 알림 글. */
 export const announce = (ids: readonly number[], open: ReadonlyMap<number, number> = new Map()) =>
   [
@@ -348,6 +389,9 @@ const toEvent = (e: Record<string, unknown>, id: number): MailEvent => {
   if (task !== undefined) out.task_id = task
   const ad = e.answers_directive
   if (isRecord(ad) && typeof ad.id === 'number' && Number.isInteger(ad.id) && typeof ad.state === 'string') out.answers_directive = { id: ad.id, state: ad.state }
+  // 다시 알림의 열린 항목(#571): 옛 서버는 칸이 없다. 정수가 아닌 것은 버린다.
+  const lr = e.left_remind
+  if (Array.isArray(lr)) out.left_remind = lr.filter((n): n is number => typeof n === 'number' && Number.isInteger(n) && n > 0)
   if (sender !== undefined) out.sender = sender
   if (subject !== undefined) out.subject = subject
   if (priority !== undefined) out.priority = priority
@@ -486,11 +530,15 @@ export const createMailbox = (host: AgentHost, opts: MailboxOptions): Mailbox =>
 
     return undefined
   }
-  /** 넣을 글. null 이면 넣지 않는다(듣는 쪽이 DROP_NOTICE). */
+  /** 넣을 글. null 이면 넣지 않는다(듣는 쪽이 DROP_NOTICE). 다시 알림이면 판정 꼬리를 붙인다(#571). */
   const noticeOf = async (e: MailEvent, body: string): Promise<string | null> => {
     const text = await claimed(e, body)
+    if (text !== undefined) return text
+    const items = remindItems(e, body)
+    if (items.length === 0) return noticeText(e, body)
+    const v = await cliVersion?.()
 
-    return text === undefined ? noticeText(e, body) : text
+    return [noticeText(e, body), remindTail(e.id, items, v !== undefined && versionAtLeast(v, MAIL_VERDICT_MIN_VERSION), v)].join('\n')
   }
   /** 가로챈 긴급 메일: 넣지 않고 read 로만. */
   const tapped = (e: MailEvent) => {

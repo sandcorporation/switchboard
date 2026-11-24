@@ -199,6 +199,7 @@ func (s *Service) pendingAfter(role string, cursor int64) ([]wire.MailEvent, err
 	rows.Close() // the store has one connection: free it before the lookups
 	for i := range out {
 		out[i].AnswersDirective = s.AnswersDirective(role, out[i].ID)
+		out[i].LeftRemind = openRemindItems(s.db, out[i].ID)
 	}
 	return out, nil
 }
