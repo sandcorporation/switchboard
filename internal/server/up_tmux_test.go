@@ -174,11 +174,22 @@ func (r *upRig) stop() {
 
 func (r *upRig) wait(what string, cond func() bool) {
 	r.t.Helper()
+	r.waitWith(what, cond, nil)
+}
+
+// waitWith is wait that, on timeout, also prints detail(): the state the
+// condition was reading, so a flake shows which step it stopped at.
+func (r *upRig) waitWith(what string, cond func() bool, detail func() string) {
+	r.t.Helper()
 	deadline := time.Now().Add(20 * time.Second)
 	for !cond() {
 		if time.Now().After(deadline) {
 			log, _ := os.ReadFile(filepath.Join(r.dir, "up.log"))
-			r.t.Fatalf("timed out waiting for %s; up log:\n%s", what, log)
+			extra := ""
+			if detail != nil {
+				extra = "\nstate: " + detail()
+			}
+			r.t.Fatalf("timed out waiting for %s;%s\nup log:\n%s", what, extra, log)
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
@@ -429,10 +440,17 @@ func TestUpHostedSessionHoldsItsSlotAndFollowsClear(t *testing.T) {
 	if err := r.tmux("send-keys", "-t", "=sb-"+id+":", "clear", "Enter").Run(); err != nil {
 		t.Fatal(err)
 	}
-	r.wait("the cleared conversation followed", func() bool {
+	t.Logf("step: online on session %s; clear sent", first)
+	r.waitWith("the cleared conversation followed", func() bool {
 		h := r.session(id)
 		return h.AgentSessionID != first && h.Slot != nil && h.Slot.SessionID == h.AgentSessionID
+	}, func() string {
+		// Tells apart "the agent never took the clear" (no new session line
+		// on the screen), "the slot never moved" and "the host never adopted".
+		h := r.session(id)
+		return fmt.Sprintf("first=%s record=%+v\nscreen:\n%s", first, h, r.tmuxScreen(id))
 	})
+	t.Log("step: cleared conversation followed")
 	next := r.session(id).AgentSessionID
 	if !r.session(id).Launched || r.panePID(id) != pid {
 		t.Fatalf("following relaunched: pane %q (was %q), %+v", r.panePID(id), pid, r.session(id))
