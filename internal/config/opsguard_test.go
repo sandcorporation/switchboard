@@ -274,3 +274,116 @@ func TestComposePublishesNodeListenerOnLoopbackByDefault(t *testing.T) {
 		t.Errorf("compose.yaml lacks the node listener port %s", want)
 	}
 }
+
+// serverEnvPackages are the packages the server process (serve, and the
+// pre-deploy check that runs the same settings) reads settings in. The CLI,
+// node and job packages run on a user's machine, not in the container.
+var serverEnvPackages = []string{"server", "adminauth", "insight", "secrets", "presence", "hosting", "config", "asks", "dashboard", "identity", "mail", "store", "live", "wire", "ownerfile", "requests", "reports", "rules", "search", "cron", "jobs"}
+
+var (
+	// envFullRE finds a full setting name (either prefix) in code or comments.
+	envFullRE = regexp.MustCompile(`\b(?:` + EnvPrefix + `|` + legacyEnvPrefix + `)([A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*)\b`)
+	// envQuotedRE finds a quoted upper-case name: the part after the prefix
+	// that EnvAlias, EnvFrom and the *Name constants add.
+	envQuotedRE = regexp.MustCompile(`"([A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+)"`)
+)
+
+// serverEnvNames collects, without its prefix, every setting name the server
+// side of the code mentions: full names and quoted names.
+func serverEnvNames(t *testing.T, root string) map[string]bool {
+	t.Helper()
+	names := map[string]bool{}
+	for _, pkg := range serverEnvPackages {
+		files, err := filepath.Glob(filepath.Join(root, "internal", pkg, "*.go"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, f := range files {
+			if strings.HasSuffix(f, "_test.go") {
+				continue
+			}
+			b, err := os.ReadFile(f)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, m := range envFullRE.FindAllStringSubmatch(string(b), -1) {
+				names[m[1]] = true
+			}
+			for _, m := range envQuotedRE.FindAllStringSubmatch(string(b), -1) {
+				names[strings.TrimPrefix(m[1], EnvPrefix)] = true
+			}
+		}
+	}
+	return names
+}
+
+// composeNotPassed lists the names the server-side code mentions that compose
+// deliberately leaves out, each with the reason.
+var composeNotPassed = map[string]string{
+	"PLUGIN":                  "`up` on a user's machine, not the container",
+	"ROLE":                    "CLI placeholder and flag name",
+	"FAKE_AGENT":              "test-only agent stand-in",
+	"FAKE_AGENT_DIR":          "test-only agent stand-in",
+	"FAKE_AGENT_SCENES":       "test-only agent stand-in",
+	"HOSTING_ADAPTERS":        "read by the node on a host machine",
+	"HOSTING_AGENT":           "read by the node on a host machine",
+	"HOSTING_ALLOW_CHECKS":    "read by the node on a host machine",
+	"HOSTING_HISTORY":         "read by the node on a host machine",
+	"HOSTING_MACHINE":         "read by the node on a host machine",
+	"HOSTING_MAX":             "read by the node on a host machine",
+	"OIDC_CLIENT_SECRET_FILE": "a path inside the container; the secret itself is passed (README, admin login)",
+	"CTRL_BREAK_EVENT":        "Windows console event name, not a setting",
+	"CTRL_CLOSE_EVENT":        "Windows console event name, not a setting",
+	"CTRL_C_EVENT":            "Windows console event name, not a setting",
+	"CTRL_LOGOFF_EVENT":       "Windows console event name, not a setting",
+	"CTRL_SHUTDOWN_EVENT":     "Windows console event name, not a setting",
+}
+
+// composeEnvNames lists the names the shared environment block of compose.yaml sets.
+func composeEnvNames(t *testing.T, root string) map[string]bool {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join(root, "compose.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(b)
+	i := strings.Index(text, "x-switchboard-environment:")
+	j := strings.Index(text, "\nservices:")
+	if i < 0 || j < i {
+		t.Fatal("compose.yaml: the x-switchboard-environment block is gone")
+	}
+	names := map[string]bool{}
+	for _, m := range regexp.MustCompile(`(?m)^  ([A-Z][A-Z0-9_]*):`).FindAllStringSubmatch(text[i:j], -1) {
+		names[strings.TrimPrefix(m[1], EnvPrefix)] = true
+	}
+	return names
+}
+
+// A setting the server reads that compose does not pass cannot be set in the
+// deployment: the container never sees it (#575, SWITCHBOARD_SECRETS_KEY).
+func TestComposePassesEverySettingTheServerReads(t *testing.T) {
+	root := repoRoot(t)
+	passed := composeEnvNames(t, root)
+	for name := range serverEnvNames(t, root) {
+		if _, skip := composeNotPassed[name]; skip {
+			continue
+		}
+		if !passed[name] {
+			t.Errorf("%s%s is read by the server but compose.yaml's x-switchboard-environment does not pass it; add it, or list it in composeNotPassed with the reason", EnvPrefix, name)
+		}
+	}
+	for name, why := range composeNotPassed {
+		if why == "" {
+			t.Errorf("composeNotPassed[%s] has no reason", name)
+		}
+		if passed[name] {
+			t.Errorf("%s is passed by compose but listed in composeNotPassed; remove it from the list", name)
+		}
+	}
+}
+
+func TestComposePassesSecretsKey(t *testing.T) {
+	if !composeEnvNames(t, repoRoot(t))[SecretsKeyName] {
+		t.Fatal("compose.yaml does not pass SWITCHBOARD_SECRETS_KEY")
+	}
+}
