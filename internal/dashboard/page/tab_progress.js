@@ -38,13 +38,24 @@ function waitItems(d){
   for(const [k,label,tone] of waitKinds)for(const x of by[k].sort((a,b)=>(b.age||0)-(a.age||0)))out.push(Object.assign({kind:k,label:label,tone:tone},x));
   return out;
 }
+// progressFetch reads what 진행 shows: the progress view with the pending
+// questions and permission requests.
+async function progressFetch(){
+  const [r,q,pm]=await Promise.all([api('progress'),api('questions?status=pending&limit=500'),api('permissions?status=pending')]);
+  return {r:r,questions:q.questions,perms:pm.permissions};
+}
+// refreshProgressCount puts the 대기 count on the 진행 menu row (#576)
+// while the tab has not been opened.
+async function refreshProgressCount(){
+  try{setTabCount('progress',waitItems(await progressFetch()).length||null)}catch(e){}
+}
 async function loadProgress(){
   const seq=++progressSeq;
   $('progressNote').textContent='불러오는 중…';
   try{
-    const [r,q,pm]=await Promise.all([api('progress'),api('questions?status=pending&limit=500'),api('permissions?status=pending')]);
+    const d=await progressFetch();
     if(seq!==progressSeq)return;
-    progressData={r:r,questions:q.questions,perms:pm.permissions};
+    progressData=d;
     drawProgress();
   }catch(e){if(seq===progressSeq)$('progressNote').textContent=e.message}
 }
@@ -99,7 +110,7 @@ function drawProgress(){
     }
     if(!shown.length)emptyRow(body,svcCols.length,'서비스 없음');
   });
-  setTabCount('progress',over||null);
+  setTabCount('progress',items.length||null);
   $('progressNote').textContent='대기 '+items.length+' · '+r.services.length+'개 서비스'+(over?' · 오래된 지시 '+over+'개':'');
   $('progressNote').title=when(r.generated_at);
 }
@@ -125,15 +136,25 @@ function leftLine(v){
   box.append(req,dir,
     end('이슈',b=>apiSend('POST','left/'+id+'/issue',b),'#'+v.id+' 이슈 주소',a=>/^https?:\/\/\S+$/.test(a)?{url:a}:null),
     end('새 지시',b=>apiSend('POST','left/'+id+'/pass',b),'#'+v.id+'을(를) 넘길 지시 번호 ('+v.directive_from+'이(가) 보낸 지시)',a=>/^[1-9][0-9]*$/.test(a)?{directive:Number(a)}:null),
-    setButton('끝남','',async e=>{
-      if(!confirm('#'+v.id+' 끝남으로 처리할까요?'))return;
-      e.target.disabled=true;setMsg(msg,'보내는 중…');
-      try{await apiSend('POST','left/'+id+'/done',{});loadProgress()}
-      catch(err){e.target.disabled=false;setMsg(msg,err.message,'err')}
-    },'#'+v.id+' 끝남 — 다시 알리지 않음'),
+    doneButton(v,msg),
     ...(can('discard')?[end('버림',b=>apiSend('POST','left/'+id+'/drop',b),'#'+v.id+' 버리는 까닭',a=>a?{reason:a}:null)]:[]),
     msg);
   return box;
+}
+// doneButton is 남긴 것's [끝남]: it asks on the row, not in a browser
+// confirm (#576) — [끝남] turns into [끝남 확인] and [취소].
+function doneButton(v,msg){
+  const id=encodeURIComponent(v.id);
+  const done=setButton('끝남','',()=>{
+    const ok=setButton('끝남 확인','',async()=>{
+      ok.disabled=no.disabled=true;setMsg(msg,'보내는 중…');
+      try{await apiSend('POST','left/'+id+'/done',{});loadProgress()}
+      catch(err){ok.disabled=no.disabled=false;setMsg(msg,err.message,'err')}
+    },'#'+v.id+' 끝남으로 처리 — 다시 알리지 않음');
+    const no=setButton('취소','',()=>{no.remove();ok.replaceWith(done);setMsg(msg,'');done.focus()},'끝남으로 처리하지 않는다');
+    done.replaceWith(ok);ok.after(no);setMsg(msg,'#'+v.id+' 끝남으로 처리할까요?');ok.focus();
+  },'#'+v.id+' 끝남 — 다시 알리지 않음');
+  return done;
 }
 // The 진행 detail hands each kind to its own spec: q to 질문, p to 권한 요청,
 // s to 세션, d (지시: the mail thread, with 닫기) and svc (서비스) are here.

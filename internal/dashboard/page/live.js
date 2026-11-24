@@ -4,7 +4,7 @@
 // (not while a field in it has focus), the others reload when next shown.
 // Reconnects back off exponentially (1s to 30s) and resume with boot+after.
 const liveReload={requests:loadRequests,progress:loadProgress,sessions:loadSessions,reports:loadReports,jobs:loadJobs,metrics:loadMetrics,mail:load,permissions:loadPermissions,rules:loadRules,questions:loadQuestions,settings:loadSettingsView,terminals:loadTerminals};
-const liveCounts={requests:refreshRequestCount,reports:refreshReportCount,questions:refreshQuestionCount,permissions:refreshPermissionCount,metrics:refreshMetricsCount};
+const liveCounts={progress:refreshProgressCount,requests:refreshRequestCount,reports:refreshReportCount,questions:refreshQuestionCount,permissions:refreshPermissionCount,metrics:refreshMetricsCount};
 let liveBoot='',liveSeq=0,liveDelay=1000,liveDirty=new Set(),liveStale=new Set(),liveTimer=0,liveDetail=false;
 function liveMark(kinds){
   if(ws)ws.live(kinds);
@@ -181,6 +181,7 @@ route();
 if(!tabLoaded.has('questions'))refreshQuestionCount();
 if(!tabLoaded.has('reports'))refreshReportCount();
 if(!tabLoaded.has('requests'))refreshRequestCount();
+if(!tabLoaded.has('progress'))refreshProgressCount();
 if(!tabLoaded.has('metrics'))refreshMetricsCount();
 if(!tabLoaded.has('permissions'))refreshPermissionCount();
 liveConnect();

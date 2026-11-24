@@ -5,10 +5,11 @@
 // category's table takes the width (#setItems); a row opens its item in the
 // panel on the right (#detail, 380px; the whole screen below 720px) and the
 // table stays beside it, its scroll and marked row kept. 화면 picks
-// 진행 · 세션 표 · 터미널 · 노드 with small buttons (#setScr), the picked one
-// under the tab row. Addresses: #settings-<tab> picks a tab (#settings the
-// last one), #settings/<kind>:<id>/<sub> an item, #progress #sessions
-// #terminals and #settings/view:nodes the 화면.
+// 세션 표 · 터미널 · 노드 with small buttons (#setScr), the picked one
+// under the tab row (진행 is a menu row since #576). Addresses:
+// #settings-<tab> picks a tab (#settings the last one),
+// #settings/<kind>:<id>/<sub> an item, #sessions #terminals and
+// #settings/view:nodes the 화면.
 const setViewHash={roles:'settings-roles',nodes:'settings-nodes',groups:'settings-groups',logins:'settings-logins',qsettings:'settings-qsettings',watches:'settings-watches',hooks:'settings-hooks',reminders:'settings-reminders'};
 const setKindView={qs:'qsettings',refusals:'qsettings',role:'roles',node:'nodes',group:'groups',login:'logins',watch:'watches',hook:'hooks',server:'reminders'};
 let setView='roles',setData=null;
@@ -178,23 +179,23 @@ function setCount(c,q){
   if(!Array.isArray(rows))return '!';
   return rows.filter(r=>!r.dataset.detailId.startsWith('refusals:')&&listMatch(q,r.textContent)).length;
 }
-// setScreens are 화면's buttons: 진행·세션 표·터미널 open their own page
-// (the address stays #progress …), 노드 the workspace's node index.
+// setScreens are 화면's buttons: 세션 표·터미널 open their own page (the
+// address stays #sessions …), 노드 the workspace's node index.
 function setScreens(){
-  const s=[['progress','진행','#progress'],['sessions','세션 표','#sessions']];
+  const s=[['sessions','세션 표','#sessions']];
   if(hostingOn)s.push(['terminals','터미널','#terminals']);
   if(ws&&ws.nodes)s.push(['view:nodes','노드',detailHash('settings','view:nodes','')]);
   return s;
 }
 // setTabNow is the tab on screen: the open item's category, 화면 for
-// 진행·세션 표·터미널 and 노드, else the picked tab.
+// 세션 표·터미널 and 노드, else the picked tab.
 function setTabNow(){
   const c=detailCur;
   if(c&&c.tab==='settings'){const k=c.id.slice(0,c.id.indexOf(':'));return k==='view'?'screens':setKindView[k]||setView}
   if(setTabs.includes(curTab)||(c&&setTabs.includes(c.tab)))return 'screens';
   return setView;
 }
-// setScrNow is the 화면 button on: progress, sessions, terminals or view:nodes.
+// setScrNow is the 화면 button on: sessions, terminals or view:nodes.
 function setScrNow(){const c=detailCur;if(c&&c.tab==='settings'&&c.id.startsWith('view:'))return c.id;return setTabs.includes(curTab)?curTab:''}
 // drawSettings draws the top (tabs with their counts, + 추가, 화면's
 // buttons) and the picked tab's table. A redraw keeps the table's scroll,
@@ -247,7 +248,7 @@ function drawSettings(){
   markDetailRows();
 }
 // setChrome fits the screen to what is open: an item of 설정 in the panel
-// beside the table, 노드 and the items of 진행·세션 표·터미널 over the
+// beside the table, 노드 and the items of 세션 표·터미널 over the
 // whole width.
 function setChrome(){
   const on=document.documentElement.classList.contains('fr-set'),c=detailCur;

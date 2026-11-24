@@ -3,9 +3,10 @@
 // tab's own 「새로 고침」 button reloads it. #33 sets tabLoaders.permissions and
 // #42 sets tabLoaders.questions / tabLoaders.settings (null = nothing to load).
 // The order is the left pane's (#510): the menu rows, then the foot.
-// setTabs open from 설정's 화면 rows, inside the 설정 screen (#515, #538).
-const setTabs=['progress','sessions','terminals'];
-const tabNames=['requests','questions','permissions','rules','mail','reports','jobs','metrics','settings','progress','sessions','terminals'];
+// setTabs open from 설정's 화면 rows, inside the 설정 screen (#515, #538);
+// 진행 is a menu row under 지시 since #576.
+const setTabs=['sessions','terminals'];
+const tabNames=['requests','progress','questions','permissions','rules','mail','reports','jobs','metrics','settings','sessions','terminals'];
 const tabLoaders={requests:loadRequests,progress:null,sessions:loadSessions,reports:loadReports,jobs:loadJobs,metrics:null,mail:initMail,permissions:null,questions:null,rules:loadRules,settings:null};
 const tabLoaded=new Set();
 // listTabs are the list screens (#514, #509 계약 4): no panels or splits, a
@@ -14,12 +15,12 @@ const tabLoaded=new Set();
 // one is on screen.
 const listTabs=['requests','questions','mail','reports','jobs'];
 function listTab(name){return listTabs.includes(name)}
-// fullTabs (#515) are one body with no list column (지표, 설정 and its 화면
-// rows, #523, #538): like a list screen they take the centre, no panels or
+// fullTabs (#515) are one body with no list column (지표, 진행, 설정 and its
+// 화면 rows, #523, #538, #576): like a list screen they take the centre, no panels or
 // splits (html.fr-full).
 const fullTabs=['metrics','settings','progress','sessions','terminals'];
 function pageTab(name){return listTab(name)||fullTabs.includes(name)}
-// 설정 and 진행·세션 표·터미널 are the 설정 screen (#538, html.fr-set): the
+// 설정 and 세션 표·터미널 are the 설정 screen (#538, html.fr-set): the
 // left pane is the settings menu, which keeps its scroll and its marked row.
 function setListKept(name){return name==='settings'||setTabs.includes(name)}
 function frameFull(on){

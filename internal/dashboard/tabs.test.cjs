@@ -26,23 +26,25 @@ function load(curTab, ws) {
   return { ctx, cls, page };
 }
 
-test('the 설정 screen is 설정 and its 화면 tabs only (#536, #538)', () => {
+test('the 설정 screen is 설정 and its 화면 tabs only (#536, #538); 진행 is a menu row (#576)', () => {
   const { ctx } = load('');
-  for (const n of ['settings', 'progress', 'sessions', 'terminals']) assert.equal(ctx.setListKept(n), true, n);
-  for (const n of ['requests', 'questions', 'mail', 'reports', 'jobs', 'metrics', 'rules']) assert.equal(ctx.setListKept(n), false, n);
+  for (const n of ['settings', 'sessions', 'terminals']) assert.equal(ctx.setListKept(n), true, n);
+  for (const n of ['requests', 'progress', 'questions', 'mail', 'reports', 'jobs', 'metrics', 'rules']) assert.equal(ctx.setListKept(n), false, n);
 });
 
-test('설정 and 진행·세션 표·터미널 are the 설정 screen, 지표 stays full (#538)', () => {
-  for (const n of ['settings', 'progress', 'sessions', 'terminals']) {
+test('설정 and 세션 표·터미널 are the 설정 screen, 지표 and 진행 stay full (#538, #576)', () => {
+  for (const n of ['settings', 'sessions', 'terminals']) {
     const { ctx, cls } = load(n);
     ctx.frameFull(true);
     assert.ok(cls.has('fr-full') && cls.has('fr-set'), n);
     ctx.frameFull(false);
     assert.ok(!cls.has('fr-full') && !cls.has('fr-set'), n + ' off');
   }
-  const { ctx, cls } = load('metrics');
-  ctx.frameFull(true);
-  assert.ok(cls.has('fr-full') && !cls.has('fr-set'));
+  for (const n of ['metrics', 'progress']) {
+    const { ctx, cls } = load(n);
+    ctx.frameFull(true);
+    assert.ok(cls.has('fr-full') && !cls.has('fr-set'), n);
+  }
 });
 
 test('설정 is no list screen: no list column (#538)', () => {

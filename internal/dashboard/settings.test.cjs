@@ -39,10 +39,10 @@ test('the tabs: 역할 · 기계 · 묶음 · 로그인 · 질문 설정 · 지�
 test('기계·묶음 only with hosting on; 화면 has 터미널 with hosting, 노드 with the workspace', () => {
   const off = load();
   assert.deepEqual(plain(off.setCats.filter(c => !off.setCatOn(c)).map(c => c.v)), ['nodes', 'groups']);
-  assert.deepEqual(plain(off.setScreens().map(s => s[1])), ['진행', '세션 표']);
+  assert.deepEqual(plain(off.setScreens().map(s => s[1])), ['세션 표']);
   const on = load({ hosting: true, ws: { nodes() {} } });
   assert.equal(on.setCats.filter(c => !on.setCatOn(c)).length, 0);
-  assert.deepEqual(plain(on.setScreens().map(s => s[1])), ['진행', '세션 표', '터미널', '노드']);
+  assert.deepEqual(plain(on.setScreens().map(s => s[1])), ['세션 표', '터미널', '노드']);
 });
 
 test('+ opens a blank form for 역할 (an invite) · 묶음 · 질문 설정 · 지켜보기 · 웹훅; 역할 and 지켜보기 need sessions', () => {
@@ -56,7 +56,7 @@ test('tab addresses: #settings-<tab>, #settings the last tab, 화면 its first s
   const ctx = load({ hosting: true });
   assert.equal(ctx.setTabHref('roles'), '#settings-roles');
   assert.equal(ctx.setTabHref('qsettings'), '#settings-qsettings');
-  assert.equal(ctx.setTabHref('screens'), '#progress');
+  assert.equal(ctx.setTabHref('screens'), '#sessions');
   assert.equal(ctx.settingsViewOfHash('settings-hooks'), 'hooks');
   assert.equal(ctx.settingsViewOfHash('settings'), 'roles');
   ctx.showSettingsView('hooks');
