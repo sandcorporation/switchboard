@@ -12,9 +12,10 @@ import (
 	"github.com/sandcorporation/switchboard/internal/wire"
 )
 
-// RunAutoCLI serves `host auto add|list|show|run|pause|resume|rm` against
+// RunAutoCLI serves `host auto add|list|show|edit|run|pause|resume|rm` against
 // the service's database. ref is the hosted session for add and the
-// scheduled run's id for the others; runs is show's --runs. The host picks
+// scheduled run's id for the others; runs is show's --runs. edit replaces
+// the cron, prompt and label that c gives (non-empty). The host picks
 // the changes up on its next sweep, so no server is called.
 func (s *Service) RunAutoCLI(action, ref string, c wire.HostAutoCreate, runs int, jsonOut bool, stdout io.Writer) error {
 	switch action {
@@ -67,6 +68,18 @@ func (s *Service) RunAutoCLI(action, ref string, c wire.HostAutoCreate, runs int
 		a, err = s.ResumeAuto(id)
 	case "rm":
 		a, err = s.DeleteAuto(id)
+	case "edit":
+		var e wire.HostAutoEdit
+		if c.Cron != "" {
+			e.Cron = &c.Cron
+		}
+		if c.Prompt != "" {
+			e.Prompt = &c.Prompt
+		}
+		if c.Label != "" {
+			e.Label = &c.Label
+		}
+		a, err = s.EditAuto(id, e)
 	default:
 		return fmt.Errorf("host auto: unknown action %q", action)
 	}

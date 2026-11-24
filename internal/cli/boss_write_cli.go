@@ -346,6 +346,8 @@ func hostAutoAsBoss(c Config, action, ref string, runs int, p parsedArgs, stdout
 			return ExitUsage, nil
 		}
 		return bossSend(c, "DELETE", path, nil, jsonOut, stdout, "removed scheduled run "+ref)
+	case "edit":
+		return bossSend(c, "PUT", path, autoEditOf(p), jsonOut, stdout, "scheduled run "+ref+" edited")
 	default:
 		return bossSend(c, "POST", path+"/"+action, nil, jsonOut, stdout, "scheduled run "+ref+" "+action)
 	}
@@ -380,4 +382,20 @@ func recentRoleUse(c Config, role string) string {
 		return "last used " + v.LastUsedAt + " on " + v.LastMachine
 	}
 	return ""
+}
+
+// autoEditOf is the HostAutoEdit of `host auto edit`'s options: each one
+// given replaces its field (an empty --label clears the label).
+func autoEditOf(p parsedArgs) wire.HostAutoEdit {
+	var e wire.HostAutoEdit
+	if v, ok := p.values["--cron"]; ok {
+		e.Cron = &v
+	}
+	if v, ok := p.values["--prompt"]; ok {
+		e.Prompt = &v
+	}
+	if v, ok := p.values["--label"]; ok {
+		e.Label = &v
+	}
+	return e
 }

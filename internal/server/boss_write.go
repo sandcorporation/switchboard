@@ -58,6 +58,7 @@ var bossWriteRoutes = []bossWriteRoute{
 	{http.MethodPost, pathShape("jobs/*/stop"), jobOwner},
 	{http.MethodDelete, pathShape("jobs/*"), jobOwner},
 	{http.MethodDelete, pathShape("schedules/*"), scheduleOwner},
+	{http.MethodPut, pathShape("schedules/*"), scheduleOwner},
 	{http.MethodPost, pathShape("schedules/*/pause"), scheduleOwner},
 	{http.MethodPost, pathShape("schedules/*/resume"), scheduleOwner},
 	{http.MethodPost, roleAction("/revoke"), roleOwner("/revoke")},
@@ -87,6 +88,7 @@ var bossWriteRoutes = []bossWriteRoute{
 	{http.MethodPost, pathShape("terminals/*/autos/*/pause"), terminalOwner},
 	{http.MethodPost, pathShape("terminals/*/autos/*/resume"), terminalOwner},
 	{http.MethodDelete, pathShape("terminals/*/autos/*"), terminalOwner},
+	{http.MethodPut, pathShape("terminals/*/autos/*"), terminalOwner},
 	{http.MethodDelete, pathShape("nodes/*"), globalOnly},
 	// Reads of the terminal tab that are not a list view (boss.go): the
 	// limit, a session's events and screen log, one scheduled run.

@@ -18,6 +18,7 @@ import (
 //	GET    …/autos                list
 //	POST   …/autos                add (wire.HostAutoCreate)
 //	GET    …/autos/{aid}[?runs=N] the record and its newest N runs
+//	PUT    …/autos/{aid}          edit cron, prompt, label (wire.HostAutoEdit, #516)
 //	DELETE …/autos/{aid}          remove
 //	POST   …/autos/{aid}/run      run once now
 //	POST   …/autos/{aid}/pause    stop firing
@@ -86,6 +87,21 @@ func (h *Hub) autosAPI(w http.ResponseWriter, r *http.Request, id, rest string) 
 				return
 			}
 			writeAuto(w, http.StatusOK, v)
+		case http.MethodPut:
+			var e wire.HostAutoEdit
+			dec := json.NewDecoder(io.LimitReader(r.Body, maxBody))
+			dec.DisallowUnknownFields()
+			if err := dec.Decode(&e); err != nil {
+				http.Error(w, "invalid JSON body: "+err.Error(), http.StatusBadRequest)
+				return
+			}
+			a, err := h.svc.EditAuto(aid, e)
+			if err != nil {
+				autoError(w, err)
+				return
+			}
+			h.publish("terminals")
+			writeAuto(w, http.StatusOK, a)
 		case http.MethodDelete:
 			a, err := h.svc.DeleteAuto(aid)
 			if err != nil {

@@ -156,7 +156,7 @@ func hostAutoAsRole(action, ref string, runs int, p parsedArgs, stdout io.Writer
 		return 0, fmt.Errorf("host auto: %w (or, on the host machine, set DB_PATH to name this instance's own database)", err)
 	}
 	switch action {
-	case "show", "run", "pause", "resume", "rm":
+	case "show", "edit", "run", "pause", "resume", "rm":
 		return hostAutoAsBoss(c, action, ref, runs, p, stdout)
 	}
 	if action == "list" {

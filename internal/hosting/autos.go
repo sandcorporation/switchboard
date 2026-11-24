@@ -315,6 +315,52 @@ func (s *Service) ResumeAuto(id int64) (wire.HostAuto, error) {
 	return s.GetAuto(id)
 }
 
+// EditAuto changes the cron, prompt or label of the scheduled run id
+// (#516), checked as CreateAuto checks them. Its ID and run history stay;
+// an active one fires next at the new cron's first time after now, in the
+// zone it was added in, and a paused one stays paused.
+func (s *Service) EditAuto(id int64, e wire.HostAutoEdit) (wire.HostAuto, error) {
+	a, err := s.GetAuto(id)
+	if err != nil {
+		return a, err
+	}
+	if e.Cron == nil && e.Prompt == nil && e.Label == nil {
+		return a, invalidf("nothing to change: give cron, prompt or label")
+	}
+	c := wire.HostAutoCreate{Cron: a.Cron, Prompt: a.Prompt, Label: a.Label}
+	if e.Cron != nil {
+		c.Cron = strings.TrimSpace(*e.Cron)
+	}
+	if e.Prompt != nil {
+		c.Prompt = *e.Prompt
+	}
+	if e.Label != nil {
+		c.Label = *e.Label
+	}
+	if err := s.checkAuto(c); err != nil {
+		return a, err
+	}
+	now := s.clock()
+	next, err := nextFire(c.Cron, a.TZ, now)
+	if err != nil {
+		return a, err
+	}
+	if next == nil {
+		return a, invalidf("cron: %q never fires", c.Cron)
+	}
+	var nv any
+	if a.State == wire.HostAutoActive {
+		nv = *next
+	} else if a.NextFireAt != nil {
+		nv = *a.NextFireAt
+	}
+	if err := s.autoExec(`UPDATE host_autos SET cron=?,prompt=?,label=?,next_fire_at=?,updated_at=? WHERE id=?`,
+		c.Cron, c.Prompt, c.Label, nv, now.UnixMilli(), id); err != nil {
+		return a, err
+	}
+	return s.GetAuto(id)
+}
+
 // RequestAutoRun asks the host to run the scheduled run id once, now,
 // whatever its time and state; the host does it on its next sweep.
 func (s *Service) RequestAutoRun(id int64) (wire.HostAuto, error) {

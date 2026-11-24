@@ -14,15 +14,15 @@ import (
 )
 
 var scheduleCmd = command{name: "schedule", args: "ACTION [ID]", nargs: 2, optArgs: true,
-	synopsis: "(ACTION: add | list | show ID | rm ID | pause ID | resume ID)",
-	summary:  "Have the server mail this role a prompt at times; fires while no session is attached are merged into one mail. A boss role lists, shows (the read is recorded), pauses and resumes the schedules of roles in view; another role's prompt is only in show. A paused schedule drops the times that pass and its expiry waits; the owner is told when someone else pauses or resumes it",
+	synopsis: "(ACTION: add | list | show ID | edit ID | rm ID | pause ID | resume ID)",
+	summary:  "Have the server mail this role a prompt at times; fires while no session is attached are merged into one mail. A boss role lists, shows (the read is recorded), pauses and resumes the schedules of roles in view; another role's prompt is only in show. A paused schedule drops the times that pass and its expiry waits; the owner is told when someone else pauses or resumes it. edit (the owner) changes the time, prompt or label in place: the ID, fire record and expiry stay, and the next fire moves to the new time",
 	options: []option{
-		{"--cron", "EXPR", "add: five-field cron (minute hour day-of-month month day-of-week) in this machine's time zone"},
-		{"--at", "TIME", "add: once at TIME (RFC 3339, YYYY-MM-DD HH:MM, or HH:MM today or tomorrow, local time)"},
-		{"--in", "DURATION", "add: once after DURATION, e.g. 20m, 2h, 1d"},
-		{"--prompt", "TEXT", "add: the prompt each fire mails"},
+		{"--cron", "EXPR", "add, edit: five-field cron (minute hour day-of-month month day-of-week) in this machine's time zone"},
+		{"--at", "TIME", "add, edit: once at TIME (RFC 3339, YYYY-MM-DD HH:MM, or HH:MM today or tomorrow, local time)"},
+		{"--in", "DURATION", "add, edit: once after DURATION, e.g. 20m, 2h, 1d"},
+		{"--prompt", "TEXT", "add, edit: the prompt each fire mails"},
 		{"--expires", "DURATION", "add: when it ends unless a session of the role is attached, e.g. 7d (default 7d)"},
-		{"--label", "TEXT", "add: label (default 예약 #ID)"},
+		{"--label", "TEXT", "add, edit: label (default 예약 #ID)"},
 		{"--no-extend", "", "add: the expiry is fixed; it does not move forward while a session is attached"},
 		{"--idem", "KEY", "add: retry-safe key; adding again with the same key returns the first schedule"},
 		{"--state", "STATE", "list: only schedules in this state (active, paused, ended, expired; live: active or paused)"},
@@ -38,7 +38,7 @@ func init() { commands = append(commands, scheduleCmd) }
 func cliSchedule(c Config, p parsedArgs) (int, error) {
 	action := p.pos[0]
 	var id int64
-	if action == "show" || action == "rm" || action == "pause" || action == "resume" {
+	if action == "show" || action == "edit" || action == "rm" || action == "pause" || action == "resume" {
 		if len(p.pos) < 2 {
 			return 0, usagef("schedule %s needs a schedule ID", action)
 		}
@@ -56,6 +56,8 @@ func cliSchedule(c Config, p parsedArgs) (int, error) {
 		return scheduleList(c, p)
 	case "show":
 		return scheduleShow(c, id, p.bool("--json"))
+	case "edit":
+		return scheduleEdit(c, id, p, time.Now())
 	case "rm":
 		b, err := slotCall(c, "DELETE", "/api/schedules/"+strconv.FormatInt(id, 10), nil)
 		if err != nil {
@@ -72,7 +74,7 @@ func cliSchedule(c Config, p parsedArgs) (int, error) {
 	case "resume":
 		return scheduleResume(c, id, p.bool("--fire"), p.bool("--drop"), p.bool("--json"))
 	}
-	return 0, usagef("schedule: unknown action %q (add, list, show, rm, pause, resume)", action)
+	return 0, usagef("schedule: unknown action %q (add, list, show, edit, rm, pause, resume)", action)
 }
 
 func scheduleAdd(c Config, p parsedArgs, now time.Time) (int, error) {
@@ -131,6 +133,69 @@ func scheduleAdd(c Config, p parsedArgs, now time.Time) (int, error) {
 		return 0, fmt.Errorf("unexpected response from server: %v", err)
 	}
 	fmt.Println(sc.ID)
+	return ExitOK, nil
+}
+
+// scheduleEdit sends `schedule edit ID`: one of --cron, --at or --in
+// replaces the time (in this machine's zone, as add reads it); --prompt and
+// --label replace those (an empty --label goes back to 예약 #ID).
+func scheduleEdit(c Config, id int64, p parsedArgs, now time.Time) (int, error) {
+	var q wire.ScheduleEdit
+	given := 0
+	for _, f := range []string{"--cron", "--at", "--in"} {
+		if p.values[f] != "" {
+			given++
+		}
+	}
+	if given > 1 {
+		return 0, usagef("schedule edit takes one of --cron, --at or --in")
+	}
+	switch {
+	case p.values["--cron"] != "":
+		q.Kind, q.Cron, q.TZ = wire.ScheduleCron, p.values["--cron"], cron.LocalZone()
+		if _, err := cron.Parse(q.Cron); err != nil {
+			return 0, usagef("schedule edit: %v", err)
+		}
+	case p.values["--in"] != "":
+		d, err := parseDays(p.values["--in"])
+		if err != nil || d <= 0 {
+			return 0, usagef("schedule edit: --in takes a duration such as 20m, 2h or 1d")
+		}
+		at := now.Add(d).UTC()
+		q.Kind, q.At, q.TZ = wire.ScheduleOnce, &at, cron.LocalZone()
+	case p.values["--at"] != "":
+		at, err := parseAt(p.values["--at"], now)
+		if err != nil {
+			return 0, usagef("schedule edit: %v", err)
+		}
+		q.Kind, q.At, q.TZ = wire.ScheduleOnce, &at, cron.LocalZone()
+	}
+	if v, ok := p.values["--prompt"]; ok {
+		q.Prompt = &v
+	}
+	if v, ok := p.values["--label"]; ok {
+		q.Label = &v
+	}
+	if err := q.Check(); err != nil {
+		return 0, usagef("schedule edit: %v", err)
+	}
+	b, err := slotCall(c, "PUT", "/api/schedules/"+strconv.FormatInt(id, 10), q)
+	if err != nil {
+		return 0, err
+	}
+	if p.bool("--json") {
+		fmt.Println(strings.TrimSpace(string(b)))
+		return ExitOK, nil
+	}
+	var sc wire.Schedule
+	if err = json.Unmarshal(b, &sc); err != nil {
+		return 0, fmt.Errorf("unexpected response from server: %v", err)
+	}
+	next := "-"
+	if sc.NextFireAt != nil {
+		next = sc.NextFireAt.Local().Format("2006-01-02 15:04")
+	}
+	fmt.Printf("edited #%d %s, next %s\n", sc.ID, sc.Label, next)
 	return ExitOK, nil
 }
 

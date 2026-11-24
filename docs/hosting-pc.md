@@ -956,6 +956,7 @@ sbpc host auto list
 sbpc host auto show <auto-id> --runs 50
 sbpc host auto pause <auto-id>
 sbpc host auto resume <auto-id>
+sbpc host auto edit <auto-id> --cron '0 8 * * 1-5'   # also --prompt, --label; the number and run history stay
 sbpc host auto rm <auto-id>
 ```
 

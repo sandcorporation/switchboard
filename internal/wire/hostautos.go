@@ -119,3 +119,13 @@ type HostAutoView struct {
 	HostAuto
 	Runs []HostAutoRun `json:"runs"`
 }
+
+// HostAutoEdit is the body of PUT /api/admin/terminals/{id}/autos/{aid}
+// and what `host auto edit` sends (#516): the fields given replace those of
+// the scheduled run; its ID and run history stay, and an active one fires
+// next at the new cron's first time.
+type HostAutoEdit struct {
+	Cron   *string `json:"cron,omitempty"`
+	Prompt *string `json:"prompt,omitempty"`
+	Label  *string `json:"label,omitempty"`
+}

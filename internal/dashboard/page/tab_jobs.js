@@ -136,7 +136,8 @@ function drawJob(j,box){
 function drawSched(j,box){
   const msg=node('span','','msg');msg.setAttribute('role','status');
   const rm=jobAct('지우기','이 예약을 지운다 — 되돌릴 수 없다',msg,'지우는 중…',()=>confirm('#'+j.id+' '+j.label+' 예약을 지울까요? 되돌릴 수 없습니다.')?undefined:false,()=>apiSend('DELETE','schedules/'+encodeURIComponent(j.id)).then(closeDetail));
-  jobActs(box,pauseButtons(j,msg).concat(rm),msg);
+  const edit=j.state==='active'||j.state==='paused'?[editButton(j,false,body=>apiSend('PUT','schedules/'+encodeURIComponent(j.id),body),'시각·프롬프트·라벨을 고친다 — 번호와 기록은 그대로')]:[];
+  jobActs(box,edit.concat(pauseButtons(j,msg),rm),msg);
   const cond=j.kind==='cron'?node('code',j.cron+' ('+j.tz+')'):when(j.next_fire_at||j.last_fire_at);
   const pairs=[['조건',cond],['다음',j.state==='active'?when(j.next_fire_at):'-'],['지난 실행',when(j.last_fire_at)],['만료',when(j.expires_at)+(j.state==='paused'?' · 멈춘 동안 시계 멈춤':'')],['밀린',j.missed?j.missed+'회':'-'],['역할',j.role],['기계',j.machine],['ID',String(j.id)]];
   if(j.paused_by)pairs.push(['멈춘 쪽',j.paused_by.admin?'관리자 '+j.paused_by.name:'역할 '+j.paused_by.name],['멈춘 시각',when(j.paused_at)],['까닭',j.pause_reason||'-']);
@@ -146,6 +147,7 @@ function drawSched(j,box){
 function drawJobAuto(x,box){
   const v=x.v,a=x.a,msg=node('span','','msg');msg.setAttribute('role','status');
   const b=[];
+  b.push(editButton(a,true,body=>apiSend('PUT','terminals/'+encodeURIComponent(v.id)+'/autos/'+a.id,body),'cron·프롬프트·라벨을 고친다 — 번호와 실행 기록은 그대로'));
   b.push(jobAct('지금 실행','이 예약을 지금 한 번 돌린다',msg,'실행 요청 중…',null,()=>apiSend('POST','terminals/'+encodeURIComponent(v.id)+'/autos/'+a.id+'/run')));
   if(a.state==='paused')b.push(jobAct('다시','멈춘 예약을 다시 켠다',msg,'켜는 중…',null,()=>apiSend('POST','terminals/'+encodeURIComponent(v.id)+'/autos/'+a.id+'/resume')));
   else b.push(jobAct('멈춤','이 예약을 멈춘다',msg,'멈추는 중…',null,()=>apiSend('POST','terminals/'+encodeURIComponent(v.id)+'/autos/'+a.id+'/pause')));
@@ -153,6 +155,71 @@ function drawJobAuto(x,box){
   jobActs(box,b,msg);
   box.append(dl([['세션',termRole(v)+(v.label?' · '+v.label:'')],['cron',a.cron+' ('+a.tz+')'],['다음',a.state==='paused'?'-':when(a.next_fire_at)],['사전 확인',a.check?node('code',a.check):'-'],['대화',a.resume?'이어서':'새 대화'],['최대 실행',Math.round(a.max_run_ms/60000)+'분'],['알림 받는 역할',(a.notify||[]).join(', ')||'-'],['ID',String(a.id)],['프롬프트',node('pre',a.prompt||'')]]));
   box.append(node('h3','지난 실행','dsec'),autoRuns(a.runs||[]));
+}
+// schedForm is the schedule form (#516): a role schedule (auto false: 종류,
+// cron or 시각, 시간대) or a session's scheduled run (auto true: cron, read
+// in the zone it was added in), with 프롬프트 and 라벨. v holds the values
+// it opens with; v.fresh opens it empty for a new one. save gets the body:
+// for an edit only what changed (a role schedule's time as kind with cron or
+// at and tz), for a new one every field.
+function schedForm(v,auto,save,cancel){
+  const f=node('form','','fld sched-form'),fresh=!!v.fresh;
+  const inp=(val,title,attrs)=>{const i=document.createElement('input');i.value=val==null?'':val;i.title=title;i.setAttribute('aria-label',title);i.autocomplete='off';i.spellcheck=false;for(const k in attrs||{})i.setAttribute(k,attrs[k]);return i};
+  const lab=(t,el)=>{const l=node('label',t);l.title=el.title;f.append(l,el);return el};
+  const local=t=>{if(!t)return '';const d=new Date(t);d.setMinutes(d.getMinutes()-d.getTimezoneOffset());return d.toISOString().slice(0,16)};
+  let kind=null,at=null,tz=null;
+  if(!auto){
+    kind=document.createElement('select');kind.title='예약 종류';kind.setAttribute('aria-label','예약 종류');
+    for(const [k,t] of [['cron','주기 (cron)'],['once','1회']]){const o=node('option',t);o.value=k;kind.append(o)}
+    kind.value=v.kind||'cron';lab('종류',kind);
+  }
+  const cron=lab('cron',inp(v.kind==='once'?'':v.cron,'분 시 일 월 요일 (5칸)',{placeholder:'0 9 * * 1-5'}));
+  if(!auto){
+    at=lab('시각',inp(v.kind==='once'?local(v.next_fire_at):'','한 번 보낼 시각 (이 브라우저의 시간대)',{type:'datetime-local'}));
+    tz=lab('시간대',inp(v.tz||Intl.DateTimeFormat().resolvedOptions().timeZone,'cron 을 읽는 시간대',{placeholder:'Asia/Seoul'}));
+  }
+  const prompt=lab('프롬프트',(()=>{const t=document.createElement('textarea');t.value=v.prompt||'';t.title='실행마다 보낼 글';t.setAttribute('aria-label','프롬프트');t.rows=4;t.required=true;return t})());
+  const label=lab('라벨',inp(v.label,'비우면 예약 번호',{maxlength:'200'}));
+  if(auto&&!fresh)f.append(node('label',''),node('span','시간대 '+(v.tz||'-'),'muted'));
+  const show=()=>{if(!kind)return;const once=kind.value==='once';for(const [el,hide] of [[cron,once],[at,!once],[tz,once]]){el.hidden=hide;el.previousSibling.hidden=hide}};
+  if(kind){kind.onchange=show;show()}
+  const msg=node('span','','msg');msg.setAttribute('role','status');
+  const ok=node('button',fresh?'만들기':'저장');ok.type='submit';
+  const no=node('button','취소');no.type='button';no.onclick=()=>cancel&&cancel();
+  const acts=node('span','','watch-acts');acts.append(ok,no,msg);f.append(node('label',''),acts);
+  f.onsubmit=async e=>{
+    e.preventDefault();
+    const b={};
+    if(auto){if(fresh||cron.value.trim()!==v.cron)b.cron=cron.value.trim()}
+    else{
+      const k=kind.value,timeChanged=fresh||k!==v.kind||(k==='cron'?cron.value.trim()!==v.cron||tz.value.trim()!==v.tz:at.value!==local(v.next_fire_at));
+      if(timeChanged){
+        b.kind=k;b.tz=tz.value.trim();
+        if(k==='cron')b.cron=cron.value.trim();
+        else{if(!at.value){setMsg(msg,'시각을 넣으세요','err');return}b.at=new Date(at.value).toISOString()}
+      }
+    }
+    if(fresh||prompt.value!==(v.prompt||''))b.prompt=prompt.value;
+    if(fresh||label.value.trim()!==(v.label||''))b.label=label.value.trim();
+    if(!Object.keys(b).length){setMsg(msg,'바뀐 것 없음');return}
+    ok.disabled=true;setMsg(msg,'저장하는 중…');
+    try{await save(b)}catch(err){ok.disabled=false;setMsg(msg,err.message,'err')}
+  };
+  return f;
+}
+// editButton opens schedForm with v's values below the detail's buttons;
+// a save sends the body (send) and draws the list and the detail again.
+function editButton(v,auto,send,title){
+  let f=null;
+  const b=setButton('고치기','',()=>{
+    if(f){f.remove();f=null;b.setAttribute('aria-expanded','false');return}
+    f=schedForm(v,auto,async body=>{await send(body);loadJobs();drawDetail()},()=>{f.remove();f=null;b.setAttribute('aria-expanded','false')});
+    f.id='schedEdit';b.setAttribute('aria-expanded','true');
+    b.closest('.detail-acts').after(f);
+    f.querySelector('textarea,input,select').focus();
+  });
+  b.title=title;b.setAttribute('aria-expanded','false');
+  return b;
 }
 registerDetail('jobs',{
   list:'작업 · 예약',kinds:['jobs','terminals'],
