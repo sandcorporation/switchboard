@@ -203,6 +203,9 @@ func Init(db *sql.DB) error {
 	if e = migrateRequests(db); e != nil {
 		return e
 	}
+	if e = migrateRequestChain(db); e != nil {
+		return e
+	}
 	if e = migrateAlertMail(db); e != nil {
 		return e
 	}
@@ -346,6 +349,18 @@ func migrateRequests(db *sql.DB) error {
 	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_reports_request ON reports(request_id) WHERE request_id IS NOT NULL;
 	CREATE INDEX IF NOT EXISTS idx_messages_request ON messages(request_id) WHERE request_id IS NOT NULL;
 	CREATE INDEX IF NOT EXISTS idx_questions_request ON questions(request_id) WHERE request_id IS NOT NULL;`)
+	return err
+}
+
+// migrateRequestChain (#564, additive): the reply_to index the request
+// chain walks down (a reply joins its mail's request on read), and
+// left_items.request_id, the request a left item was attached to by hand
+// (null: it follows its directive's request).
+func migrateRequestChain(db *sql.DB) error {
+	if err := addColumns(db, []columnAdd{{"left_items", "request_id", `INTEGER`}}); err != nil {
+		return err
+	}
+	_, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_messages_reply_to ON messages(reply_to) WHERE reply_to IS NOT NULL`)
 	return err
 }
 

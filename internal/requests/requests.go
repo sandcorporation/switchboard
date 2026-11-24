@@ -327,6 +327,7 @@ type items struct {
 	questions []wire.RequestQuestion
 	reports   []wire.RequestReport
 	mail      []wire.RequestMail
+	direct    map[int64]bool // mail sent with the request's number
 }
 
 // gather reads the notes and linked items of the requests in want (every
@@ -390,7 +391,10 @@ func (s *Service) gather(ctx context.Context, want map[int64]*row) (map[int64]*i
 	if err = rows.Err(); err != nil {
 		return nil, err
 	}
-	rows, err = s.db.QueryContext(ctx, `SELECT request_id,id,sender,recipient,subject,created_at FROM messages WHERE `+where+` ORDER BY id`, args...)
+	// Mail by the request chain (#564): sent with the number, or below such
+	// mail. Only mail sent with the number is news that reopens a done
+	// request; the rest is listed and counted.
+	rows, err = s.db.QueryContext(ctx, ChainSQL+`SELECT c.rid,m.id,m.sender,m.recipient,m.subject,m.created_at,m.request_id IS NOT NULL FROM chain c JOIN messages m ON m.id=c.id WHERE `+strings.ReplaceAll(where, "request_id", "c.rid")+` ORDER BY m.id`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -398,13 +402,21 @@ func (s *Service) gather(ctx context.Context, want map[int64]*row) (map[int64]*i
 		var rid int64
 		var m wire.RequestMail
 		var created string
-		if err = rows.Scan(&rid, &m.ID, &m.Sender, &m.Recipient, &m.Subject, &created); err != nil {
+		var direct bool
+		if err = rows.Scan(&rid, &m.ID, &m.Sender, &m.Recipient, &m.Subject, &created, &direct); err != nil {
 			rows.Close()
 			return nil, err
 		}
 		m.CreatedAt = parse(created)
 		if keep(rid) {
-			get(rid).mail = append(get(rid).mail, m)
+			it := get(rid)
+			it.mail = append(it.mail, m)
+			if direct {
+				if it.direct == nil {
+					it.direct = map[int64]bool{}
+				}
+				it.direct[m.ID] = true
+			}
 		}
 	}
 	rows.Close()
@@ -483,7 +495,9 @@ func summarize(rw *row, it *items) {
 		news(wire.SearchReport, "R"+strconv.FormatInt(rp.ID, 10), rp.Title, rp.CreatedAt)
 	}
 	for _, m := range it.mail {
-		news(wire.SearchMail, strconv.FormatInt(m.ID, 10), m.Subject, m.CreatedAt)
+		if it.direct[m.ID] {
+			news(wire.SearchMail, strconv.FormatInt(m.ID, 10), m.Subject, m.CreatedAt)
+		}
 	}
 	for _, q := range it.questions {
 		if q.Status == "pending" {
