@@ -59,6 +59,15 @@ type HookDetail struct {
 	Receipts []HookReceipt `json:"receipts"`
 }
 
+// Webhook admin action kinds (#549), the action of an AdminAction row: the
+// target is hook:<name>, the detail never a value.
+const (
+	ActionHookAdd     = "hook.add"
+	ActionHookChange  = "hook.change"
+	ActionHookRemove  = "hook.remove"
+	ActionHookAddress = "hook.address"
+)
+
 // HookCreated answers adding a hook or making its address again: Token is
 // the address value (POST /hook/<token>), shown this once only.
 type HookCreated struct {

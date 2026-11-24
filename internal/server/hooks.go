@@ -10,6 +10,7 @@ import (
 
 	"github.com/sandcorporation/switchboard/internal/adminauth"
 	"github.com/sandcorporation/switchboard/internal/hooks"
+	"github.com/sandcorporation/switchboard/internal/hosting"
 	"github.com/sandcorporation/switchboard/internal/identity"
 	"github.com/sandcorporation/switchboard/internal/mail"
 	"github.com/sandcorporation/switchboard/internal/secrets"
@@ -29,14 +30,32 @@ func (s *Server) hookState() *hooks.State {
 
 // hooks is the incoming webhooks over this server's database and clock,
 // with the secret store and the alert mail passed in.
-func (s *Server) hooks() *hooks.Service {
-	return hooks.New(s.db, s.now, s.hookState(), hooks.Hooks{
+func (s *Server) hooks() *hooks.Service { return s.hooksAs(nil) }
+
+// hooksAs is hooks whose writes go to the admin action record (#549) as
+// made by a, when a is not nil: the dashboard login or the boss role.
+func (s *Server) hooksAs(a *hosting.Actor) *hooks.Service {
+	h := hooks.Hooks{
 		Secrets:   s.hookSecrets(),
 		Alert:     s.hookAlert,
 		RoleKnown: func(role string) bool { return identity.RoleExists(s.db, role) },
 		Kick:      s.kickForward,
-	})
+	}
+	if a != nil {
+		act := *a
+		h.Record = func(action, name, detail string) {
+			hosting.RecordAction(s.db, s.now(), act, action, "hook:"+name, detail)
+		}
+	}
+	return hooks.New(s.db, s.now, s.hookState(), h)
 }
+
+// hookWritesBossOnly is the refusal of a webhook write by a role that is
+// not a global boss (#549).
+const hookWritesBossOnly = "forbidden: webhook writes are for the global boss role only"
+
+// hookPath reports whether an admin path (prefix removed) is the webhooks'.
+func hookPath(path string) bool { return path == "hooks" || strings.HasPrefix(path, "hooks/") }
 
 // hookSecrets is the secret store (#525) the hooks keep their original
 // destinations in, under this server's key.
@@ -101,23 +120,26 @@ func (s *Server) receiveHook(w http.ResponseWriter, r *http.Request) {
 }
 
 // hooksAdmin serves /api/admin/hooks…: reading for a login that may view,
-// writing for a signed-in login allowed to manage sessions (#476); a boss
-// role's writes do not reach it (boss_write.go has no row for it).
+// writing for a signed-in login allowed to manage sessions (#476) or a
+// global boss role through /api/boss/hooks… (#549, boss_write.go). Every
+// write goes to the admin action record with who made it.
 func (s *Server) hooksAdmin(w http.ResponseWriter, r *http.Request, rest string, who adminauth.Identity, boss *identity.Principal) {
-	if r.Method == http.MethodGet {
-		if boss == nil && !who.Can(wire.PermView) {
+	method := who.Mode
+	if boss != nil {
+		method = "boss"
+		if !s.ids().IsGlobalBoss(*boss) {
+			http.Error(w, hookWritesBossOnly, http.StatusForbidden)
+			return
+		}
+	} else if r.Method == http.MethodGet {
+		if !who.Can(wire.PermView) {
 			refusePerm(w, wire.PermView)
 			return
 		}
-	} else {
-		if boss != nil {
-			http.Error(w, "forbidden: only a dashboard login changes hooks", http.StatusForbidden)
-			return
-		}
-		if !who.Can(wire.PermSessions) {
-			refusePerm(w, wire.PermSessions)
-			return
-		}
+	} else if !who.Can(wire.PermSessions) {
+		refusePerm(w, wire.PermSessions)
+		return
 	}
-	s.hooks().AdminAPI(w, r, who.User, rest)
+	a := hosting.Actor{Admin: who.User, Method: method, Addr: s.adminAuth().ClientIP(r)}
+	s.hooksAs(&a).AdminAPI(w, r, who.User, rest)
 }

@@ -87,6 +87,10 @@ type Hooks struct {
 	Alert     func(context.Context, Alert) error
 	RoleKnown func(role string) bool
 	Kick      func() // run ForwardDue soon, off the request
+	// Record keeps one write in the admin action record (#549): the action
+	// (wire.ActionHook…), the hook's name and a detail, never a value. Nil
+	// records nothing.
+	Record func(action, name, detail string)
 }
 
 // State outlives a request: the per-hook rate limit, the forward pass lock
@@ -150,6 +154,13 @@ type Service struct {
 // New builds the service.
 func New(db *sql.DB, now func() time.Time, st *State, h Hooks) *Service {
 	return &Service{db: db, now: now, st: st, h: h}
+}
+
+// record calls Hooks.Record when one is passed in.
+func (s *Service) record(action, name, detail string) {
+	if s.h.Record != nil {
+		s.h.Record(action, name, detail)
+	}
 }
 
 func stamp(t time.Time) string { return t.UTC().Format(time.RFC3339Nano) }
@@ -476,6 +487,15 @@ func (s *Service) List(ctx context.Context) ([]wire.Hook, error) {
 	return out, nil
 }
 
+// NameOf is the name of hook id.
+func (s *Service) NameOf(id int64) (string, bool) {
+	var name string
+	if s.db.QueryRow(`SELECT name FROM hooks WHERE id=?`, id).Scan(&name) != nil {
+		return "", false
+	}
+	return name, true
+}
+
 // RoleAPI serves GET /api/hooks to any role: names, roles, modes and the
 // last notice time only.
 func (s *Service) RoleAPI(w http.ResponseWriter, r *http.Request) {
@@ -550,6 +570,7 @@ func (s *Service) AdminAPI(w http.ResponseWriter, r *http.Request, user, rest st
 			http.Error(w, "could not delete", http.StatusInternalServerError)
 			return
 		}
+		s.record(wire.ActionHookRemove, h.name, "")
 		writeJSON(w, http.StatusOK, struct{}{})
 	case action == "address" && r.Method == http.MethodPost:
 		token, err := newToken()
@@ -561,6 +582,7 @@ func (s *Service) AdminAPI(w http.ResponseWriter, r *http.Request, user, rest st
 			http.Error(w, "could not store", http.StatusInternalServerError)
 			return
 		}
+		s.record(wire.ActionHookAddress, h.name, "")
 		s.writeCreated(w, r, h.id, token, http.StatusOK)
 	case action == "" || action == "address":
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -645,6 +667,7 @@ func (s *Service) create(w http.ResponseWriter, r *http.Request, user string) {
 			return
 		}
 	}
+	s.record(wire.ActionHookAdd, v.Name, "to "+v.Role+" · "+v.Mode)
 	s.writeCreated(w, r, id, token, http.StatusCreated)
 }
 
@@ -695,6 +718,17 @@ func (s *Service) update(w http.ResponseWriter, r *http.Request, h *hookRow) {
 		http.Error(w, "could not store the destination", http.StatusInternalServerError)
 		return
 	}
+	detail := "to " + v.Role + " · " + v.Mode
+	if v.Name != h.name {
+		detail = h.name + " → " + v.Name + " · " + detail
+	}
+	switch {
+	case v.Dest != "":
+		detail += " · destination replaced"
+	case v.ClearDest:
+		detail += " · destination cleared"
+	}
+	s.record(wire.ActionHookChange, v.Name, detail)
 	n, err := scanHook(s.db.QueryRowContext(r.Context(), `SELECT `+hookCols+` FROM hooks WHERE id=?`, h.id))
 	if err != nil {
 		http.Error(w, "query failed", http.StatusInternalServerError)

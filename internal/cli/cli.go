@@ -297,9 +297,22 @@ var commands = []command{
 			{"--state", "STATE", "only jobs and schedules in STATE (live: not ended)"},
 			optYes, optJSON, optProfile,
 		}},
-	{name: "hooks", args: "list", nargs: 1,
-		summary: "List the incoming webhooks: name, receiving role, mode (mail or forward) and when the last notice came. Adding and changing them is the dashboard's 설정 › 웹훅 only",
-		options: []option{optJSON, optProfile}},
+	{name: "hooks", args: "[list | add | edit NAME | rm NAME | rotate NAME]", nargs: 2, optArgs: true,
+		summary: "List the incoming webhooks: name, receiving role, mode (mail or forward) and when the last notice came. A global boss role adds, changes, removes (needs --yes) them or makes a hook's address again (needs --yes), as the dashboard's 설정 › 웹훅 does: the address is written to a new owner-only --address-file only, the original destination read from a file or stdin, neither ever printed",
+		options: []option{
+			{"--name", "NAME", "add: the webhook's name"},
+			{"--to", "ROLE", "add, edit: the role its notices are mailed to"},
+			{"--address-file", "PATH", "add, rotate: a new file (it must not exist) the address is written to, owner-only, before the server is asked"},
+			{"--kind", "mail|forward", "add, edit: mail only (the default), or forward the body on to the original destination"},
+			{"--urgent", "", "add, edit: its alert mail is urgent"},
+			{"--no-urgent", "", "edit: its alert mail is not urgent"},
+			{"--window", "DURATION", "add, edit: notices of one subject within this collapse into one mail, whole minutes (default 10m)"},
+			{"--destination-file", "PATH", "add, edit: read the original destination from a file"},
+			{"--destination-stdin", "", "add, edit: read the original destination from stdin"},
+			{"--clear-destination", "", "edit: remove the original destination"},
+			{"--rename", "NEW", "edit: give the webhook a new name"},
+			optYes, optJSON, optProfile,
+		}},
 	{name: "roles", args: "[revoke ROLE | restore ROLE | rotate ROLE | retire ROLE]", nargs: 2, optArgs: true,
 		summary: "List roles (group, revoked, retired), leased numbered slots and groups, or revoke (needs --yes) or restore a role, rotate its token (needs --yes and --token-file) or retire it for good, keeping its mail (needs --yes) (boss roles only; a group boss sees and changes its groups)",
 		options: []option{
@@ -754,7 +767,7 @@ func dispatch(args []string) (int, error) {
 	case "jobs":
 		return cliJobs(c, p)
 	case "hooks":
-		return cliHooks(c, p, os.Stdout)
+		return cliHooks(c, p, os.Stdin, os.Stdout)
 	case "roles":
 		return cliRoles(c, p)
 	case "settings":

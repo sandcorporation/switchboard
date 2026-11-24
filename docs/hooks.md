@@ -36,6 +36,29 @@ After registering, the original destination is never shown again (dashboard, CLI
 - Forwarding: the same body and content type go to the original destination. A 5xx, 429 or connection failure is tried again after 30 s, 2 min, 10 min and 30 min (kept in the database across restarts). When the last try fails, or the destination answers another 4xx, the role gets a mail `원래 목적지 전송 실패: <subject>` with the status code; the address is never in it.
 - 설정 › 웹훅 › a webhook shows its recent notices: time, subject and forwarding result.
 
+## Register from the CLI
+
+A global boss role (`SWITCHBOARD_BOSS_ROLES`) makes the same writes with its profile (#549). Any other role gets 403: `webhook writes are for the global boss role only`.
+
+1. Add one. The receiving address goes to `--address-file` only: a new file, made owner-only (0600) before the server is asked; an existing file stops the command with nothing made. Nothing prints the address, `--json` included.
+
+   ```
+   switchboard hooks add --name deploys --to team/boss --address-file ~/deploys.addr
+   ```
+
+   Options: `--kind mail|forward` (메일만 by default), `--urgent`, `--window 10m`. The original destination is read from a file or stdin, never from an argument, with spaces and line ends trimmed; forward needs one:
+
+   ```
+   switchboard hooks add --name builds --to team/worker --kind forward --destination-stdin --address-file ~/builds.addr < dest.txt
+   ```
+
+2. Give the tool the address in the file (step 4 above), then remove the file.
+3. Change one: `switchboard hooks edit NAME [--to ROLE] [--kind mail|forward] [--urgent|--no-urgent] [--window 10m] [--destination-file PATH | --destination-stdin | --clear-destination] [--rename NEW]`. What is not given stays.
+4. Make its address again: `switchboard hooks rotate NAME --address-file PATH --yes`. The old address answers 404 from then on.
+5. Remove one: `switchboard hooks rm NAME --yes`.
+
+Each write, from the dashboard or the CLI, is in the admin action record (`admin_actions`: who, `hook.add` / `hook.change` / `hook.address` / `hook.remove`, `hook:<name>`), never with an address or a destination. A boss role's write is also in `boss_writes`.
+
 ## Commands
 
-`switchboard hooks list [--json]` lists each webhook's name, receiving role, mode and last notice, for any role. Adding and changing webhooks is the dashboard's only.
+`switchboard hooks list [--json]` lists each webhook's name, receiving role, mode and last notice, for any role. `hooks add`, `edit`, `rm` and `rotate` are a global boss role's (above).
