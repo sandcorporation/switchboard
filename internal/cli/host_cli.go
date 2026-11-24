@@ -267,5 +267,5 @@ func cliHostAuto(p parsedArgs, stdout io.Writer) (int, error) {
 	if hostAuto == nil {
 		return 0, usagef("host auto: not available in this binary")
 	}
-	return hostAuto(action, ref, c, runs, p.bool("--json"), stdout)
+	return hostAuto(action, ref, c, autoEditOf(p), runs, p.bool("--json"), stdout)
 }
