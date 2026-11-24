@@ -14,8 +14,8 @@ import (
 )
 
 var scheduleCmd = command{name: "schedule", args: "ACTION [ID]", nargs: 2, optArgs: true,
-	synopsis: "(ACTION: add | list | show ID | edit ID | rm ID | pause ID | resume ID)",
-	summary:  "Have the server mail this role a prompt at times; fires while no session is attached are merged into one mail. A boss role lists, shows (the read is recorded), pauses and resumes the schedules of roles in view; another role's prompt is only in show. A paused schedule drops the times that pass and its expiry waits; the owner is told when someone else pauses or resumes it. edit (the owner) changes the time, prompt or label in place: the ID, fire record and expiry stay, and the next fire moves to the new time",
+	synopsis: "(ACTION: add | list | show ID | edit ID | rm ID | pause ID | resume ID | run ID)",
+	summary:  "Have the server mail this role a prompt at times; fires while no session is attached are merged into one mail. A boss role lists, shows (the read is recorded), pauses and resumes the schedules of roles in view; another role's prompt is only in show. A paused schedule drops the times that pass and its expiry waits; the owner is told when someone else pauses or resumes it. edit (the owner) changes the time, prompt or label in place: the ID, fire record and expiry stay, and the next fire moves to the new time. run mails the prompt now, once (the owner or a boss role over it; a paused schedule too): the next fire stays",
 	options: []option{
 		{"--cron", "EXPR", "add, edit: five-field cron (minute hour day-of-month month day-of-week) in this machine's time zone"},
 		{"--at", "TIME", "add, edit: once at TIME (RFC 3339, YYYY-MM-DD HH:MM, or HH:MM today or tomorrow, local time)"},
@@ -38,7 +38,7 @@ func init() { commands = append(commands, scheduleCmd) }
 func cliSchedule(c Config, p parsedArgs) (int, error) {
 	action := p.pos[0]
 	var id int64
-	if action == "show" || action == "edit" || action == "rm" || action == "pause" || action == "resume" {
+	if action == "show" || action == "edit" || action == "rm" || action == "pause" || action == "resume" || action == "run" {
 		if len(p.pos) < 2 {
 			return 0, usagef("schedule %s needs a schedule ID", action)
 		}
@@ -73,8 +73,10 @@ func cliSchedule(c Config, p parsedArgs) (int, error) {
 		return schedulePause(c, id, p.values["--reason"], p.bool("--json"))
 	case "resume":
 		return scheduleResume(c, id, p.bool("--fire"), p.bool("--drop"), p.bool("--json"))
+	case "run":
+		return scheduleRun(c, id, p.bool("--json"))
 	}
-	return 0, usagef("schedule: unknown action %q (add, list, show, edit, rm, pause, resume)", action)
+	return 0, usagef("schedule: unknown action %q (add, list, show, edit, rm, pause, resume, run)", action)
 }
 
 func scheduleAdd(c Config, p parsedArgs, now time.Time) (int, error) {
@@ -288,6 +290,9 @@ func scheduleShow(c Config, id int64, jsonOut bool) (int, error) {
 	if sc.LastFireAt != nil {
 		fmt.Printf("last     %s\n", sc.LastFireAt.Format(time.RFC3339))
 	}
+	if sc.LastRunAt != nil {
+		fmt.Printf("run now  %s\n", sc.LastRunAt.Format(time.RFC3339))
+	}
 	if sc.PausedAt != nil && sc.PausedBy != nil {
 		fmt.Printf("paused   %s by %s\n", sc.PausedAt.Format(time.RFC3339), sc.PausedBy.Label())
 		if sc.PauseReason != "" {
@@ -332,6 +337,41 @@ func scheduleResume(c Config, id int64, fire, drop, jsonOut bool) (int, error) {
 		return 0, err
 	}
 	return printPaused(b, jsonOut)
+}
+
+// scheduleRun runs `schedule run ID` (#588): one mail of the prompt now;
+// the next fire stays. A run again within a short window is the same run.
+func scheduleRun(c Config, id int64, jsonOut bool) (int, error) {
+	b, err := slotCall(c, "POST", "/api/schedules/"+strconv.FormatInt(id, 10)+"/run", nil)
+	if err != nil {
+		return 0, err
+	}
+	if jsonOut {
+		fmt.Println(strings.TrimSpace(string(b)))
+		return ExitOK, nil
+	}
+	var out wire.ScheduleRun
+	if err = json.Unmarshal(b, &out); err != nil {
+		return 0, fmt.Errorf("unexpected response from server: %v", err)
+	}
+	fmt.Println(runText(out))
+	return ExitOK, nil
+}
+
+// runText is `sent #ID now (mail #N); next <time> unchanged`.
+func runText(out wire.ScheduleRun) string {
+	sent := "sent"
+	if out.Repeated {
+		sent = "already sent"
+	}
+	next := "-"
+	if sc := out.Schedule; sc.NextFireAt != nil {
+		next = sc.NextFireAt.Local().Format("2006-01-02 15:04")
+		if sc.State == wire.SchedulePaused {
+			next += " (paused)"
+		}
+	}
+	return fmt.Sprintf("%s #%d now (mail #%d); next %s unchanged", sent, out.Schedule.ID, out.MailID, next)
 }
 
 func printPaused(b []byte, jsonOut bool) (int, error) {

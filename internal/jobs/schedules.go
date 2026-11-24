@@ -41,6 +41,7 @@ const maxCatchUp = 100000
 //	PUT    "ID" edit the time, prompt or label (owner only, #516)
 //	POST   "ID/pause"  pause: the owner, or a boss role over it (#404)
 //	POST   "ID/resume" resume: the same
+//	POST   "ID/run"    mail the prompt now: the same (#588)
 func (s *Service) ScheduleAPI(w http.ResponseWriter, r *http.Request, p identity.Principal, rest string) {
 	if rest == "" {
 		switch r.Method {
@@ -115,6 +116,7 @@ func (s *Service) ScheduleAPI(w http.ResponseWriter, r *http.Request, p identity
 //	DELETE "ID" remove
 //	PUT    "ID" edit (EditSchedule, #516)
 //	POST   "ID/pause", "ID/resume" (PauseSchedule, ResumeSchedule)
+//	POST   "ID/run" (RunSchedule, #588)
 func (s *Service) ScheduleAdminAPI(w http.ResponseWriter, r *http.Request, v View, rest string) {
 	if rest == "" {
 		if r.Method == http.MethodPost {
@@ -343,7 +345,7 @@ func (s *Service) schedules(role, state string) ([]wire.Schedule, error) {
 	return out, rows.Err()
 }
 
-const scheduleColumns = `id,role,machine,kind,label,prompt,cron,tz,state,created_at,expires_at,next_fire_at,last_fire_at,missed,missed_last_at,duration_s,last_mail_id,no_extend,paused_at,paused_by,paused_by_admin,pause_reason`
+const scheduleColumns = `id,role,machine,kind,label,prompt,cron,tz,state,created_at,expires_at,next_fire_at,last_fire_at,missed,missed_last_at,duration_s,last_mail_id,no_extend,paused_at,paused_by,paused_by_admin,pause_reason,last_run_at`
 
 // scheduleRow is a schedule with the columns the sweep needs.
 type scheduleRow struct {
@@ -355,13 +357,13 @@ type scheduleRow struct {
 func scanSchedule(r scanner) (scheduleRow, error) {
 	var sc scheduleRow
 	var created, expires string
-	var next, last, missedLast, pausedAt sql.NullString
+	var next, last, missedLast, pausedAt, lastRun sql.NullString
 	var duration int64
 	var noExtend, pausedByAdmin bool
 	var pausedBy string
 	err := r.Scan(&sc.ID, &sc.Role, &sc.Machine, &sc.Kind, &sc.Label, &sc.Prompt, &sc.Cron, &sc.TZ, &sc.State,
 		&created, &expires, &next, &last, &sc.Missed, &missedLast, &duration, &sc.lastMail, &noExtend,
-		&pausedAt, &pausedBy, &pausedByAdmin, &sc.PauseReason)
+		&pausedAt, &pausedBy, &pausedByAdmin, &sc.PauseReason, &lastRun)
 	if err != nil {
 		return sc, err
 	}
@@ -373,6 +375,7 @@ func scanSchedule(r scanner) (scheduleRow, error) {
 	}
 	sc.CreatedAt, sc.ExpiresAt = parse(created), parse(expires)
 	sc.NextFireAt, sc.LastFireAt, sc.MissedLastAt = parseNull(next), parseNull(last), parseNull(missedLast)
+	sc.LastRunAt = parseNull(lastRun)
 	sc.duration = time.Duration(duration) * time.Second
 	sc.Extends = !noExtend
 	return sc, nil

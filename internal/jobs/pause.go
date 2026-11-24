@@ -46,10 +46,14 @@ var (
 	errNotPausable = errors.New("only an active or paused schedule pauses and resumes")
 )
 
-// pauseAPI serves POST ID/pause and ID/resume for a View (the role and admin
+// pauseAPI serves POST ID/pause, ID/resume and ID/run (runAPI) for a View (the role and admin
 // paths): 404 for a schedule not in view, 409 for one that ended or a
 // passed once fire without a choice.
 func (s *Service) pauseAPI(w http.ResponseWriter, r *http.Request, v View, id int64, action string) {
+	if action == "run" && r.Method == http.MethodPost {
+		s.runAPI(w, r, v, id)
+		return
+	}
 	if r.Method != http.MethodPost || action != "pause" && action != "resume" {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return

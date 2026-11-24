@@ -976,13 +976,15 @@ CREATE INDEX IF NOT EXISTS idx_ledger_views_at ON ledger_views(viewed_at)`)
 // whom (a role, or an admin's name with paused_by_admin=1) and why, on
 // schedules; and schedule_pauses, every pause and resume: schedule, action
 // (pause or resume), actor, reason, what a resume did with a once fire that
-// passed (fire, drop or ”), and time.
+// passed (fire, drop or ”), and time. A run now (#588) is kept there too
+// (action run) and its time in schedules.last_run_at.
 func migrateSchedulePauses(db *sql.DB) error {
 	adds := []struct{ column, def string }{
 		{"paused_at", `TEXT`},
 		{"paused_by", `TEXT NOT NULL DEFAULT ''`},
 		{"paused_by_admin", `INTEGER NOT NULL DEFAULT 0`},
 		{"pause_reason", `TEXT NOT NULL DEFAULT ''`},
+		{"last_run_at", `TEXT`}, // the last run now (#588)
 	}
 	for _, c := range adds {
 		has, err := HasColumn(db, "schedules", c.column)

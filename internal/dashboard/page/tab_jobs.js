@@ -78,9 +78,14 @@ function jobRow(j){
   if(!live)r.classList.add('done');
   return r;
 }
+// runAt is a run now's time as HH:MM (#588), with the date when not today.
+function runAt(t){
+  const d=new Date(t),hm=d.toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit',hourCycle:'h23'});
+  return d.toDateString()===new Date().toDateString()?hm:d.toLocaleDateString('ko-KR',{month:'numeric',day:'numeric'})+' '+hm;
+}
 function schedRow(j){
   const st=jobBadge(j),next=j.next_fire_at&&j.state==='active'?'다음 '+shortWhen(j.next_fire_at):'';
-  const r=jobRowOf('sched:'+j.id,['#'+j.id,j.kind==='cron'?j.cron:'1회',j.role,next],j.label,j.state==='active'?null:st);
+  const r=jobRowOf('sched:'+j.id,['#'+j.id,j.kind==='cron'?j.cron:'1회',j.role,next,j.last_run_at&&'지금 실행 · '+runAt(j.last_run_at)],j.label,j.state==='active'?null:st);
   if(!jobLive(j.state))r.classList.add('done');
   return r;
 }
@@ -107,6 +112,23 @@ function jobAct(label,title,msg,doing,ask,send){
   });
   b.title=title;
   return b;
+}
+// runButton mails the prompt now (#588), after a confirm in the page; the
+// next fire stays. A run again within the server's window is the same run.
+function runButton(j,msg){
+  if(j.state!=='active'&&j.state!=='paused')return [];
+  const b=setButton('지금 실행','',async()=>{
+    if(!await askOn(b,{text:'#'+j.id+' '+j.label+' 프롬프트를 지금 한 통 보냅니다. 다음 회차는 그대로입니다.',ok:'보내기 확인'}))return;
+    b.disabled=true;setMsg(msg,'보내는 중…');
+    try{
+      const r=await apiSend('POST','schedules/'+encodeURIComponent(j.id)+'/run');
+      b.disabled=false;
+      setMsg(msg,(r.repeated?'이미 보냄 · ':'지금 실행 · ')+runAt(r.schedule.last_run_at||new Date())+' · 메일 #'+r.mail_id);
+      loadJobs();
+    }catch(e){b.disabled=false;setMsg(msg,e.message,'err')}
+  });
+  b.title='프롬프트를 지금 한 번 보낸다 — 다음 회차는 그대로';
+  return [b];
 }
 function pauseButtons(j,msg){
   const id=encodeURIComponent(j.id),out=[];
@@ -147,9 +169,9 @@ function drawSched(j,box){
   const msg=node('span','','msg');msg.setAttribute('role','status');
   const rm=jobAct('지우기','이 예약을 지운다 — 되돌릴 수 없다',msg,'지우는 중…',at=>askOn(at,{text:'#'+j.id+' '+j.label+' 예약을 지울까요? 되돌릴 수 없습니다.',ok:'지우기 확인',danger:true}).then(r=>r?undefined:false),()=>apiSend('DELETE','schedules/'+encodeURIComponent(j.id)).then(closeDetail));
   const edit=j.state==='active'||j.state==='paused'?[editButton(j,false,body=>apiSend('PUT','schedules/'+encodeURIComponent(j.id),body),'시각·프롬프트·라벨을 고친다 — 번호와 기록은 그대로')]:[];
-  jobActs(box,edit.concat(pauseButtons(j,msg),rm),msg);
+  jobActs(box,runButton(j,msg).concat(pauseButtons(j,msg),edit,rm),msg);
   const cond=j.kind==='cron'?node('code',j.cron+' ('+j.tz+')'):when(j.next_fire_at||j.last_fire_at);
-  const pairs=[['조건',cond],['다음',j.state==='active'?when(j.next_fire_at):'-'],['지난 실행',when(j.last_fire_at)],['만료',when(j.expires_at)+(j.state==='paused'?' · 멈춘 동안 시계 멈춤':'')],['밀린',j.missed?j.missed+'회':'-'],['역할',j.role],['기계',j.machine],['ID',String(j.id)]];
+  const pairs=[['조건',cond],['다음',j.state==='active'?when(j.next_fire_at):'-'],['지난 실행',when(j.last_fire_at)],['지금 실행',j.last_run_at?when(j.last_run_at):'-'],['만료',when(j.expires_at)+(j.state==='paused'?' · 멈춘 동안 시계 멈춤':'')],['밀린',j.missed?j.missed+'회':'-'],['역할',j.role],['기계',j.machine],['ID',String(j.id)]];
   if(j.paused_by)pairs.push(['멈춘 쪽',j.paused_by.admin?'관리자 '+j.paused_by.name:'역할 '+j.paused_by.name],['멈춘 시각',when(j.paused_at)],['까닭',j.pause_reason||'-']);
   pairs.push(['프롬프트',node('pre',j.prompt)]);
   box.append(dl(pairs));
