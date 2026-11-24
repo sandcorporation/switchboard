@@ -675,14 +675,16 @@ func (s *Service) list(w http.ResponseWriter, r *http.Request, role string, view
 	writeJSON(w, out)
 }
 
-// Read serves GET /api/messages/{id}.
+// Read serves GET /api/messages/{id}. The recipient's read marks the mail
+// read unless ?peek=1: the agent plugin takes the body to put the mail into
+// the session and marks it read when the session's turn starts with it (#590).
 func (s *Service) Read(w http.ResponseWriter, r *http.Request, role string, id int64) {
 	m, e := s.Get(id)
 	if e != nil || (m.Sender != role && m.Recipient != role) {
 		http.Error(w, "not found", 404)
 		return
 	}
-	if m.Recipient == role {
+	if m.Recipient == role && r.URL.Query().Get("peek") != "1" {
 		_, _ = s.db.Exec(`INSERT INTO role_states(role,message_id,status,updated_at) VALUES(?,?,?,?) ON CONFLICT(role,message_id) DO UPDATE SET status=CASE WHEN role_states.status='pending' THEN 'read' ELSE role_states.status END,updated_at=excluded.updated_at`, role, id, "read", time.Now().UTC().Format(time.RFC3339Nano))
 	}
 	if v, err := s.View(id); err == nil {

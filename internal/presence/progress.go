@@ -26,13 +26,14 @@ func serviceOf(name string) string {
 	return svc
 }
 
-// badgeRank orders sessions for the card badge: error > blocked > busy
+// badgeRank orders sessions for the card badge: error (a stalled session,
+// #590, counts as error: it does not move on its own) > blocked > busy
 // (compacting, and idle or unknown with running sub-agents, count as busy) >
 // idle (unknown counts as idle).
 func badgeRank(v wire.ProgressSession) (int, string) {
 	state := v.State
 	switch {
-	case isErrorState(state):
+	case isErrorState(state) || strings.HasPrefix(state, "stalled:"):
 		return 4, "error"
 	case isBlockedState(state):
 		return 3, "blocked"

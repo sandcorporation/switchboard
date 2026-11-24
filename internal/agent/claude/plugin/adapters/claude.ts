@@ -145,8 +145,9 @@ export function wireClaudeEvents(on: On, emitter: Emitter, box: MidTurnBox, hint
   on('turn.start', ($, e, next) => {
     if (e.agentId === undefined) {
       watch?.turnStart(e.turnId)
-      emitter.emit({ type: 'turn.start' })
-    }
+      // text: 그 턴이 들고 가는 사용자 글. 플러그인이 넣은 글($.prompt.submit)은 세션이 쉴 때 이 턴으로 시작한다(#590).
+      emitter.emit({ type: 'turn.start', text: typeof e.text === 'string' ? e.text : '' })
+    } else emitter.emit({ type: 'activity' })
 
     return next(e)
   }).catch(($, e, next) => next(e))
@@ -157,7 +158,7 @@ export function wireClaudeEvents(on: On, emitter: Emitter, box: MidTurnBox, hint
       box.expire()
       watch?.turnEnd()
       emitter.emit({ type: 'turn.complete' })
-    }
+    } else emitter.emit({ type: 'activity' })
 
     return r
   }).catch(($, e, next) => next(e))
@@ -192,6 +193,8 @@ export function wireClaudeEvents(on: On, emitter: Emitter, box: MidTurnBox, hint
       // 덤이다.
     }
     const main = e.agentId === undefined
+    // 멈춤 감지의 움직임(#590): 서브에이전트가 도구를 부르는 동안은 앞에서 도는 Agent 호출도 진행 중이다.
+    emitter.emit({ type: 'activity' })
     // 시각은 동기 시계로 잰다: 도구 호출마다 엔진을 더 부르지 않는다.
     const key = main ? watch?.begin(e.tool) : undefined
     const run = async () => {
@@ -202,7 +205,7 @@ export function wireClaudeEvents(on: On, emitter: Emitter, box: MidTurnBox, hint
       }
     }
     const r = await run()
-    if (main) emitter.emit({ type: 'tool.complete' })
+    emitter.emit(main ? { type: 'tool.complete' } : { type: 'activity' })
     if (r.deny !== undefined) return r
     const ruled = hints === undefined ? [] : await hints.lines(http, e).catch(() => [])
     const mid = main && box.size() > 0 && watch?.isHeld() !== true ? box.take() : []

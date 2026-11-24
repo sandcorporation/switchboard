@@ -241,3 +241,33 @@ test('Claude 어댑터(#526): 끝난 도구는 넘길 대상에서 빠지고, �
   expect(watch.movable(30_000)).toBe(null)
   expect(claudeHost(asSelf({}), createEmitter(), createMidTurnBox()).moveShellToBackground).toBe(undefined)
 })
+
+/** 훅을 모아 두는 가짜 on(#590): 이름별 마지막 처리기를 직접 부른다. */
+const recordOn = () => {
+  const handlers = new Map<string, (...a: any[]) => any>()
+  const on = ((name: string, ...rest: any[]) => {
+    handlers.set(name, rest.at(-1))
+
+    return { catch: () => undefined }
+  }) as any
+
+  return { on, call: (name: string, e: any) => handlers.get(name)?.(asSelf({ http: { fetch: async () => ({ status: 404, ok: false, headers: {}, text: '' }) } }), e, async (x: any) => x) }
+}
+
+test('Claude 어댑터(#590): 본 세션 turn.start 는 그 턴의 글을 싣고, 서브에이전트의 턴·도구와 도구 시작은 activity 다', async () => {
+  const emitter = createEmitter()
+  const seen: unknown[] = []
+  emitter.on(e => void seen.push(e))
+  const { on, call } = recordOn()
+  wireClaudeEvents(on, emitter, createMidTurnBox())
+  await call('turn.start', { text: '[메일] 새 지시', turnId: 't1' })
+  expect(seen).toEqual([{ type: 'turn.start', text: '[메일] 새 지시' }])
+  seen.length = 0
+  await call('turn.start', { text: '하위 일', turnId: 't2', agentId: 'a1' })
+  await call('tool.call', { tool: 'Bash', agentId: 'a1', input: {} })
+  await call('turn.complete', { turnId: 't2', agentId: 'a1' })
+  expect(seen).toEqual([{ type: 'activity' }, { type: 'activity' }, { type: 'activity' }, { type: 'activity' }])
+  seen.length = 0
+  await call('tool.call', { tool: 'Bash', input: {} })
+  expect(seen).toEqual([{ type: 'activity' }, { type: 'tool.complete' }])
+})

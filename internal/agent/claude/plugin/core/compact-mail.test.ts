@@ -80,7 +80,8 @@ test('메일 전 compact: 어댑터가 거절하면(done:false) 그대로 넣는
   host.setCompactResult({ done: false, reason: 'nothing' })
   const a = mail.send()
   await flush()
-  expect(board.state().activity).toBe('idle')
+  // compact 에 갇히지 않고 넣은 메일의 턴이 돈다.
+  expect(board.state().activity).toBe('busy')
   expect(host.turns).toEqual([inlined([a])])
 })
 
@@ -108,7 +109,8 @@ const RESUMED = { ...BOARD, compactTimeoutMs: 5 * 60_000 }
 
 test('resume 직후 기준 이상: compact 가 완료 이벤트 없이 끝나지 않으면 시간 뒤 풀고 메일을 넣는다(알림 한 번)', async () => {
   const warns: string[] = []
-  const { host, mail, board } = await setup({ board: { ...RESUMED, warn: t => void warns.push(t) }, preload: 1, usage: { tokens: 243_500 }, compact: 'silent' })
+  // 메일 턴이 아직 돌지 않은 사이를 본다: 턴 시작은 시험이 보낸다.
+  const { host, mail, board } = await setup({ board: { ...RESUMED, warn: t => void warns.push(t) }, preload: 1, usage: { tokens: 243_500 }, compact: 'silent', engine: false })
   expect(host.compacts.length).toBe(1)
   expect(board.state().activity).toBe('compacting')
   expect(host.turns).toEqual([])
@@ -133,7 +135,8 @@ test('resume 직후 기준 이상: compact 호출이 풀리지 않아도(hang) �
   const { host, board } = await setup({ board: { ...RESUMED, warn: t => void warns.push(t) }, preload: 1, usage: { tokens: 243_500 }, compact: 'hang' })
   expect(board.state().activity).toBe('compacting')
   await host.clock.advance(5 * 60_000)
-  expect(board.state().activity).toBe('idle')
+  // compacting 을 풀고 넣은 메일의 턴이 돈다.
+  expect(board.state().activity).toBe('busy')
   expect(host.turns.length).toBe(1)
   expect(warns.length).toBe(1)
 })

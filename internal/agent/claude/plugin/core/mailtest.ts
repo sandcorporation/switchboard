@@ -42,14 +42,17 @@ export const fakeMail = (host: FakeHost) => {
 
   host.http.route(`${EP}/api/messages/`, ({ url, init }: { url: string; init: HttpInit }) => {
     if (init.headers?.Authorization !== `Bearer ${TOKEN}`) return { status: 401, text: 'unauthorized' }
-    const m = /\/api\/messages\/(\d+)(\/read)?$/.exec(url)
+    const m = /\/api\/messages\/(\d+)(\/read)?(\?peek=1)?$/.exec(url)
     const mail = m === null ? undefined : mails.find(x => x.id === Number(m[1]))
     if (mail === undefined || m === null) return { status: 404, text: 'not found' }
     if ((init.method ?? 'GET') === 'GET' && m[2] === undefined) {
-      reads.push(mail.id)
-      mail.status = 'read'
+      // 실제 서버처럼 peek(본문만 받기, #590)은 read 로 바꾸지 않는다.
+      if (m[3] === undefined) {
+        reads.push(mail.id)
+        mail.status = 'read'
+      }
 
-      return { text: JSON.stringify({ id: mail.id, body: mail.body, priority: mail.priority, status: 'read' }) }
+      return { text: JSON.stringify({ id: mail.id, body: mail.body, priority: mail.priority, status: mail.status }) }
     }
     if (init.method === 'POST' && m[2] === '/read') {
       reads.push(mail.id)
@@ -118,6 +121,8 @@ export const setup = async (
   opts: { profile?: string | null; isMain?: boolean; preload?: number; features?: { midTurnInject?: boolean; compact?: boolean }; board?: Omit<SwitchboardOptions, 'mail'>
     /** 연결 전부터의 컨텍스트(resume 으로 이어 띄운 세션). */
     usage?: Usage
+    /** false 면 넣은 글의 턴을 시험이 시작한다(fakeHost engine). */
+    engine?: boolean
     compact?: CompactBehavior
     /** 메일함 옵션 덧붙이기(CLI 판 읽기 등). */
     mail?: { cliVersion?: () => Promise<string | undefined> }
@@ -129,6 +134,7 @@ export const setup = async (
     identity: { isMain: opts.isMain ?? true },
     ...(opts.features === undefined ? {} : { features: opts.features }),
     ...(opts.background === undefined ? {} : { background: opts.background }),
+    ...(opts.engine === undefined ? {} : { engine: opts.engine }),
   })
   if (opts.usage !== undefined) host.setUsage(opts.usage)
   if (opts.compact !== undefined) host.setCompactBehavior(opts.compact)
@@ -166,7 +172,8 @@ export const inlined = (
 
 /** 세션이 넣은 턴을 실제처럼 돌렸다 끝낸다. */
 export const runTurn = async (host: FakeHost) => {
-  host.emit({ type: 'turn.start' })
+  // 넣은 글의 턴을 엔진이 이미 시작했으면 그 턴을 끝낸다(#590).
+  if (!host.running()) host.emit({ type: 'turn.start' })
   await flush()
   host.emit({ type: 'turn.complete' })
   await flush()

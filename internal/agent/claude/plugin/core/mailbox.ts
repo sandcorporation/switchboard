@@ -105,6 +105,8 @@ export type Mailbox = {
   /** 세션이 유휴가 됐을 수 있다(턴 끝 등): 기다리는 알림을 넣어 본다. */
   kick: () => void
   state: () => MailboxState
+  /** 세션에 넣었지만 아직 그 턴이 시작되지 않은 메일(#590): 수와 가장 오래된 것을 넣은 시각. */
+  unstarted: () => { count: number; since: number | null }
   /** presence 가 바뀌었다(상태 등): 곧 heartbeat 로 보고한다. 번호 역할이 없으면 아무것도 안 한다. */
   report: () => void
   /** 이 세션이 `<base>-1` 을 가져온다. */
@@ -144,6 +146,8 @@ export const RETRY_MAX_MS = 60_000
 export const EMPTY_GAP_MS = 1000
 /** 알림 턴을 넣은 뒤 턴 시작을 기다리는 시간. 넘으면 다시 넣을 수 있다고 본다. */
 export const TURN_GRACE_MS = 15_000
+/** 넣은 글과 시작된 턴을 짝짓는 열쇠: 넣은 글의 앞 200자(#590). 턴의 글에 이것이 있으면 그 글로 시작한 턴이다. */
+export const startKey = (text: string) => text.trim().slice(0, 200)
 /** 알림 직전 「아직 pending 인가」 확인의 한도. */
 export const CHECK_TIMEOUT_MS = 10_000
 
@@ -492,6 +496,11 @@ export const createMailbox = (host: AgentHost, opts: MailboxOptions): Mailbox =>
   let delivering = false
   /** 알림 턴을 넣었고 아직 턴이 시작되지 않았다. */
   let awaitingTurn = false
+  /**
+   * 넣었지만 아직 그 턴이 시작되지 않은 글(#590). submitTurn 은 대기열에 넣기만 한다(돌고 있는 턴이 끝나야 새 턴):
+   * read 는 세션이 그 글로 턴을 시작했을 때(turn.start 의 text 에 그 글이 있을 때) 표시한다.
+   */
+  let unstartedQ: { p: MailProfile; ids: number[]; text: string; at: number }[] = []
   /** 넣으려고 기다리는 시스템 통지(받은 순). 일반 메일 뒤에 넣는다. */
   let noticeQ: MailEvent[] = []
   /** 바로 길에서 본문을 받아 둔 채 평소 길로 넘긴 통지 ID(본문 GET 이 read 로 바꿨을 수 있어 pending 확인에서 빼지 않는다). */
@@ -573,6 +582,8 @@ export const createMailbox = (host: AgentHost, opts: MailboxOptions): Mailbox =>
     status = 'connecting'
     void poll()
   }
+  /** 메일 하나의 본문(peek=1: 서버가 read 로 바꾸지 않는다, #590. 옛 서버는 무시하고 read 로 바꾼다). */
+  const peekUrl = (p: MailProfile, id: number) => `${p.endpoint}/api/messages/${id}?peek=1`
   const pollUrl = (p: MailProfile, after: number | null, timeout: number) =>
     `${p.endpoint}/api/events/poll?timeout=${timeout}${after === null ? '' : `&after=${after}`}`
 
@@ -743,11 +754,11 @@ export const createMailbox = (host: AgentHost, opts: MailboxOptions): Mailbox =>
     }
   }
 
-  /** 본문이 없으면(이벤트에 안 실림) 그 메일만 받아 온다(GET 은 읽음 처리도 한다). 못 받으면 빈 글. */
+  /** 본문이 없으면(이벤트에 안 실림) 그 메일만 받아 온다(peek: 읽음은 턴이 시작될 때). 못 받으면 빈 글. */
   const bodyOf = async (p: MailProfile, e: MailEvent): Promise<string> => {
     if (e.body !== undefined) return e.body
     try {
-      const r = await http.fetch(`${p.endpoint}/api/messages/${e.id}`, { method: 'GET', headers: headers(p) })
+      const r = await http.fetch(peekUrl(p, e.id), { method: 'GET', headers: headers(p) })
       if (!r.ok) return ''
       const m: unknown = JSON.parse(r.text)
 
@@ -762,7 +773,7 @@ export const createMailbox = (host: AgentHost, opts: MailboxOptions): Mailbox =>
     try {
       let timer: Timer | undefined
       const r = await Promise.race([
-        http.fetch(`${p.endpoint}/api/messages/${id}`, { method: 'GET', headers: headers(p) }),
+        http.fetch(peekUrl(p, id), { method: 'GET', headers: headers(p) }),
         new Promise<null>(done => void (timer = clock.after(CHECK_TIMEOUT_MS, () => done(null)))),
       ]).finally(() => timer?.cancel())
       if (r === null || !r.ok) return undefined
@@ -772,6 +783,40 @@ export const createMailbox = (host: AgentHost, opts: MailboxOptions): Mailbox =>
     } catch {
       return undefined
     }
+  }
+
+  /**
+   * 메일 턴을 넣는다. 넣기 전에 적어 둔다(턴 시작 훅이 submitTurn 이 풀리기 전에 올 수 있다): 그 턴이 시작되면 ids 를
+   * read 로 표시하고(startedWith), 시작될 때까지 다음 알림을 미룬다(awaitingTurn). 넣지 못하면 거두고 던진다.
+   */
+  const submitMailTurn = async (p: MailProfile, ids: number[], text: string) => {
+    const u = { p, ids, text, at: await clock.now() }
+    if (ids.length > 0) unstartedQ.push(u)
+    awaitingTurn = true
+    grace?.cancel()
+    grace = clock.after(TURN_GRACE_MS, () => {
+      awaitingTurn = false
+      kick()
+    })
+    try {
+      await host.submitTurn(text)
+    } catch (err) {
+      unstartedQ = unstartedQ.filter(x => x !== u)
+      awaitingTurn = false
+      grace?.cancel()
+      throw err
+    }
+  }
+  /**
+   * 턴이 시작됐다: 그 턴이 들고 가는 글에 넣은 글이 있으면 read 로 표시한다. 글을 모르는 어댑터(text 없음)는 가장 먼저 넣은 것.
+   * 엔진이 쌓인 글을 한 턴으로 합쳐도 각 글이 들어 있으므로 모두 맞는다. 다른 플러그인이 앞뒤에 덧붙여도 맞는다.
+   */
+  const startedWith = (text: string | undefined) => {
+    if (unstartedQ.length === 0) return
+    const hit = text === undefined ? unstartedQ.slice(0, 1) : unstartedQ.filter(u => text.includes(startKey(u.text)))
+    if (hit.length === 0) return
+    unstartedQ = unstartedQ.filter(u => !hit.includes(u))
+    for (const u of hit) for (const id of u.ids) void markRead(u.p, id)
   }
 
   const markRead = async (p: MailProfile, id: number) => {
@@ -861,15 +906,12 @@ export const createMailbox = (host: AgentHost, opts: MailboxOptions): Mailbox =>
       }
       if (!attached) {
         // 유휴, 끼워 넣기 기능 없음, 또는 도구 호출 없이 턴이 끝났다: 새 턴(돌고 있으면 그 턴 뒤 맨 앞).
-        await host.submitTurn(text)
-        awaitingTurn = true
-        grace?.cancel()
-        grace = clock.after(TURN_GRACE_MS, () => {
-          awaitingTurn = false
-          kick()
-        })
+        // read 는 그 턴이 시작될 때(#590).
+        await submitMailTurn(p, [...items, ...sent].map(e => e.id), text)
+      } else {
+        // 도는 턴의 도구 결과에 붙었다: 세션이 읽었다.
+        await Promise.all([...items, ...sent].map(e => markRead(p, e.id)))
       }
-      await Promise.all([...items, ...sent].map(e => markRead(p, e.id)))
     } catch {
       failed = true
       urgentQ = [...items, ...urgentQ]
@@ -928,15 +970,13 @@ export const createMailbox = (host: AgentHost, opts: MailboxOptions): Mailbox =>
         const texts = (await Promise.all(items.map(async e => noticeOf(e, await bodyOf(p, e))))).filter((t): t is string => t !== null)
         // 모두 거른 통지(#120)면 턴을 열지 않고 read 로만.
         if (texts.length > 0) {
-          await host.submitTurn(texts.join('\n\n'))
-          awaitingTurn = true
-          grace?.cancel()
-          grace = clock.after(TURN_GRACE_MS, () => {
-            awaitingTurn = false
-            kick()
-          })
-        }
-        await Promise.all(items.map(e => markRead(p, e.id)))
+          // read 는 그 턴이 시작될 때(#590).
+          await submitMailTurn(
+            p,
+            items.map(e => e.id),
+            texts.join('\n\n'),
+          )
+        } else await Promise.all(items.map(e => markRead(p, e.id)))
       } catch {
         failed = true
         noticeQ = [...items, ...noticeQ]
@@ -1010,22 +1050,16 @@ export const createMailbox = (host: AgentHost, opts: MailboxOptions): Mailbox =>
             ...(body === undefined ? {} : { body }),
           }
         })
-        await host.submitTurn(mailTurn(items, { open: openDirective, done: doneDirective, ...(await tails()) }))
+        const turn = mailTurn(items, { open: openDirective, done: doneDirective, ...(await tails()) })
+        // 본문을 넣은 통만 read 로 표시한다(ID 만 넣은 통은 세션이 read 로 읽는다). 그 턴이 시작될 때(#590).
         const got = send.filter(i => bodies.has(i))
+        await submitMailTurn(p, got, turn)
         for (const m of send) {
           openDirective.delete(m)
           doneDirective.delete(m)
           meta.delete(m)
           bodies.delete(m)
         }
-        // 본문을 넣은 통만 읽음 처리한다(GET 이 이미 했을 수 있지만 서버마다 다를 수 있다).
-        await Promise.all(got.map(i => markRead(p, i)))
-        awaitingTurn = true
-        grace?.cancel()
-        grace = clock.after(TURN_GRACE_MS, () => {
-          awaitingTurn = false
-          kick()
-        })
       } catch {
         // 넣지 못했다: 되돌려 놓고 잠시 뒤 다시.
         failed = true
@@ -1115,6 +1149,7 @@ export const createMailbox = (host: AgentHost, opts: MailboxOptions): Mailbox =>
       if (e.type === 'turn.start') {
         awaitingTurn = false
         grace?.cancel()
+        startedWith(e.text)
       }
       // 턴 시작·끝·compact 끝: 긴급은 바로 넣어 보고(바쁘면 끼워 넣기), 일반은 유휴일 때.
       if (e.type === 'turn.start' || e.type === 'turn.complete' || e.type === 'compact.complete') void deliverUrgent()
@@ -1130,6 +1165,7 @@ export const createMailbox = (host: AgentHost, opts: MailboxOptions): Mailbox =>
     gen++
     epoch++
     profile = null
+    unstartedQ = []
     role = null
     polling = false
     status = 'off'
@@ -1154,6 +1190,7 @@ export const createMailbox = (host: AgentHost, opts: MailboxOptions): Mailbox =>
     report: () => slot?.report(),
     takeover,
     state: () => ({ status, cursor, queued: [...queued], role }),
+    unstarted: () => ({ count: unstartedQ.reduce((n, u) => n + u.ids.length, 0), since: unstartedQ.length === 0 ? null : Math.min(...unstartedQ.map(u => u.at)) }),
     send: m => sendMail(m, epoch),
     call,
     onUrgent: fn => {

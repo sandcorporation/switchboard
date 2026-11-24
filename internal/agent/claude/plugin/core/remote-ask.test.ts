@@ -74,12 +74,13 @@ const fakeServer = () => {
     const authed = (init: HttpInit) => init.headers?.Authorization === `Bearer ${TOKEN}` && init.headers['X-Switchboard-Role'] === role
     host.http.route(`${EP}/api/messages/`, ({ url, init }: { url: string; init: HttpInit }) => {
       if (!authed(init)) return { status: 401 }
-      const m = /\/api\/messages\/(\d+)(\/read)?$/.exec(url)
+      const m = /\/api\/messages\/(\d+)(\/read)?(\?peek=1)?$/.exec(url)
       const mail = m === null ? undefined : mails.find(x => x.id === Number(m[1]))
       if (mail === undefined) return { status: 404 }
-      mail.status = 'read'
+      // 실제 서버처럼 peek(본문만 받기, #590)은 read 로 바꾸지 않는다.
+      if (m?.[3] === undefined) mail.status = 'read'
 
-      return { text: JSON.stringify({ id: mail.id, body: mail.body, status: 'read' }) }
+      return { text: JSON.stringify({ id: mail.id, body: mail.body, status: mail.status }) }
     })
     host.http.route(`${EP}/api/events/poll`, async ({ url, init }: { url: string; init: HttpInit }) => {
       if (!authed(init)) return { status: 401 }

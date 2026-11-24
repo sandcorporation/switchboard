@@ -24,6 +24,8 @@ func TestProgressBadgePriority(t *testing.T) {
 		{[]string{"busy", "idle"}, "busy"},
 		{[]string{"busy", "blocked:permission_prompt", "idle"}, "blocked"},
 		{[]string{"blocked:x", "error:StopFailure", "busy"}, "error"},
+		{[]string{"busy", "blocked:x", "stalled:queued"}, "error"},
+		{[]string{"idle", "stalled:turn"}, "error"},
 	} {
 		if got := progressBadge(ss(c.states...)); got != c.want {
 			t.Fatalf("%v: %q, want %q", c.states, got, c.want)

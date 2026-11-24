@@ -126,6 +126,7 @@ func TestPresenceRejectsBadFields(t *testing.T) {
 		"bare error":      report("m", "/a", "error", nil, ""),
 		"empty kind":      report("m", "/a", "error:", nil, ""),
 		"empty blocked":   report("m", "/a", "blocked:", nil, ""),
+		"empty stalled":   report("m", "/a", "stalled:", nil, ""),
 		"long kind":       report("m", "/a", "error:"+strings.Repeat("x", 65), nil, ""),
 		"kind space":      report("m", "/a", "error:Stop Failure", nil, ""),
 		"kind colon":      report("m", "/a", "blocked:a:b", nil, ""),
@@ -152,7 +153,7 @@ func TestPresenceKindStates(t *testing.T) {
 	t.Parallel()
 	s, clock := presenceServer(t)
 	slotDo(t, s, "register", report("m", "/a", "idle", nil, ""))
-	for _, state := range []string{"error:StopFailure", "blocked:permission_prompt", "error:a.b-c_9", "blocked:" + strings.Repeat("K", 64), "busy"} {
+	for _, state := range []string{"error:StopFailure", "blocked:permission_prompt", "error:a.b-c_9", "blocked:" + strings.Repeat("K", 64), "stalled:queued", "stalled:turn", "busy"} {
 		for _, action := range []string{"heartbeat", "takeover", "register"} {
 			slotDo(t, s, action, report("m", "/a", state, nil, ""))
 			out, _ := presenceAs(t, s, "")
@@ -162,7 +163,7 @@ func TestPresenceKindStates(t *testing.T) {
 		}
 	}
 	w := callAs(s, "POST", "/api/slots/heartbeat", workerToken, "team/worker", report("m", "/a", "error:", nil, ""))
-	if w.Code != 400 || !strings.Contains(w.Body.String(), "error:<kind>") || !strings.Contains(w.Body.String(), "blocked:<kind>") {
+	if w.Code != 400 || !strings.Contains(w.Body.String(), "error:<kind>") || !strings.Contains(w.Body.String(), "blocked:<kind>") || !strings.Contains(w.Body.String(), "stalled:<kind>") {
 		t.Fatalf("bad kind message: %d %s", w.Code, w.Body)
 	}
 	slotDo(t, s, "heartbeat", report("m", "/a", "blocked:permission_prompt", nil, ""))

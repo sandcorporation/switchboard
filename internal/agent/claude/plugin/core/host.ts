@@ -66,7 +66,11 @@ export type CompactResult = { done: true } | { done: false; reason: string }
 
 /** 포트 이벤트. 서브에이전트의 턴·도구는 어댑터가 걸러 본 세션 것만 보낸다. */
 export type HostEvent =
-  | { type: 'turn.start' }
+  /**
+   * 본 세션 턴이 시작됐다. text 는 그 턴이 들고 가는 사용자 글(이어 가는 턴은 "", 모르는 어댑터는 없음).
+   * 코어는 이것으로 넣은 메일의 턴이 실제로 돌았는지 짝짓는다(#590).
+   */
+  | { type: 'turn.start'; text?: string }
   | { type: 'turn.complete' }
   /**
    * 입력창의 글이 바뀌었다(text 는 바뀐 뒤 전체 글). by: person(사람이 치기·붙여 넣기·기록 불러오기·되돌리기),
@@ -92,6 +96,11 @@ export type HostEvent =
   | { type: 'notification'; kind: string }
   /** 본 세션의 도구 호출 하나가 끝났다(D8: 사람 기다림이 풀린 것으로 본다). */
   | { type: 'tool.complete' }
+  /**
+   * 턴 안의 움직임(#590): 도구 호출 시작(본 세션·서브에이전트), 서브에이전트의 도구 끝·턴 시작·끝.
+   * 멈춤 감지만 듣는다(진행 없이 안 끝나는 턴을 가린다).
+   */
+  | { type: 'activity' }
 
 export type Features = {
   /** injectMidTurn 이 있다. */
