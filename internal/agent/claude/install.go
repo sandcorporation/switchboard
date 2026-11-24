@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -395,7 +396,11 @@ func userSettings(env []string) bool {
 	if err != nil {
 		return true
 	}
-	return samePath(configDir(env), filepath.Join(h, ".claude"))
+	a, b := filepath.Clean(configDir(env)), filepath.Clean(filepath.Join(h, ".claude"))
+	if runtime.GOOS == "windows" {
+		return strings.EqualFold(a, b)
+	}
+	return a == b
 }
 
 func samePath(a, b string) bool {

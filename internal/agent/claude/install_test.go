@@ -385,6 +385,7 @@ func TestPluginStatusBeforeTheFirstInstall(t *testing.T) {
 func TestInstallPluginDevBuildRefusesTheUserSettings(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home) // os.UserHomeDir on Windows
 	for _, env := range [][]string{
 		{"PATH=/bin"},
 		{"CLAUDE_CONFIG_DIR=", "PATH=/bin"},
