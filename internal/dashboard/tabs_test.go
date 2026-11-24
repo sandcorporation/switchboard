@@ -25,9 +25,9 @@ func TestPageTabs(t *testing.T) {
 }
 
 // #536: only the session list scrolls in the left pane (검색, the menu and
-// the 설정 row stay put, in the drawer too). #538: 설정 takes the whole
-// screen — the settings menu keeps its scroll and its marked row while an
-// item or 진행·세션 표·터미널 opens on the right.
+// the 설정 row stay put, in the drawer too). #544: 설정 sits beside the
+// session list as tabs over a table; an item opens on the right and the
+// table keeps its scroll and its marked row.
 func TestDashboardSettingsListKept(t *testing.T) {
 	w := httptest.NewRecorder()
 	Page(w, httptest.NewRequest("GET", "/", nil))
@@ -39,32 +39,24 @@ func TestDashboardSettingsListKept(t *testing.T) {
 		".lp .tabs{flex:none;",
 		".lp-sess{flex:1 1 auto;min-height:0;overflow-x:hidden;overflow-y:auto;",
 		".lp-foot{flex:none;",
-		// #538: 설정 is the whole screen — the left pane the settings menu,
-		// the centre the path row over the body; no list column.
+		// #544: 설정 sits beside the session list — the top (title, 찾기, +
+		// 추가, tabs) over the picked tab's table, an item in the panel on the
+		// right with the table beside it.
 		"html.classList.toggle('fr-set',on&&setListKept(curTab));",
-		".fr-set .lp>:not(#setNav),.fr-set #gripL,.fr-set .fr-lp-open{display:none}",
-		".fr-set #appMain,.fr-set #appMain.has-detail{display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:48px minmax(0,1fr)}",
-		".sn-top{flex:none;height:48px;",
-		".sn-h{height:28px;display:flex;align-items:center;justify-content:space-between;margin-top:12px;padding:0 8px 0 16px;font-size:11px;font-weight:600;letter-spacing:.4px;text-transform:uppercase;",
-		".fr-set .detail.sd-form>*{max-width:720px}",
-		// Below 720px the menu and the body take turns.
-		"html.fr-set:not(.fr-setm) .lp{display:none}",
-		"html.fr-set.fr-setm #appMain{display:none}",
-		".fr-set .detail{position:static;inset:auto;z-index:auto}",
-		// Only the open panel shows; the menu keeps its scroll and its marked row.
+		".fr-set #appMain,.fr-set #appMain.has-detail{display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,1fr)}",
+		".fr-set #appMain.has-detail:not(.st-wide){grid-template-columns:minmax(0,1fr) 380px}",
+		".fr-set #appMain.st-wide>.sc-app-page{display:none}",
+		".st-tabs{height:34px;display:flex;align-items:stretch;gap:2px;padding:0 10px;border-bottom:1px solid var(--color-line);overflow-x:auto;",
+		".st-tbl .st-n{display:none}",
+		".sd-foot{position:sticky;bottom:0;",
+		`<h1 class="st-t">설정</h1>`, `id="setFind" class="st-find" type="search"`, `placeholder="설정 전체에서 찾기"`, `id="setAddBtn" class="st-add"`,
+		`<nav id="setTabsRow" class="st-tabs" aria-label="설정 분류"></nav>`, `<nav id="setScr" class="st-scr" aria-label="화면" hidden></nav>`,
+		`<span id="detailSub" class="detail-sub mono"></span>`,
+		// Only the open panel shows; the table keeps its scroll on a redraw.
 		"$('panel-'+n).hidden=ws&&!pageTab(n)?false:!on;",
 		"if(setListKept(name))loadTab('settings');",
-		"const box=$('setMenu'),top=box.scrollTop,",
-		"box.scrollTop=top;\n  setMark();",
-		"if(on&&setJump&&r.scrollIntoView){setJump=false;r.scrollIntoView({block:'nearest'})}",
+		"if(page)page.scrollTop=same?top:0;",
 		"if(settingsViewOfHash(h)){showSettingsView(settingsViewOfHash(h));showTab('settings');return}",
-		// 돌아가기 · ✕ · Esc leave for the screen before 설정.
-		`<button type="button" class="sn-back" id="setBack"`, `id="setFind" type="search"`, `placeholder="설정 찾기"`,
-		`<div class="sh" id="setHead">`, `id="setMenuBack"`, `<nav id="setPath" class="sh-path" aria-label="경로"></nav>`, `id="setClose"`,
-		"$('setBack').onclick=setExit;", "$('setClose').onclick=setExit;",
-		"location.hash=r&&r!=='#'&&!setModeHash(r)?r.slice(1):'requests';",
-		"if(setModeHash(location.hash)&&!setModeHash(old)){setReturn=old;",
-		"if(matchMedia('(max-width:720px)').matches&&setPane==='body'){setPane='menu';",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("page missing %q", want)
@@ -73,6 +65,8 @@ func TestDashboardSettingsListKept(t *testing.T) {
 	for _, gone := range []string{
 		"overflow-x:hidden;overflow-y:auto}\n.lp-find",
 		".lp-main{flex:1 0 auto;",
+		// #538's settings menu and path row are gone (#544).
+		`id="setNav"`, `id="setHead"`, `id="setMenu"`, `id="setBack"`, "setExit", "fr-setm", ".sn-i{",
 		"fr-setv", `id="settingsList"`, "function markSetViews(", `id="setAdd"`, "listTabs=['requests','questions','mail','reports','jobs','settings']",
 	} {
 		if strings.Contains(body, gone) {

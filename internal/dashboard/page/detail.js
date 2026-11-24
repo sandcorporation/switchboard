@@ -6,7 +6,7 @@
 //   list   the list's name on the mobile back button (← 세션)
 //   kinds  live change kinds that redraw the open item (default [tab])
 //   load   async id => item, or null when it is gone
-//   head   item => {title, badge:[text,tone], crumb} (tone: success|info|warning|danger|neutral;
+//   head   item => {title, sub, badge:[text,tone], crumb} (sub, optional: the dim line beside the title; tone: success|info|warning|danger|neutral;
 //          crumb, optional: {path:[text,...], meta:[[text,hover],...]}, the
 //          line under the title on a list screen, #514)
 //   subs   item => [[key,label],...]; the first is the default sub-tab
@@ -58,7 +58,7 @@ function showDetail(tab,id,sub){
   $('detailBack').textContent='← '+details[tab].list;
   markDetailRows();splitEmptyShow();
   if(fresh){
-    $('detailTitle').textContent=id;$('detailBadge').hidden=true;$('detailTabs').replaceChildren();$('detailCrumb').replaceChildren();
+    $('detailTitle').textContent=id;$('detailSub').textContent='';$('detailBadge').hidden=true;$('detailTabs').replaceChildren();$('detailCrumb').replaceChildren();
     $('detailBody').replaceChildren(node('p','불러오는 중…','muted'));$('detail').scrollTop=0;
     $('detailTitle').focus({preventScroll:true});
   }
@@ -91,7 +91,7 @@ async function drawDetail(){
     }
   }catch(e){box.replaceChildren(node('p',e.message,'msg err'))}
   if(seq!==detailSeq)return;
-  $('detailTitle').textContent=head.title;
+  $('detailTitle').textContent=head.title;$('detailSub').textContent=head.sub||'';
   detailCrumbDraw(head.crumb);
   const b=$('detailBadge');b.hidden=!head.badge;
   if(head.badge){b.textContent=head.badge[0];b.className='sc-badge '+(toneClass[head.badge[1]]||toneClass.neutral)}

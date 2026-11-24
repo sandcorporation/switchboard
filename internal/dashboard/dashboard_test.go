@@ -134,7 +134,7 @@ func TestDashboardHasNoCollaboratorsView(t *testing.T) {
 	w := httptest.NewRecorder()
 	Page(w, httptest.NewRequest("GET", "/", nil))
 	body := w.Body.String()
-	for _, banned := range []string{"collaborators", "협업자", "invite", "'groups/", "api('groups"} {
+	for _, banned := range []string{"collaborators", "협업자", "'groups/", "api('groups"} {
 		if strings.Contains(body, banned) {
 			t.Fatalf("dashboard still has %q", banned)
 		}
@@ -215,7 +215,7 @@ func TestDashboardTerminalsTabOnlyWithHosting(t *testing.T) {
 		`api('terminals')`,
 		`confirm(`,
 		"$('tab-terminals').hidden=!hostingOn;if(setData)loadSettingsView();",
-		`if(!setViewHash[v]||((v==='nodes'||v==='groups')&&!hostingOn))v='qsettings';`,
+		`if(!setViewHash[v]||((v==='nodes'||v==='groups')&&!hostingOn))v='roles';`,
 		`api('nodes')`,
 		`apiSend('DELETE','nodes/'+encodeURIComponent(v.name))`,
 		// 예약 (#336): the record's scheduled runs over the admin API.
@@ -576,22 +576,25 @@ func TestDashboardSettingsDetail(t *testing.T) {
 	Page(w, httptest.NewRequest("GET", "/", nil))
 	body := w.Body.String()
 	for _, want := range []string{
-		// #538: the category's body (its items one per line) beside the
-		// settings menu; every earlier action stays in the item's body.
+		// #544: tabs with counts over the picked tab's table; every earlier
+		// action stays in the item's panel.
 		`<section id="panel-settings" role="tabpanel" aria-labelledby="tab-settings" tabindex="0" class="sb" hidden>`,
-		`<h1 id="setTitle" class="sb-t"></h1>`, `<div id="setItems" class="sb-list"></div>`, `<div id="setMenu" class="sn-menu"></div>`,
-		"{v:'logins',name:'로그인',grp:'일반'},", "{v:'qsettings',name:'질문 설정',grp:'일반',add:'qs:+'},", "{v:'reminders',name:'다시 알림',grp:'일반',one:'server:now'},",
-		"{v:'nodes',name:'기계',grp:'연결',host:true},", "{v:'groups',name:'묶음',grp:'연결',host:true,add:'group:+'},", "{v:'hooks',name:'웹훅',grp:'연결',add:'hook:+'},",
-		"{v:'watches',name:'지켜보기',grp:'연결',add:'watch:+',addPerm:'sessions'},", "{v:'roles',name:'역할',grp:'역할'},",
-		"roles:[d.roles,v=>setRow('role:'+v.role,", "nodes:[d.nodes,v=>setRow('node:'+v.name,", "groups:[d.groups,g=>setRow('group:'+g.name,",
+		`<div id="setItems" class="st-items"></div>`,
+		"{v:'roles',name:'역할',add:'role:+',addPerm:'sessions'},", "{v:'nodes',name:'기계',host:true},", "{v:'groups',name:'묶음',host:true,add:'group:+'},",
+		"{v:'logins',name:'로그인'},", "{v:'qsettings',name:'질문 설정',add:'qs:+'},", "{v:'watches',name:'지켜보기',add:'watch:+',addPerm:'sessions'},",
+		"{v:'hooks',name:'웹훅',add:'hook:+'},", "{v:'screens',name:'화면'},", "{v:'reminders',name:'다시 알림'},",
+		"roles:[d.roles,v=>setRoleRow(v,live)],", "return setRow('role:'+v.role,[setRoleName(v,s),v.role,", "nodes:[d.nodes,v=>setRow('node:'+v.name,", "groups:[d.groups,g=>setRow('group:'+g.name,",
 		"logins:[d.logins,v=>setRow('login:'+v.name,", "hooks:[d.hooks,hookRow],", "qsettings:[d.qs,v=>setRow('qs:'+v.target,", "watches:[d.watches,watchRow],",
-		"setRow('refusals:24h',['24시간'],'최근 거절',",
+		"setRow('refusals:24h',['최근 거절',",
+		// A row asks before dropping values not saved (#544).
+		"if(!confirm('저장하지 않은 값이 있습니다. 버리고 옮길까요?'))return;",
 		"const listTabs=['requests','questions','mail','reports','jobs'];", "const fullTabs=['metrics','settings','progress','sessions','terminals'];",
-		// 질문 설정's + is a blank form in the body.
-		"if(kind==='qs')return key==='+'?{fresh:true,",
+		// 역할's + makes a one-time invite; 질문 설정's + a blank form in the panel.
+		"roleInvite=await apiSend('POST','invites',body)", "if(kind==='qs')return key==='+'?{fresh:true,",
 		"host?get(api('nodes')):null,host?get(api('terminals/work-groups')):null",
 		"api('question-refusals')", "api('logins')", "perms.title='바꾸기: switchboard admin allow';",
-		"const setViewHash={qsettings:'settings',roles:'settings-roles',nodes:'settings-nodes',groups:'settings-groups',logins:'settings-logins',watches:'settings-watches',hooks:'settings-hooks',reminders:'settings-reminders'};",
+		"const setViewHash={roles:'settings-roles',nodes:'settings-nodes',groups:'settings-groups',logins:'settings-logins',qsettings:'settings-qsettings',watches:'settings-watches',hooks:'settings-hooks',reminders:'settings-reminders'};",
+		"function settingsViewOfHash(h){if(h==='settings')return setView;",
 		"registerDetail('settings',{",
 		"back:id=>setViewHash[setKindView[id.slice(0,id.indexOf(':'))]]||'settings',",
 		"function closeDetail(){if(detailCur){const b=details[detailCur.tab].back;location.hash=b?b(detailCur.id):detailCur.tab}}",
@@ -985,7 +988,7 @@ func TestDashboardSettingsHoldsViews(t *testing.T) {
 		`const setTabs=['progress','sessions','terminals'];`,
 		`setTabs.includes(name)?'settings':name;`,
 		`filter(n=>!$('tab-'+n).hidden&&!setTabs.includes(n))`,
-		`for(const [k,name,href] of setScreens()){`,
+		"setScreens().filter(s=>listMatch(q,s[1])).map(([k,name,href])=>{",
 		`const s=[['progress','진행','#progress'],['sessions','세션 표','#sessions']];`,
 		`if(ws&&ws.nodes)s.push(['view:nodes','노드',detailHash('settings','view:nodes','')]);`,
 		`view:(v,box)=>{const n=ws.nodes();box.append(n.el);n.show()}`,

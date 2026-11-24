@@ -7,7 +7,7 @@
 const watchOps=[['eq','같다'],['ne','다르다'],['gt','크다'],['lt','작다'],['exists','있다'],['missing','없다'],['contains','포함한다']];
 function watchRow(v){
   const st=!v.enabled?['끔','neutral']:!v.last_at?['대기','neutral']:v.failing?['실패','danger']:v.last_ok?[v.last_result||'됨',v.matched?'warning':'success']:[v.last_result||'실패','warning'];
-  return setRow('watch:'+v.id,[v.to,'매 '+v.every_min+'분',v.last_at?shortWhen(v.last_at):''],v.name,[cutText(st[0],24),st[1]]);
+  return setRow('watch:'+v.id,[v.name,v.to,'매 '+v.every_min+'분',v.last_at?shortWhen(v.last_at):'-',[cutText(st[0],24),st[1]]]);
 }
 function cutText(s,n){s=String(s);return s.length>n?s.slice(0,n-1)+'…':s}
 async function findWatch(key){

@@ -133,7 +133,7 @@ func TestDashboardQuestionsAndSettings(t *testing.T) {
 	dashboard.Page(w, httptest.NewRequest("GET", "/", nil))
 	body := w.Body.String()
 	for _, want := range []string{
-		`id="questions"`, `id="reloadQuestions"`, `id="setMenu"`, `id="setItems"`, "if(kind==='qs')return key==='+'?{fresh:true,",
+		`id="questions"`, `id="reloadQuestions"`, `id="setTabsRow"`, `id="setItems"`, "if(kind==='qs')return key==='+'?{fresh:true,",
 		"tabLoaders.questions=", "tabLoaders.settings=", "setTabCount('questions'", "'questions/'+encodeURIComponent(", "/answer'",
 		"'X-Switchboard-Dashboard':'1'", "'Content-Type':'application/json'", "이미 답했거나 거둔 질문입니다", "기타", "'radio'", "'checkbox'", "'pre'",
 		"question-settings/'", "'DELETE'", "'PUT'",
