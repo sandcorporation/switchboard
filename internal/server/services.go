@@ -120,7 +120,7 @@ func (s *Server) reports() *reports.Service {
 // requests is the owner's requests (#501) over this server's database,
 // clock and identity rules.
 func (s *Server) requests() *requests.Service {
-	return requests.New(s.db, s.now, s.ids())
+	return requests.New(s.db, s.now, s.ids(), s.mail().DirectiveStates)
 }
 
 // rules is the rules ledger over this server's database and clock, with

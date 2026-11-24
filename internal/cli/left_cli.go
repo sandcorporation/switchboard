@@ -88,13 +88,14 @@ func withLeft(p parsedArgs, msg map[string]any) error {
 }
 
 // cliLeft runs left add N TEXT, left issue ID URL, left pass ID
-// --directive M, left done ID and left drop ID --reason TEXT.
+// --directive M, left done ID, left drop ID --reason TEXT and left attach ID
+// --request-id N (#564).
 func cliLeft(c Config, p parsedArgs, out io.Writer) (int, error) {
 	if len(p.pos) == 0 {
-		return 0, usagef("left: add N TEXT | issue ID URL | pass ID --directive M | done ID | drop ID --reason TEXT")
+		return 0, usagef("left: add N TEXT | issue ID URL | pass ID --directive M | done ID | drop ID --reason TEXT | attach ID --request-id N")
 	}
 	action, args := p.pos[0], p.pos[1:]
-	if action == "issue" || action == "pass" || action == "done" || action == "drop" {
+	if action == "issue" || action == "pass" || action == "done" || action == "drop" || action == "attach" {
 		if len(args) == 0 {
 			return 0, usagef("left %s: ID is an item ID", action)
 		}
@@ -139,8 +140,17 @@ func cliLeft(c Config, p parsedArgs, out io.Writer) (int, error) {
 			return 0, usagef("left drop ID --reason TEXT")
 		}
 		path, body = "/api/left/"+args[0]+"/drop", wire.LeftEnd{Reason: reason}
+	case "attach":
+		n, err := requestIDOption(p)
+		if err != nil {
+			return 0, err
+		}
+		if len(args) != 1 || n == 0 {
+			return 0, usagef("left attach ID --request-id N")
+		}
+		path, body = "/api/left/"+args[0]+"/request", wire.LeftEnd{Request: n}
 	default:
-		return 0, usagef("left: unknown action %q (add, issue, pass, done, drop)", action)
+		return 0, usagef("left: unknown action %q (add, issue, pass, done, drop, attach)", action)
 	}
 	b, err := slotCall(c, "POST", path, body)
 	if err != nil {
@@ -163,6 +173,10 @@ func cliLeft(c Config, p parsedArgs, out io.Writer) (int, error) {
 	var it wire.LeftItem
 	if err := json.Unmarshal(b, &it); err != nil {
 		return 0, fmt.Errorf("unexpected response from server: %v", err)
+	}
+	if action == "attach" {
+		fmt.Fprintf(out, "left #%d on request %d: %s\n", it.ID, it.Request, it.RequestTitle)
+		return ExitOK, nil
 	}
 	if it.Value == "" {
 		fmt.Fprintf(out, "left #%d %s\n", it.ID, it.State)

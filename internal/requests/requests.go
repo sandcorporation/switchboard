@@ -28,14 +28,16 @@ import (
 
 // Service serves requests over one database.
 type Service struct {
-	db  *sql.DB
-	now func() time.Time
-	ids *identity.Service
+	db         *sql.DB
+	now        func() time.Time
+	ids        *identity.Service
+	mailStates MailStates
 }
 
-// New builds the service.
-func New(db *sql.DB, now func() time.Time, ids *identity.Service) *Service {
-	return &Service{db: db, now: now, ids: ids}
+// New builds the service; mailStates tells which linked mail is an open or
+// ended directive (nil: none is).
+func New(db *sql.DB, now func() time.Time, ids *identity.Service, mailStates MailStates) *Service {
+	return &Service{db: db, now: now, ids: ids, mailStates: mailStates}
 }
 
 // ErrUnknown is Linkable's error for a request that does not exist or that
@@ -75,7 +77,8 @@ func stamp(t time.Time) string { return t.UTC().Format(time.RFC3339Nano) }
 
 // API serves /api/requests for a boss role (403 otherwise): POST "" adds a
 // request, POST {id}/notes adds the owner's later words, POST {id}/done marks
-// it done with a result line; GET "" lists the requests the role may see
+// it done with a result line (409 with the list while work is left under
+// it, #564); GET "" lists the requests the role may see
 // (?status=open|waiting|done|progress|checked), GET {id} reads one. A retry
 // of an add with the same idempotency key (header Idempotency-Key, else the
 // body's idempotency_key) returns the first request with 200.
@@ -124,6 +127,17 @@ func (s *Service) API(w http.ResponseWriter, r *http.Request, p identity.Princip
 	case "done":
 		var q wire.RequestDoneNew
 		if !decode(w, r, &q) {
+			return
+		}
+		// Work left refuses a new close (#564); a request already done or
+		// checked stays as it is.
+		d, derr := s.Detail(id)
+		if derr != nil {
+			http.Error(w, "query failed", http.StatusInternalServerError)
+			return
+		}
+		if msg := refuseDone(d); msg != "" {
+			http.Error(w, msg, http.StatusConflict)
 			return
 		}
 		// Marking done again (after later news reopened it) starts a new check.
@@ -327,6 +341,8 @@ type items struct {
 	questions []wire.RequestQuestion
 	reports   []wire.RequestReport
 	mail      []wire.RequestMail
+	direct    map[int64]bool // mail sent with the request's number
+	left      []leftRow
 }
 
 // gather reads the notes and linked items of the requests in want (every
@@ -390,7 +406,10 @@ func (s *Service) gather(ctx context.Context, want map[int64]*row) (map[int64]*i
 	if err = rows.Err(); err != nil {
 		return nil, err
 	}
-	rows, err = s.db.QueryContext(ctx, `SELECT request_id,id,sender,recipient,subject,created_at FROM messages WHERE `+where+` ORDER BY id`, args...)
+	// Mail by the request chain (#564): sent with the number, or below such
+	// mail. Only mail sent with the number is news that reopens a done
+	// request; the rest is listed and counted.
+	rows, err = s.db.QueryContext(ctx, ChainSQL+`SELECT c.rid,m.id,m.sender,m.recipient,m.subject,m.created_at,m.request_id IS NOT NULL FROM chain c JOIN messages m ON m.id=c.id WHERE `+strings.ReplaceAll(where, "request_id", "c.rid")+` ORDER BY m.id`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -398,13 +417,21 @@ func (s *Service) gather(ctx context.Context, want map[int64]*row) (map[int64]*i
 		var rid int64
 		var m wire.RequestMail
 		var created string
-		if err = rows.Scan(&rid, &m.ID, &m.Sender, &m.Recipient, &m.Subject, &created); err != nil {
+		var direct bool
+		if err = rows.Scan(&rid, &m.ID, &m.Sender, &m.Recipient, &m.Subject, &created, &direct); err != nil {
 			rows.Close()
 			return nil, err
 		}
 		m.CreatedAt = parse(created)
 		if keep(rid) {
-			get(rid).mail = append(get(rid).mail, m)
+			it := get(rid)
+			it.mail = append(it.mail, m)
+			if direct {
+				if it.direct == nil {
+					it.direct = map[int64]bool{}
+				}
+				it.direct[m.ID] = true
+			}
 		}
 	}
 	rows.Close()
@@ -439,7 +466,10 @@ func (s *Service) gather(ctx context.Context, want map[int64]*row) (map[int64]*i
 		q.Answers = answerLines(as)
 		get(rid).questions = append(get(rid).questions, q)
 	}
-	return out, rows.Err()
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, s.gatherLeft(ctx, out, keep)
 }
 
 // answerLines is one line per answered question: the chosen labels and the
@@ -483,7 +513,9 @@ func summarize(rw *row, it *items) {
 		news(wire.SearchReport, "R"+strconv.FormatInt(rp.ID, 10), rp.Title, rp.CreatedAt)
 	}
 	for _, m := range it.mail {
-		news(wire.SearchMail, strconv.FormatInt(m.ID, 10), m.Subject, m.CreatedAt)
+		if it.direct[m.ID] {
+			news(wire.SearchMail, strconv.FormatInt(m.ID, 10), m.Subject, m.CreatedAt)
+		}
 	}
 	for _, q := range it.questions {
 		if q.Status == "pending" {
@@ -540,8 +572,13 @@ func (s *Service) list(ctx context.Context, visible func(author string) bool, st
 	if err != nil {
 		return out, err
 	}
+	open, err := s.states(mailIDs(its), true)
+	if err != nil {
+		return out, err
+	}
 	for _, rw := range all {
 		summarize(rw, its[rw.ID])
+		rw.Remaining = openCount(its[rw.ID], open)
 		if status == "" || rw.Status == status || status == wire.RequestOpen && rw.Status != wire.RequestChecked {
 			out.Requests = append(out.Requests, rw.Request)
 		}
@@ -571,6 +608,12 @@ func (s *Service) Detail(id int64) (wire.RequestDetail, error) {
 	d.QuestionList = nonNil(it.questions)
 	d.ReportList = nonNil(it.reports)
 	d.MailList = nonNil(it.mail)
+	states, err := s.states(mailIDs(its), false)
+	if err != nil {
+		return d, err
+	}
+	d.RemainingList, d.Finished = remaining(it, states)
+	d.Remaining = len(d.RemainingList)
 	sort.SliceStable(d.QuestionList, func(i, j int) bool { return d.QuestionList[i].CreatedAt.Before(d.QuestionList[j].CreatedAt) })
 	return d, nil
 }

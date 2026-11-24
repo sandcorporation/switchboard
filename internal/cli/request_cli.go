@@ -174,7 +174,8 @@ func requestList(c Config, p parsedArgs, out io.Writer) (int, error) {
 }
 
 // requestLine: "<id> <status> <created> <title>", then " — <result>" once
-// done, or " — <latest news>" before.
+// done, or " — <latest news>" before, then " [left N]" while work is left
+// under it (#564).
 func requestLine(r wire.Request) string {
 	line := fmt.Sprintf("%d %s %s %s", r.ID, r.Status, r.CreatedAt.Local().Format("2006-01-02 15:04"), r.Title)
 	switch {
@@ -183,11 +184,29 @@ func requestLine(r wire.Request) string {
 	case r.Last != nil:
 		line += " — " + r.Last.At.Local().Format("15:04") + " " + r.Last.Kind + " " + r.Last.ID + " " + r.Last.Title
 	}
+	if r.Remaining > 0 {
+		line += fmt.Sprintf(" [left %d]", r.Remaining)
+	}
 	return line
 }
 
+// openItemLine is one line of the work left under a request (#564):
+// "mail #N → recipient <time> subject", "question ID <time> header (asker)",
+// "left #N <time> text (recorded by)".
+func openItemLine(o wire.RequestOpenItem) string {
+	at := o.At.Local().Format("2006-01-02 15:04")
+	switch o.Kind {
+	case wire.RequestOpenMail:
+		return fmt.Sprintf("mail #%s → %s %s %s", o.ID, o.Who, at, o.Title)
+	case wire.RequestOpenQuestion:
+		return fmt.Sprintf("question %s %s %s (%s)", o.ID, at, o.Title, o.Who)
+	}
+	return fmt.Sprintf("%s #%s %s %s (%s)", o.Kind, o.ID, at, o.Title, o.Who)
+}
+
 // formatRequest is `request show`: the request line, the owner's words and
-// notes, then the linked questions, reports and mail.
+// notes, the work left and the count of what ended (#564), then the linked
+// questions, reports and mail.
 func formatRequest(d wire.RequestDetail) string {
 	var b strings.Builder
 	fmt.Fprintln(&b, requestLine(d.Request))
@@ -200,6 +219,13 @@ func formatRequest(d wire.RequestDetail) string {
 	for _, n := range d.NoteList {
 		fmt.Fprintf(&b, "\nnote %s\n%s\n", n.CreatedAt.Local().Format("2006-01-02 15:04"), strings.TrimRight(n.Text, "\n"))
 	}
+	if len(d.RemainingList) > 0 {
+		fmt.Fprintln(&b, "\nleft")
+		for _, o := range d.RemainingList {
+			fmt.Fprintf(&b, "  %s\n", openItemLine(o))
+		}
+	}
+	fmt.Fprintf(&b, "\nended: reports %d · mail %d · left %d\n", d.Finished.Reports, d.Finished.Mail, d.Finished.Left)
 	if len(d.QuestionList) > 0 {
 		fmt.Fprintln(&b, "\nquestions")
 		for _, q := range d.QuestionList {

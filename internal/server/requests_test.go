@@ -155,6 +155,13 @@ func TestRequestStatusFlow(t *testing.T) {
 	if cw := adminWrite(s, "POST", "/api/admin/requests/"+itoa(id)+"/check", "{}"); cw.Code != 409 {
 		t.Fatalf("check before done: %d", cw.Code)
 	}
+	// Work left refuses done (#564): the mail is open until its recipient ends it.
+	if dw := callAs(s, "POST", "/api/requests/"+itoa(id)+"/done", reportBossToken, reportBossRole, map[string]any{"result": "남은 곳 0"}); dw.Code != 409 || !strings.Contains(dw.Body.String(), "mail #1 이름 바꾸기 — complete 1 --left-none") {
+		t.Fatalf("done with mail open: %d %s", dw.Code, dw.Body)
+	}
+	if cw := callAs(s, "POST", "/api/messages/1/complete", reportWorkerToken, reportWorkerRole, map[string]any{"left_none": true}); cw.Code != 200 {
+		t.Fatalf("complete: %d %s", cw.Code, cw.Body)
+	}
 	d = decodeRequest(t, callAs(s, "POST", "/api/requests/"+itoa(id)+"/done", reportBossToken, reportBossRole, map[string]any{"result": "남은 곳 0"}), 200)
 	if d.Status != wire.RequestDone || d.Result != "남은 곳 0" || d.DoneAt == nil {
 		t.Fatalf("done: %+v", d.Request)
@@ -296,18 +303,35 @@ func TestRequestCLI(t *testing.T) {
 	if r := l.Requests[0]; r.Status != wire.RequestWaiting || r.Notes != 1 || r.Mail != 1 || r.Reports != 1 || r.Questions != 1 {
 		t.Fatalf("listed %+v", r)
 	}
-	if list := h.mustRun(nil, "request", "list"); !strings.HasPrefix(list, "1 waiting ") || !strings.Contains(list, " 배포 정리 — ") || !strings.Contains(list, " question ") {
+	if list := h.mustRun(nil, "request", "list"); !strings.HasPrefix(list, "1 waiting ") || !strings.Contains(list, " 배포 정리 — ") || !strings.Contains(list, " question ") || !strings.HasSuffix(list, " [left 2]") {
 		t.Fatalf("list:\n%s", list)
 	}
 	if r := h.run(nil, "request", "done", "1"); r.code == 0 || !strings.Contains(r.stderr, "--result") {
 		t.Fatalf("done without result: %+v", r)
 	}
-	h.mustRun(nil, "request", "done", "1", "--result", "남은 곳 0")
+	// Work left refuses done, naming each piece and its command (#564).
+	r := h.run(nil, "request", "done", "1", "--result", "남은 곳 0")
+	if r.code == 0 || !strings.Contains(r.stderr, "request 1 has 2 left") || !strings.Contains(r.stderr, "mail #1 정리 맡김 — complete 1 --left-none") || !strings.Contains(r.stderr, "question withdraw ") {
+		t.Fatalf("done with work left: %+v", r)
+	}
 	show := h.mustRun(nil, "request", "show", "1")
-	for _, want := range []string{"1 waiting ", "배포 정리해줘\n범위는 알아서", "\nnote ", "문서도", "questions\n", "reports\n  R1 ", "mail\n  #1 a → b "} {
+	for _, want := range []string{"1 waiting ", "배포 정리해줘\n범위는 알아서", "\nnote ", "문서도", "questions\n", "reports\n  R1 ", "mail\n  #1 a → b ", "\nleft\n  mail #1 → b ", "\n  question ", "\nended: reports 1 · mail 0 · left 0\n"} {
 		if !strings.Contains(show, want) {
 			t.Fatalf("show lacks %q:\n%s", want, show)
 		}
+	}
+	// Once each piece ends, done goes through.
+	var shown wire.RequestDetail
+	if err := json.Unmarshal([]byte(h.mustRun(nil, "request", "show", "1", "--json")), &shown); err != nil || len(shown.QuestionList) != 1 {
+		t.Fatalf("show --json: %v %+v", err, shown)
+	}
+	h.mustRun(nil, "question", "withdraw", shown.QuestionList[0].ID)
+	h.configure(nil, "b")
+	h.mustRun(nil, "complete", "1", "--left-none")
+	h.configure(nil, "a")
+	h.mustRun(nil, "request", "done", "1", "--result", "남은 곳 0")
+	if list := h.mustRun(nil, "request", "list", "--status", "done"); !strings.HasPrefix(list, "1 done ") || strings.Contains(list, "[left") {
+		t.Fatalf("done list: %q", list)
 	}
 	if r := h.run(nil, "send", "--to", "b", "--subject", "s", "--body", "x", "--request-id", "x"); r.code == 0 || !strings.Contains(r.stderr, "--request-id") {
 		t.Fatalf("bad id: %+v", r)

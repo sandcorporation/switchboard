@@ -5,7 +5,9 @@
 // checked), progress, checked. The list column groups them in that order,
 // 확인함 folded (#514). A row shows the request in the body: the owner's
 // words, the notes, the result and the linked questions, reports and mail in
-// one table (#509 계약 9). A signed-in login checks a done request (POST
+// one table (#509 계약 9). Above that, 아직 남은 일 lists the unanswered
+// directive mail, open questions and open left items under the request, and
+// 끝난 일 counts what ended (#564); the list row shows 남은 일 N. A signed-in login checks a done request (POST
 // requests/<id>/check) and takes the check back (uncheck).
 const requestGroups=[['waiting','대표 답 기다림','warning'],['done','끝 — 안 봄','success'],['progress','진행','info'],['checked','확인함','neutral']];
 let requestsData=null,requestsSeq=0;
@@ -52,8 +54,27 @@ function requestItem(r){
   let top='#'+r.id;
   if(r.open_questions)top+=' · 답 '+r.open_questions;
   else if(r.reports||r.mail)top+=' · 보고 '+(r.reports||0)+' · 메일 '+(r.mail||0);
+  if(r.remaining)top+=' · 남은 일 '+r.remaining;
   return listRow('requests',String(r.id),{top:top,right:shortWhen(at),rightHover:when(at),title:r.title,
     hover:'#'+r.id+' '+r.title+(news?' — '+news:''),cls:r.status==='waiting'||r.status==='done'?'un':''});
+}
+// requestOpen is the 아직 남은 일 table (#564): mail no one ended, questions
+// not answered, left items not ended, oldest first.
+const openKind={mail:'메일',question:'질문',left:'남긴 것'};
+function requestOpen(d,now){
+  return (d.remaining_list||[]).map(o=>{
+    const age=ago(now,o.at).replace(/ 전$/,'');
+    const kind=(openKind[o.kind]||o.kind)+(o.kind==='mail'?' #'+o.id:'');
+    const title=(o.kind==='left'?'#'+o.id+' ':'')+(o.title||'(적지 않음)');
+    const href=o.kind==='mail'?detailHash('mail',o.id,'body'):o.kind==='question'?detailHash('questions',o.id,'answer'):'#progress';
+    const who=o.kind==='mail'?'→ '+o.who:o.who;
+    const state=o.kind==='mail'?'답 없음':o.kind==='question'?'답 기다림':'열림';
+    return {at:o.at,kind:kind,who:who,title:title,state:state,stateCls:'w',href:href,hover:kind+' '+title+' — '+state+' '+age+' · 닫기: '+o.close};
+  });
+}
+function requestFinished(d){
+  const f=d.finished||{};
+  return '보고 '+(f.reports||0)+' · 메일 '+(f.mail||0)+' · 남긴 것 '+(f.left||0);
 }
 // requestLinks merges the request's questions, reports and mail into the
 // body's table, newest first.
@@ -77,7 +98,7 @@ registerDetail('requests',{
   head:d=>{
     const [,label,tone]=requestLabel(d.status);
     const n=(d.question_list||[]).length,rep=(d.report_list||[]).length,mail=(d.mail_list||[]).length;
-    return {title:'#'+d.id+' '+d.title,badge:[label,tone],crumb:{path:['지시 #'+d.id,d.author],
+    return {title:'#'+d.id+' '+d.title,badge:[label+(d.remaining?' · 남은 일 '+d.remaining:''),tone],crumb:{path:['지시 #'+d.id,d.author],
       meta:[[shortWhen(d.created_at)+' 등록','등록한 때 — '+when(d.created_at)],['질문 '+n+' · 보고 '+rep+' · 메일 '+mail,'이 지시에 딸린 것']]}};
   },
   subs:()=>[['body','지시']],
@@ -90,6 +111,11 @@ registerDetail('requests',{
       for(const n of notes){const p=node('p',n.text,'dc-quote');p.title=when(n.created_at);box.append(p)}
     }
     if(d.result){docHead(box,'결과');box.append(node('p',d.result,'dc-p'))}
+    const open=requestOpen(d,new Date());
+    docHead(box,'아직 남은 일 '+open.length);
+    box.append(open.length?linkTable(open):node('p','남은 일 없음','empty'));
+    docHead(box,'끝난 일');
+    box.append(node('p',requestFinished(d),'dc-p'));
     const links=requestLinks(d);
     docHead(box,'딸린 기록 '+links.length);
     box.append(links.length?linkTable(links):node('p','딸린 기록 없음','empty'));
@@ -115,7 +141,7 @@ function requestBar(d){
         drawDetail();
       }catch(e){btn.disabled=false;setMsg(msg,e.message,'err')}
     };
-  }else{btn.disabled=true;btn.title='아직 끝나지 않아 누를 수 없다'}
+  }else{btn.disabled=true;btn.title=d.remaining?'남은 일 '+d.remaining+' — 다 끝나야 지시를 닫는다':'아직 끝나지 않아 누를 수 없다'}
   bar.append(btn);
   return bar;
 }
