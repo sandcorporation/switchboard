@@ -54,7 +54,7 @@ func (s *Service) RunCLI(action, id string, add wire.HostedSessionCreate, jsonOu
 		printList(stdout, list)
 		return nil
 	case "add":
-		h, err = s.Create(add)
+		h, err = s.CreateGuarded(add)
 	case "set":
 		h, err = s.Update(id, wire.HostedSessionChange{SkipPermissions: add.SkipPermissions})
 	case "start":

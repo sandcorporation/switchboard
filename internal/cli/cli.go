@@ -52,6 +52,7 @@ type command struct {
 	extra    bool   // arguments after -- are passed through (parsedArgs.extra), not positional
 	synopsis string // extra usage text after the positional arguments
 	summary  string
+	example  string // one line shown right after the usage line (#562)
 	options  []option
 }
 
@@ -359,11 +360,14 @@ var commands = []command{
 			{"--idem", "KEY", "add: retry-safe key; adding again with the same key returns the first request"},
 			optJSON, optProfile,
 		}},
-	{name: "host", args: "ACTION [ID]", nargs: 3, optArgs: true, extra: true, synopsis: "(ACTION: add | list | nodes | set ID | start ID | stop ID | restart ID | new-conversation ID | remove ID | events ID | log ID | revoke-node NAME | limit [on|off|NODE/ADAPTER[/ACCOUNT] --remaining N|none] | grant ROLE | grant list | revoke-grant ROLE | group add NAME | group set NAME | group rm NAME | group list | auto add ID | auto list | auto show AUTO-ID | auto edit AUTO-ID | auto run AUTO-ID | auto pause AUTO-ID | auto resume AUTO-ID | auto rm AUTO-ID) [-- AGENT ARGS...]",
+	{name: "host", args: "ACTION [ID]", nargs: 3, optArgs: true, extra: true,
+		example: "Start a session of a new role: PROG host add --base team/worker --create-role --node NODE --profile NAME --dir PATH", synopsis: "(ACTION: add | list | nodes | set ID | start ID | stop ID | restart ID | new-conversation ID | remove ID | events ID | log ID | revoke-node NAME | limit [on|off|NODE/ADAPTER[/ACCOUNT] --remaining N|none] | grant ROLE | grant list | revoke-grant ROLE | group add NAME | group set NAME | group rm NAME | group list | auto add ID | auto list | auto show AUTO-ID | auto edit AUTO-ID | auto run AUTO-ID | auto pause AUTO-ID | auto resume AUTO-ID | auto rm AUTO-ID) [-- AGENT ARGS...]",
 		summary: "Manage hosted sessions in this instance's database (DB_PATH, not the container default): add a record, list them, change one's permission mode, set one to run or stop, restart one with resume (clears a crash loop), start one in a new conversation, remove one, show or set the subscription limit; grant: let a role add, list, start, stop and remove sessions under itself with its own token (base roles, nodes and directory roots; without DB_PATH, host runs as the profile's role within its grant, and list and auto list of a boss role show every record in view); nodes: the node list for a boss role, through the server; group: work groups, each with a threshold (a session of the group takes no new work while its agent account has less than that percentage left; a boss role's token without DB_PATH works through the server); auto: scheduled runs of a session (at each cron time in this machine's zone the host launches it when stopped and mails the prompt to its base role); a boss role's token without DB_PATH makes the dashboard's terminal actions on the sessions in view (#399, recorded): set (also --label, --parent, --group, --restart, -- ARGS), start, stop, restart, new-conversation, remove, events, log, limit, revoke-node, auto show, edit, run, pause, resume and rm",
 		options: []option{
 			{"--node", "NAME", "add: node the session runs on"},
-			{"--base", "ROLE", "add: base role (must exist)"},
+			{"--base", "ROLE", "add: base role (must exist, or --create-role; a boss role needs --another-boss)"},
+			{"--create-role", "", "add: register the base role when it does not exist yet (a boss role's token, within its groups, or DB_PATH); without it a missing role is refused"},
+			{"--another-boss", "", "add: let the base be a boss role, for one more session of it (without it such an add is refused)"},
 			{"--profile", "NAME", "add: credential profile on the node (SWITCHBOARD_PROFILE)"},
 			{"--dir", "PATH", "add: absolute working directory on the node"},
 			{"--label", "TEXT", "add: label (SWITCHBOARD_LABEL); auto add, auto edit: the mail subject (default \"scheduled run ID\")"},
@@ -1014,7 +1018,11 @@ func printCommandHelp(name string) {
 	if len(c.options) > 0 {
 		usage += " [options]"
 	}
-	fmt.Printf("Usage: %s\n\n%s.\n\nOptions:\n", usage, c.summary)
+	fmt.Printf("Usage: %s\n\n", usage)
+	if c.example != "" {
+		fmt.Printf("%s\n\n", strings.ReplaceAll(c.example, "PROG", progName()))
+	}
+	fmt.Printf("%s.\n\nOptions:\n", c.summary)
 	for _, o := range c.options {
 		label := o.name
 		if o.arg != "" {

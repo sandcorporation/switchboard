@@ -3,6 +3,7 @@ package server
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"log"
 	"net/http"
@@ -10,6 +11,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -128,6 +130,11 @@ func TestRemoteNodeSessionsGetARoleCredential(t *testing.T) {
 	logf := func(f string, a ...any) { log.Printf(f, a...) }
 	stop := attachRemoteNode(t, remote, "pc", token, dir, fake, logf)
 	eventually(t, "the record running", func() bool { return terminals(t, base, cookie)[rec.ID].Runtime.State == "running" })
+
+	// The host recorded that the node takes role credentials (#562).
+	if took := nodeTakesCredentials(t, s, "pc"); took != "1" {
+		t.Errorf("nodes.credentials = %s, want 1", took)
+	}
 
 	// The node wrote the record's profile, user-only, before launching.
 	p, ok := readHostedProfile(dir, rec.ID)
@@ -276,4 +283,21 @@ func TestLocalNodeKeepsTheRecordProfile(t *testing.T) {
 	if err := s.db.QueryRow(`SELECT count(*) FROM role_credentials`).Scan(&n); err != nil || n != 0 {
 		t.Errorf("credentials issued to a local node: %d %v", n, err)
 	}
+	// The host recorded that the node takes none (#562).
+	if took := nodeTakesCredentials(t, s, "pc"); took != "0" {
+		t.Errorf("nodes.credentials = %s, want 0", took)
+	}
+}
+
+// nodeTakesCredentials is nodes.credentials of name: 1, 0 or null.
+func nodeTakesCredentials(t *testing.T, s *Server, name string) string {
+	t.Helper()
+	var v sql.NullInt64
+	if err := s.db.QueryRow(`SELECT credentials FROM nodes WHERE name=?`, name).Scan(&v); err != nil {
+		t.Fatal(err)
+	}
+	if !v.Valid {
+		return "null"
+	}
+	return strconv.FormatInt(v.Int64, 10)
 }
