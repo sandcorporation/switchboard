@@ -254,6 +254,18 @@ type RuleHints struct {
 // RuleHitsRequest is POST /api/rules/hits: the rows a session hit.
 type RuleHitsRequest struct {
 	IDs []int64 `json:"ids"`
+	// What is what the session was doing (optional, #583): a short summary
+	// such as "Bash: git push" or a question or mail number. The server
+	// hides secret-looking parts and keeps the first 120 runes.
+	What string `json:"what,omitempty"`
+}
+
+// RuleHit is one line of a row's hit log (#583): when, which role (a slot's
+// own name) and what.
+type RuleHit struct {
+	At   time.Time `json:"at"`
+	Role string    `json:"role"`
+	What string    `json:"what,omitempty"`
 }
 
 // RuleHitsResult is its answer: the rows counted (the others were outside
@@ -313,6 +325,10 @@ type RuleDetail struct {
 	Rule
 	History []Rule     `json:"history,omitempty"`
 	Answers []Decision `json:"answers,omitempty"`
+	// HitLog is the kept hit lines, newest first (full readers, #583).
+	HitLog []RuleHit `json:"hit_log,omitempty"`
+	// HitsUnlogged is how many of Hits came before lines were kept.
+	HitsUnlogged int64 `json:"hits_unlogged,omitempty"`
 }
 
 // RuleRequest is POST /api/rules. Replace or Alongside is needed

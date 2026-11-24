@@ -284,6 +284,7 @@ var commands = []command{
 			{"--when-command", "RE", "add, edit: hit when the command text matches this regular expression; empty clears it"},
 			{"--when-path", "GLOB", "add, edit: hit when the file path matches this glob (*, ** and ?); empty clears it"},
 			{"--idem", "KEY", "add, edit: retry-safe key; adding again with the same key returns the first row"},
+			{"--what", "TEXT", "hit: what the session was doing, kept on the hit line (one line, secrets hidden, up to 120 runes)"},
 			optJSON, optProfile,
 		}},
 	{name: "mail", args: "ACTION [ID]", nargs: 2, optArgs: true, synopsis: "(ACTION: list | show ID | close ID)",

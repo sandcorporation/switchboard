@@ -36,6 +36,9 @@ type Caller struct {
 	// Group is a limited reader's group prefix, "" for a role in no
 	// group. Groups are apart: a reader sees its own group's rows only.
 	Group string
+	// Who is the calling role as it signed in (a slot's own name), written
+	// on hit lines; "" falls back to Role.
+	Who string
 }
 
 // Hooks are the ledger's inputs from other packages.

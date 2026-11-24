@@ -108,10 +108,11 @@ func TestRulesCLI(t *testing.T) {
 	if out = h.mustRun(worker, "rules", "mine"); !strings.Contains(out, "#7 결정 release no force push, ever [도구 Bash · 경로 **/deploy/*]") || !strings.Contains(out, "#5 요령 배포 green first") {
 		t.Fatalf("mine: %q", out)
 	}
-	if out = h.mustRun(worker, "rules", "hit", "7,6,3"); out != "센 줄 #7" {
+	if out = h.mustRun(worker, "rules", "hit", "7,6,3", "--what", "Bash: git push"); out != "센 줄 #7" {
 		t.Fatalf("hit: %q", out)
 	}
-	if out = h.mustRun(boss, "rules", "show", "7"); !strings.Contains(out, "걸린 수 1") {
+	// #583: show lists the hit lines under 걸린 기록.
+	if out = h.mustRun(boss, "rules", "show", "7"); !strings.Contains(out, "걸린 수 1") || !strings.Contains(out, "\n걸린 기록\n") || !strings.Contains(out, " b Bash: git push") {
 		t.Fatalf("show hits: %q", out)
 	}
 	// #408 T1: list shows decisions by default; tips with --kind tip.

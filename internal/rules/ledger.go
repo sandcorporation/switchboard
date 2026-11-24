@@ -31,7 +31,7 @@ import (
 //	GET    classes       every counted answer with its class (full callers)
 //	GET    topics        the topics, with the rows in force c sees
 //	GET    mine          the rows in force reaching c's role, for its session hook (ETag)
-//	POST   hits          count hits of c's rows ({"ids":[…]})
+//	POST   hits          count hits of c's rows ({"ids":[…],"what"?}), a line each
 //	GET    tags          the service and role tags (full callers)
 //	PUT    tags/services set a service's tags (full callers)
 //	POST   tags/roles    change a role's tags (full callers)
@@ -355,6 +355,10 @@ func (s *Service) showAPI(w http.ResponseWriter, r *http.Request, c Caller, id i
 		return
 	}
 	d := wire.RuleDetail{Rule: withHits(rw.Rule, hc)}
+	if d.HitLog, d.HitsUnlogged, err = s.hitLog(id); err != nil {
+		http.Error(w, "query failed", http.StatusInternalServerError)
+		return
+	}
 	if d.History, err = s.history(rw); err != nil {
 		http.Error(w, "query failed", http.StatusInternalServerError)
 		return

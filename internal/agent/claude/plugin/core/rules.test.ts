@@ -3,7 +3,7 @@
 import { expect, test } from 'claude-code/testing'
 
 import { EP, ROLE, setup } from './mailtest'
-import { createRuleHints, globRE, hintLine, hits, RULES_FRESH_MS, RULES_TIMEOUT_MS, toolCallOf } from './rules'
+import { createRuleHints, globRE, hintLine, hits, hitWhat, RULES_FRESH_MS, RULES_TIMEOUT_MS, toolCallOf } from './rules'
 import type { RuleMatch, RulesCall, ToolCall } from './rules'
 import { fakeClock, fakeHttp, flush } from './testing'
 import type { FakeHttp } from './testing'
@@ -126,11 +126,20 @@ const rig = () => {
   }
 }
 
+test('hits 의 「무엇」은 도구와 명령 앞 두 낱말 또는 파일 이름뿐', () => {
+  expect(hitWhat(PUSH)).toBe('Bash: git push')
+  expect(hitWhat({ tool: 'Bash', command: 'TOKEN=abc curl https://x' })).toBe('Bash')
+  expect(hitWhat({ tool: 'Bash', command: 'curl -H x' })).toBe('Bash: curl -H')
+  expect(hitWhat({ tool: 'Edit', path: '/home/u/w/migrations/001.sql' })).toBe('Edit: 001.sql')
+  expect(hitWhat({ tool: 'Edit', path: 'C:\\w\\a.sql' })).toBe('Edit: a.sql')
+  expect(hitWhat({ tool: 'mcp__x__y' })).toBe('mcp__x__y')
+})
+
 test('걸린 줄을 한 번만 넣고 hits 를 보낸다(실패는 삼킨다)', async () => {
   const r = rig()
   expect(await r.box.lines(PUSH, '')).toEqual(['결정 #12 참고: no force push'])
   await flush()
-  expect(r.hitBodies).toEqual(['{"ids":[12]}'])
+  expect(r.hitBodies).toEqual(['{"ids":[12],"what":"Bash: git push"}'])
   expect(await r.box.lines(PUSH, '')).toEqual([])
   expect(await r.box.lines({ tool: 'Edit', path: '/w/migrations/001.sql' }, '')).toEqual(['요령 #9 참고: migrations only add columns'])
   expect(await r.box.lines({ tool: 'Read', path: '/w/a' }, '')).toEqual([])

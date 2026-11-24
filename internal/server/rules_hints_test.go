@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http/httptest"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/sandcorporation/switchboard/internal/wire"
@@ -126,5 +127,83 @@ func TestRuleHints(t *testing.T) {
 	addRule(t, s, ruleBody("tip", "service:team", "ci", "read the log first", map[string]any{"alongside": true}))
 	if w3, _ := mineAs(t, s, workerToken, "team/worker", w.Header().Get("ETag")); w3.Code != 200 {
 		t.Fatalf("after a change: %d", w3.Code)
+	}
+}
+
+// TestRuleHitLog (#583): each counted hit writes a line (when, the slot's
+// own name, what) that the rule's detail shows, newest first; a row never
+// hit has none; secrets and addresses never reach "what"; the log keeps the
+// last 50 lines while the count keeps every hit; hits from before the log
+// show as hits_unlogged.
+func TestRuleHitLog(t *testing.T) {
+	t.Parallel()
+	s := rulesServer(t)
+	push := addRule(t, s, ruleBody("decision", "service:team", "release", "no force push", map[string]any{
+		"new_topic": true, "match": map[string]any{"tool": "Bash"}}))
+	quiet := addRule(t, s, ruleBody("tip", "service:team", "ci", "rerun once", map[string]any{"new_topic": true}))
+	slot := slotDo(t, s, "register", ident("m1", "/a")).Role
+	hit := func(role, what string, ids ...int64) {
+		t.Helper()
+		if w := callAs(s, "POST", "/api/rules/hits", workerToken, role, wire.RuleHitsRequest{IDs: ids, What: what}); w.Code != 200 {
+			t.Fatalf("hits: %d %s", w.Code, w.Body)
+		}
+	}
+	hit("team/worker", "Bash: git push --force", push.ID)
+	secret := "ghp_" + strings.Repeat("a1B2", 9)
+	hit(slot, "Bash: curl -H 'Authorization: Bearer "+secret+"' https://hooks.example/abc/"+secret+" TOKEN="+secret+"\npassword: hunter2", push.ID)
+
+	d := showRule(t, s, bossToken, internalBossRole, push.ID, 200)
+	if d.Hits != 2 || len(d.HitLog) != 2 || d.HitsUnlogged != 0 {
+		t.Fatalf("hit log: hits %d unlogged %d %+v", d.Hits, d.HitsUnlogged, d.HitLog)
+	}
+	last, first := d.HitLog[0], d.HitLog[1]
+	if first.Role != "team/worker" || first.What != "Bash: git push --force" || first.At.IsZero() {
+		t.Fatalf("first line: %+v", first)
+	}
+	if last.Role != slot || slot == "team/worker" {
+		t.Fatalf("slot line: %+v (slot %s)", last, slot)
+	}
+	for _, bad := range []string{secret, "hooks.example", "hunter2", "\n"} {
+		if strings.Contains(last.What, bad) {
+			t.Fatalf("what keeps %q: %q", bad, last.What)
+		}
+	}
+	if !strings.HasPrefix(last.What, "Bash: curl") || !strings.Contains(last.What, "(가림)") || !strings.Contains(last.What, "(주소)") {
+		t.Fatalf("what: %q", last.What)
+	}
+	if d := showRule(t, s, bossToken, internalBossRole, quiet.ID, 200); d.Hits != 0 || len(d.HitLog) != 0 {
+		t.Fatalf("a row never hit: %+v", d)
+	}
+	if d := showRule(t, s, workerToken, "team/worker", push.ID, 200); len(d.HitLog) != 0 {
+		t.Fatalf("a limited reader sees the log: %+v", d.HitLog)
+	}
+
+	// Long "what" is cut; the log keeps 50 lines, the count every hit.
+	hit("team/worker", strings.Repeat("가", 500), push.ID)
+	for i := 0; i < 50; i++ {
+		hit("team/worker", "", push.ID)
+	}
+	d = showRule(t, s, bossToken, internalBossRole, push.ID, 200)
+	if d.Hits != 53 || len(d.HitLog) != 50 || d.HitLog[0].What != "" {
+		t.Fatalf("keep: hits %d lines %d", d.Hits, len(d.HitLog))
+	}
+	var n int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM rule_hit_log WHERE rule_id=?`, push.ID).Scan(&n); err != nil || n != 50 {
+		t.Fatalf("stored lines %d %v", n, err)
+	}
+	if err := s.db.QueryRow(`SELECT length(what) FROM rule_hit_log WHERE what LIKE '가%'`).Scan(&n); err == nil {
+		t.Fatalf("the long line outlived the keep limit")
+	}
+	hit("team/worker", strings.Repeat("가", 500), quiet.ID)
+	if d := showRule(t, s, bossToken, internalBossRole, quiet.ID, 200); len([]rune(d.HitLog[0].What)) != 120 {
+		t.Fatalf("long what: %d runes", len([]rune(d.HitLog[0].What)))
+	}
+
+	// Hits counted before the log came in show as unlogged.
+	if _, err := s.db.Exec(`UPDATE rule_hits SET hits=hits+7, unlogged=7 WHERE rule_id=?`, quiet.ID); err != nil {
+		t.Fatal(err)
+	}
+	if d := showRule(t, s, bossToken, internalBossRole, quiet.ID, 200); d.Hits != 8 || d.HitsUnlogged != 7 || len(d.HitLog) != 1 {
+		t.Fatalf("unlogged: %+v", d)
 	}
 }
