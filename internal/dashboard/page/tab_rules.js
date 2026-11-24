@@ -2,7 +2,7 @@
 // The rules ledger, a menu row of its own on the list screens' frame (#581):
 // the chips pick 결정·요령·전체, 주제 and 상태 (유효한 것만, 대체·무효 포함,
 // 제안) what the server sends, the rows group by state. A row's body has its
-// text, the decisions it came from, the rows it replaced and its hits; an
+// text, the decisions it came from, the rows it replaced and its hit log; an
 // admin fixes a row (a new row replacing it) or voids it. A 409 lists the
 // rows in force on the same scope and topic: replace them or stand alongside.
 const ruleKinds={decision:'결정',tip:'요령'};
@@ -239,8 +239,13 @@ registerDetail('rules',{
     docHead(box,'이어진 것');
     box.append(docTable(['갈래','제목','상태'],ruleLinks(r)));
     docHead(box,'걸린 기록 '+(r.hits||0));
-    const hits=r.hits?[{cells:[r.last_hit_at?shortWhen(r.last_hit_at):'—','—','마지막 걸림 · 모두 '+r.hits],hover:r.last_hit_at?when(r.last_hit_at):''}]:[];
-    box.append(docTable(['때','누가','무엇'],hits,'걸린 적 없음'));
+    const log=r.hit_log||[],before=r.hits_unlogged||0,gone=(r.hits||0)-before-log.length;
+    const hits=log.map(h=>({cells:[shortWhen(h.at),h.role,h.what||'—'],hover:when(h.at)}));
+    if(gone>0)hits.push({cells:['—','—','지난 기록 '+gone+' — 지움'],hover:'규칙마다 최근 50줄, 90일까지 남김',cls:'dc-dim'});
+    if(before>0)hits.push({cells:['—','—','이전 걸림 '+before+' — 기록 없음'],hover:'걸린 기록을 남기기 전에 센 걸림',cls:'dc-dim'});
+    const hitTable=docTable(['때','누가','무엇'],hits,'걸린 적 없음');
+    hitTable.classList.add('rule-hits');
+    box.append(hitTable);
     if(r.status==='active'&&ruleEditing===String(r.id)){docHead(box,'고쳐서 대체');box.append(ruleEditForm(r))}
     box.append(ruleBar(r));
   }

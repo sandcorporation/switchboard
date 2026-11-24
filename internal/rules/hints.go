@@ -5,11 +5,14 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/sandcorporation/switchboard/internal/wire"
 )
@@ -122,19 +125,112 @@ func (s *Service) hitsAPI(w http.ResponseWriter, r *http.Request, c Caller) {
 		mine[rw.ID] = true
 	}
 	out := wire.RuleHitsResult{Counted: []int64{}}
-	now := s.now().UTC().Format(time.RFC3339Nano)
+	at := s.now().UTC()
+	now := at.Format(time.RFC3339Nano)
+	who, what := c.Who, cleanWhat(q.What)
+	if who == "" {
+		who = c.Role
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		http.Error(w, "could not count the hits", http.StatusInternalServerError)
+		return
+	}
+	defer tx.Rollback()
 	for _, id := range q.IDs {
 		if !mine[id] || slices.Contains(out.Counted, id) {
 			continue
 		}
-		if _, err := s.db.Exec(`INSERT INTO rule_hits(rule_id,hits,last_at) VALUES(?,1,?)
-			ON CONFLICT(rule_id) DO UPDATE SET hits=hits+1, last_at=excluded.last_at`, id, now); err != nil {
+		if err := countHit(tx, id, now, at.Add(-hitLogAge).Format(time.RFC3339Nano), who, what); err != nil {
 			http.Error(w, "could not count the hits", http.StatusInternalServerError)
 			return
 		}
 		out.Counted = append(out.Counted, id)
 	}
+	if err := tx.Commit(); err != nil {
+		http.Error(w, "could not count the hits", http.StatusInternalServerError)
+		return
+	}
 	writeJSON(w, out)
+}
+
+// The hit log keeps, per row, the last hitLogKeep lines no older than
+// hitLogAge (#583); the count in rule_hits keeps every hit.
+const (
+	hitLogKeep = 50
+	hitLogAge  = 90 * 24 * time.Hour
+)
+
+// countHit counts one hit of row id, writes its line and drops the row's
+// lines past the keep limits (older than cutoff, or beyond hitLogKeep).
+func countHit(tx *sql.Tx, id int64, now, cutoff, who, what string) error {
+	if _, err := tx.Exec(`INSERT INTO rule_hits(rule_id,hits,last_at) VALUES(?,1,?)
+		ON CONFLICT(rule_id) DO UPDATE SET hits=hits+1, last_at=excluded.last_at`, id, now); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`INSERT INTO rule_hit_log(rule_id,at,role,what) VALUES(?,?,?,?)`, id, now, who, what); err != nil {
+		return err
+	}
+	_, err := tx.Exec(`DELETE FROM rule_hit_log WHERE rule_id=? AND (at<? OR id NOT IN
+		(SELECT id FROM rule_hit_log WHERE rule_id=? ORDER BY id DESC LIMIT ?))`, id, cutoff, id, hitLogKeep)
+	return err
+}
+
+// hitLog is row id's kept hit lines, newest first, and its hits from before
+// lines were kept.
+func (s *Service) hitLog(id int64) ([]wire.RuleHit, int64, error) {
+	var unlogged int64
+	if err := s.db.QueryRow(`SELECT unlogged FROM rule_hits WHERE rule_id=?`, id).Scan(&unlogged); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return nil, 0, err
+	}
+	cutoff := s.now().UTC().Add(-hitLogAge).Format(time.RFC3339Nano)
+	rows, err := s.db.Query(`SELECT at,role,what FROM rule_hit_log WHERE rule_id=? AND at>=? ORDER BY id DESC LIMIT ?`, id, cutoff, hitLogKeep)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+	var out []wire.RuleHit
+	for rows.Next() {
+		var h wire.RuleHit
+		var at string
+		if err := rows.Scan(&at, &h.Role, &h.What); err != nil {
+			return nil, 0, err
+		}
+		h.At, _ = time.Parse(time.RFC3339Nano, at)
+		out = append(out, h)
+	}
+	return out, unlogged, rows.Err()
+}
+
+// maxWhatRunes is the most of a hit's "what" that is kept.
+const maxWhatRunes = 120
+
+var (
+	whatURL    = regexp.MustCompile(`(?i)\b[a-z][a-z0-9+.-]*://\S+`)
+	whatScheme = regexp.MustCompile(`(?i)\b(bearer|basic|token)\s+\S+`)
+	whatKV     = regexp.MustCompile(`(?i)([A-Za-z0-9_.-]*(token|secret|passw(or)?d|pwd|api[_-]?key|auth|cookie|credential|private[_-]?key)[A-Za-z0-9_.-]*\s*[=:]\s*)("[^"]*"|'[^']*'|\S+)`)
+	whatLong   = regexp.MustCompile(`[A-Za-z0-9_+=-]{24,}`)
+)
+
+// cleanWhat is a hit's "what" as kept: one line, addresses and
+// secret-looking values replaced (a URL by "(주소)", a credential after its
+// name or scheme and a long run of letters with digits by "(가림)"), cut to
+// maxWhatRunes.
+func cleanWhat(v string) string {
+	v = strings.Join(strings.Fields(v), " ")
+	v = whatURL.ReplaceAllString(v, "(주소)")
+	v = whatScheme.ReplaceAllString(v, "$1 (가림)")
+	v = whatKV.ReplaceAllString(v, "${1}(가림)")
+	v = whatLong.ReplaceAllStringFunc(v, func(m string) string {
+		if strings.ContainsAny(m, "0123456789") && strings.IndexFunc(m, unicode.IsLetter) >= 0 {
+			return "(가림)"
+		}
+		return m
+	})
+	if r := []rune(v); len(r) > maxWhatRunes {
+		v = string(r[:maxWhatRunes-1]) + "…"
+	}
+	return v
 }
 
 // hitCount is a row's hits and last hit.

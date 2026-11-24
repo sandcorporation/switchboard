@@ -185,6 +185,9 @@ func Init(db *sql.DB) error {
 	if e = migrateRuleHits(db); e != nil {
 		return e
 	}
+	if e = migrateRuleHitLog(db); e != nil {
+		return e
+	}
 	if e = migrateHostingAdapters(db); e != nil {
 		return e
 	}
@@ -411,6 +414,37 @@ func migrateRuleProposals(db *sql.DB) error {
 func migrateRuleHits(db *sql.DB) error {
 	_, err := db.Exec(`CREATE TABLE IF NOT EXISTS rule_hits(rule_id INTEGER PRIMARY KEY, hits INTEGER NOT NULL DEFAULT 0, last_at TEXT NOT NULL DEFAULT '')`)
 	return err
+}
+
+// migrateRuleHitLog adds rule_hit_log (#583, internal/rules): one line per
+// counted hit (when, the calling role or slot, what), and rule_hits.unlogged,
+// the hits counted before lines were kept (every hit up to this change).
+func migrateRuleHitLog(db *sql.DB) error {
+	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS rule_hit_log(
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		rule_id INTEGER NOT NULL,
+		at TEXT NOT NULL,
+		role TEXT NOT NULL,
+		what TEXT NOT NULL DEFAULT '');
+	CREATE INDEX IF NOT EXISTS idx_rule_hit_log_rule ON rule_hit_log(rule_id, id)`); err != nil {
+		return err
+	}
+	has, err := HasColumn(db, "rule_hits", "unlogged")
+	if err != nil || has {
+		return err
+	}
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err = tx.Exec(`ALTER TABLE rule_hits ADD COLUMN unlogged INTEGER NOT NULL DEFAULT 0`); err != nil {
+		return err
+	}
+	if _, err = tx.Exec(`UPDATE rule_hits SET unlogged=hits`); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // migrateRules adds the rules ledger (#406 ①, internal/rules): rules (a

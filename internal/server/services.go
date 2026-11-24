@@ -157,11 +157,15 @@ func (s *Server) ruleCaller(p identity.Principal) rules.Caller {
 	if base == "" {
 		base = p.Role
 	}
+	who := p.Role // the slot's own name: slot 1 is stored as its base
+	if p.Number > 0 {
+		who = identity.SlotRole(base, p.Number)
+	}
 	if ids.IsGlobalBoss(p) {
-		return rules.Caller{Role: base, Full: true}
+		return rules.Caller{Role: base, Full: true, Who: who}
 	}
 	g, _ := ids.GroupOf(base)
-	return rules.Caller{Role: base, Group: g.Prefix}
+	return rules.Caller{Role: base, Group: g.Prefix, Who: who}
 }
 
 // jobs is the job ledger over this server's database, clock and identity

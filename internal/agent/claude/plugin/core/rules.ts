@@ -29,6 +29,25 @@ export interface ToolCall {
   path?: string
 }
 
+/**
+ * 걸린 기록의 「무엇」(#583): 도구 이름에 명령의 앞 두 낱말(`=` 든 낱말에서 멈춘다) 또는 파일 이름을 붙인다.
+ * 명령 원문 전체·경로 전체는 보내지 않는다. 서버가 한 번 더 비밀처럼 보이는 것을 가린다.
+ */
+export function hitWhat(call: ToolCall): string {
+  if (call.command !== undefined) {
+    const words: string[] = []
+    for (const w of call.command.trim().split(/\s+/)) {
+      if (words.length === 2 || w === '' || w.includes('=')) break
+      words.push(w)
+    }
+
+    return words.length > 0 ? `${call.tool}: ${words.join(' ')}` : call.tool
+  }
+  const name = call.path?.split(/[\\/]/).pop()
+
+  return name ? `${call.tool}: ${name}` : call.tool
+}
+
 function quoteMeta(s: string): string {
   return s.replace(/[\\^$.*+?()[\]{}|/]/g, '\\$&')
 }
@@ -225,7 +244,7 @@ export function createRuleHints(call: RulesCall, clock: Pick<Clock, 'after'>): R
       }
       if (hit.length === 0) return []
       // 세는 것은 덤이다: 실패는 삼키고 기다리지 않는다.
-      void call('/api/rules/hits', { method: 'POST', body: JSON.stringify({ ids: hit.map(r => r.id) }) }, { ...io, timeoutMs: RULES_TIMEOUT_MS }).catch(() => null)
+      void call('/api/rules/hits', { method: 'POST', body: JSON.stringify({ ids: hit.map(r => r.id), what: hitWhat(call0) }) }, { ...io, timeoutMs: RULES_TIMEOUT_MS }).catch(() => null)
 
       return hit.map(hintLine)
     },

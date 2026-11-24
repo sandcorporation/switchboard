@@ -1143,5 +1143,5 @@ test('규칙 원장: 걸린 규칙을 도구 결과의 context 로 한 번 넣�
   expect(again.context ?? []).toEqual([])
   const other: any = await $.tool.call({ tool: 'Bash', command: 'ls' } as any)
   expect(other.context ?? []).toEqual([])
-  expect(hits).toEqual(['{"ids":[5]}'])
+  expect(hits).toEqual(['{"ids":[5],"what":"Bash: git push"}'])
 })

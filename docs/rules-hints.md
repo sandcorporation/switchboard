@@ -52,12 +52,14 @@ CLI: `switchboard rules mine [--json]`.
 ## POST /api/rules/hits
 
 ```json
-{"ids":[12,9]}
+{"ids":[12,9],"what":"Bash: git push"}
 ```
 
 Answers `{"counted":[12,9]}`: one hit for each named row among the caller's `mine` rows. Numbers outside them and repeats in the same call are left out; up to 100 numbers per call. An admin and a global boss see `hits` and `last_hit_at` on each row (`rules show N`, the dashboard's 규칙 tab).
 
-CLI: `switchboard rules hit 12,9 [--json]`.
+Each counted hit also writes a line (#583): when, the calling role (a slot's own name, `team/worker-2`) and `what`. `what` is optional (older callers send none): a short summary of what the session was doing, or a question or mail number. The server keeps it on one line, puts `(주소)` for a URL and `(가림)` for a value after a credential name (`token=`, `password:`, …) or scheme (`Bearer …`) and for a run of 24 or more letters and digits, and keeps the first 120 runes. The plugin sends the tool name with the command's first two words (stopping at a word with `=`) or the file name, never the whole command or path. Per row the log keeps the last 50 lines and none older than 90 days; the count keeps every hit. `GET /api/rules/{id}` gives a full reader `hit_log` (`[{"at","role","what"?}]`, newest first) and `hits_unlogged`, the hits counted before the log came in. The dashboard's 걸린 기록 table shows the lines, then `지난 기록 N — 지움` for lines past the keep limits and `이전 걸림 N — 기록 없음` for the unlogged hits.
+
+CLI: `switchboard rules hit 12,9 [--what TEXT] [--json]`; `rules show N` lists the lines under 걸린 기록.
 
 ## Directive footer
 

@@ -260,6 +260,15 @@ func rulesShow(c Config, id int64, p parsedArgs, out io.Writer) (int, error) {
 	if d.VoidedBy != "" {
 		fmt.Fprintf(out, "무효로 돌린 이 %s %s\n", d.VoidedBy, ruleStamp(d.VoidedAt))
 	}
+	if len(d.HitLog) > 0 || d.HitsUnlogged > 0 {
+		fmt.Fprintln(out, "\n걸린 기록")
+		for _, h := range d.HitLog {
+			fmt.Fprintln(out, strings.TrimRight("  "+ruleStamp(&h.At)+" "+h.Role+" "+h.What, " "))
+		}
+		if d.HitsUnlogged > 0 {
+			fmt.Fprintf(out, "  이전 걸림 %d — 기록 없음\n", d.HitsUnlogged)
+		}
+	}
 	if len(d.History) > 0 {
 		fmt.Fprintln(out, "\n이력")
 		for _, h := range d.History {
@@ -639,7 +648,7 @@ func rulesHit(c Config, p parsedArgs, out io.Writer) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	b, err := slotCall(c, "POST", "/api/rules/hits", wire.RuleHitsRequest{IDs: ids})
+	b, err := slotCall(c, "POST", "/api/rules/hits", wire.RuleHitsRequest{IDs: ids, What: p.values["--what"]})
 	if err != nil {
 		return 0, err
 	}
