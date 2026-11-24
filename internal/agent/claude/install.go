@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -205,6 +206,9 @@ func (in installer) install(ctx context.Context, o agent.PluginOptions) (agent.P
 }
 
 func (in installer) installAll(ctx context.Context, o agent.PluginOptions, rep agent.PluginReport) (agent.PluginReport, error) {
+	if ver := in.version(o.Version); isDevVersion(ver) && userSettings(o.Env) {
+		return rep, fmt.Errorf("development build %s does not install into the user's Claude Code settings (%s): set %s to a scratch folder (#522)", ver, rep.Where, configDirEnv)
+	}
 	s, ok := in.open(o)
 	if !ok {
 		rep.Skipped = "Claude Code not found (no " + Name + " on PATH)"
@@ -375,6 +379,28 @@ func configDir(env []string) string {
 		return filepath.Join(h, ".claude")
 	}
 	return "~/.claude"
+}
+
+// isDevVersion reports a development build's plugin version (version).
+func isDevVersion(ver string) bool {
+	return strings.HasPrefix(ver, "0.0.0-dev")
+}
+
+// userSettings reports whether env leaves the commands on the user's own
+// Claude Code settings: CLAUDE_CONFIG_DIR unset, empty or naming ~/.claude.
+// A development build installs only into another folder (#522): tests and
+// local stacks run under a scratch CLAUDE_CONFIG_DIR, so a build from a
+// worktree never replaces the plugin the user's sessions load.
+func userSettings(env []string) bool {
+	h, err := os.UserHomeDir()
+	if err != nil {
+		return true
+	}
+	a, b := filepath.Clean(configDir(env)), filepath.Clean(filepath.Join(h, ".claude"))
+	if runtime.GOOS == "windows" {
+		return strings.EqualFold(a, b)
+	}
+	return a == b
 }
 
 func samePath(a, b string) bool {

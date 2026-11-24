@@ -61,7 +61,8 @@ func configDir() string {
 // pluginAuto reports whether this run may install the plugin on its own.
 // A development build (any version that is not a release tag) never installs
 // on its own: the plugin lives in the user's agent settings whatever
-// SWITCHBOARD_CONFIG_DIR says, so only `plugin install` may replace it (#498).
+// SWITCHBOARD_CONFIG_DIR says (#498). Even `plugin install` from a development
+// build installs only into a scratch agent settings folder (#522).
 func pluginAuto() bool {
 	if binary.PluginInstall == nil || noPluginFlag || !isReleaseVersion(version) {
 		return false

@@ -378,3 +378,43 @@ func TestPluginStatusBeforeTheFirstInstall(t *testing.T) {
 		t.Fatalf("status %+v, %v", st, err)
 	}
 }
+
+// A development build never installs into the user's own Claude Code
+// settings (#522): with CLAUDE_CONFIG_DIR unset, empty or naming ~/.claude it
+// refuses, says why and changes nothing; a scratch settings folder is fine.
+func TestInstallPluginDevBuildRefusesTheUserSettings(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home) // os.UserHomeDir on Windows
+	for _, env := range [][]string{
+		{"PATH=/bin"},
+		{"CLAUDE_CONFIG_DIR=", "PATH=/bin"},
+		{"CLAUDE_CONFIG_DIR=" + filepath.Join(home, ".claude") + "/", "PATH=/bin"},
+	} {
+		for _, v := range []string{"dev", "0.0.0-dev.80df99d5", "v0.0.0-dev.1"} {
+			dir := filepath.Join(t.TempDir(), "plugins")
+			f := &fakeCLI{markets: map[string]string{}}
+			_, err := newTest(f).install(context.Background(), agent.PluginOptions{Version: v, Dir: dir, Env: env})
+			if err == nil || !strings.Contains(err.Error(), "development build") || !strings.Contains(err.Error(), "CLAUDE_CONFIG_DIR") {
+				t.Fatalf("%s %q: err %v", v, env, err)
+			}
+			if len(f.calls) != 0 {
+				t.Fatalf("%s %q: ran %q", v, env, f.calls)
+			}
+			if _, err := os.Stat(dir); !errors.Is(err, os.ErrNotExist) {
+				t.Fatalf("%s %q: unpacked: %v", v, env, err)
+			}
+		}
+	}
+	scratch := filepath.Join(t.TempDir(), "claude")
+	f := &fakeCLI{markets: map[string]string{}}
+	rep, err := newTest(f).install(context.Background(), agent.PluginOptions{Version: "dev", Dir: t.TempDir(), Env: []string{"CLAUDE_CONFIG_DIR=" + scratch}})
+	if err != nil || rep.Where != scratch || len(f.commands()) == 0 {
+		t.Fatalf("scratch settings: %+v, %v", rep, err)
+	}
+	// A release still installs into the user's settings.
+	f = &fakeCLI{markets: map[string]string{}}
+	if _, err := newTest(f).install(context.Background(), agent.PluginOptions{Version: "v0.60.0", Dir: t.TempDir(), Env: []string{"PATH=/bin"}}); err != nil || len(f.commands()) == 0 {
+		t.Fatalf("release: %v %q", err, f.calls)
+	}
+}
