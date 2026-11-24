@@ -363,8 +363,8 @@ func HostGroupCLI(action, name string, threshold *int, jsonOut bool, stdout io.W
 
 // HostAutoCLI is the binary's `host auto` command: the scheduled runs of
 // the hosted sessions in DB_PATH (the same rule as `host`).
-func HostAutoCLI(action, ref string, c wire.HostAutoCreate, runs int, jsonOut bool, stdout io.Writer) (int, error) {
-	return withInstanceDB("host auto", func(svc *hosting.Service) error { return svc.RunAutoCLI(action, ref, c, runs, jsonOut, stdout) })
+func HostAutoCLI(action, ref string, c wire.HostAutoCreate, edit wire.HostAutoEdit, runs int, jsonOut bool, stdout io.Writer) (int, error) {
+	return withInstanceDB("host auto", func(svc *hosting.Service) error { return svc.RunAutoCLI(action, ref, c, edit, runs, jsonOut, stdout) })
 }
 
 // NodeInviteCLI is the binary's `node invite NAME`: a one-time code for a new

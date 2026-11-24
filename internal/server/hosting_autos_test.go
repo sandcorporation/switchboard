@@ -507,6 +507,12 @@ func TestHostAutoCLI(t *testing.T) {
 	if code != 0 || json.Unmarshal([]byte(out), &edited) != nil || edited.ID != a.ID || edited.Cron != "0 7 * * *" || edited.Prompt != "check the inbox" || edited.Label != "queue" || !edited.Resume {
 		t.Fatalf("auto edit = %d %q %s", code, out, stderr)
 	}
+	// An empty --label clears the label, as the boss role's path does.
+	code, out, stderr = hostCLI(t, dbPath, "auto", "edit", aid, "--label", "", "--json")
+	var cleared wire.HostAuto
+	if code != 0 || json.Unmarshal([]byte(out), &cleared) != nil || cleared.Label != "" || cleared.Cron != "0 7 * * *" || cleared.Prompt != "check the inbox" {
+		t.Fatalf("auto edit --label \"\" = %d %q %s", code, out, stderr)
+	}
 	if code, _, stderr = hostCLI(t, dbPath, "auto", "edit", aid); code != 2 || !strings.Contains(stderr, "needs --cron, --prompt or --label") {
 		t.Fatalf("auto edit without a change = %d %s", code, stderr)
 	}

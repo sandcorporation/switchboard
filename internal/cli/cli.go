@@ -472,7 +472,7 @@ type HostFunc func(action, id string, add wire.HostedSessionCreate, jsonOut bool
 // HostAutoFunc runs `host auto ACTION [REF]` against the server's database:
 // REF is the hosted session for add and the scheduled run otherwise; runs is
 // show's --runs.
-type HostAutoFunc func(action, ref string, c wire.HostAutoCreate, runs int, jsonOut bool, stdout io.Writer) (int, error)
+type HostAutoFunc func(action, ref string, c wire.HostAutoCreate, edit wire.HostAutoEdit, runs int, jsonOut bool, stdout io.Writer) (int, error)
 
 // AdminFunc runs `admin ACTION NAME [PERMS] [--json]`. Admin users live in
 // the server's database, which the client never opens, so the binary
