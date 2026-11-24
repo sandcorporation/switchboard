@@ -99,6 +99,14 @@ var bossWriteRoutes = []bossWriteRoute{
 	// package records the read.
 	{http.MethodGet, pathShape("jobs/*"), jobOwner},
 	{http.MethodGet, pathShape("schedules/*"), scheduleOwner},
+	// Webhooks (#549): a global boss's writes, and the list with IDs that
+	// `hooks edit` and the others look a name up in. The reply to adding
+	// one and to making its address again carries the address value.
+	{http.MethodGet, pathShape("hooks"), globalOnly},
+	{http.MethodPost, pathShape("hooks"), hookOwner},
+	{http.MethodPut, pathShape("hooks/*"), hookOwner},
+	{http.MethodDelete, pathShape("hooks/*"), hookOwner},
+	{http.MethodPost, pathShape("hooks/*/address"), hookOwner},
 }
 
 // bossReadThrough reports whether a GET /api/boss/<path> is one of the
@@ -121,7 +129,7 @@ func (s *Server) bossWrite(w http.ResponseWriter, r *http.Request, who identity.
 	ids := s.ids()
 	see, ok := ids.BossScope(who)
 	if !ok {
-		http.Error(w, "boss roles only", http.StatusForbidden)
+		http.Error(w, refusal(path, "boss roles only"), http.StatusForbidden)
 		return
 	}
 	var route *bossWriteRoute
@@ -164,7 +172,7 @@ func (s *Server) bossWrite(w http.ResponseWriter, r *http.Request, who identity.
 	sw := &statusWriter{ResponseWriter: w}
 	switch status {
 	case http.StatusForbidden:
-		http.Error(sw, "outside this boss role's groups", status)
+		http.Error(sw, refusal(path, "outside this boss role's groups"), status)
 	case http.StatusNotFound:
 		http.Error(sw, "not found", status)
 	default:
@@ -247,6 +255,31 @@ func seesAny(see func(string) bool, roles string) bool {
 }
 
 // anyBoss is a target every boss role may read.
+// refusal is the 403 text of a boss write to path: the webhooks' own
+// (#549), else def.
+func refusal(path, def string) string {
+	if hookPath(path) {
+		return hookWritesBossOnly
+	}
+	return def
+}
+
+// hookOwner names a webhook write's target, hook:<name> (the name in the
+// body when adding one), for the record; webhooks are a global boss's.
+func hookOwner(s *Server, p string, body []byte) (string, error) {
+	if p == "hooks" {
+		var v wire.HookSave
+		_ = json.Unmarshal(body, &v)
+		return "hook:" + strings.TrimSpace(v.Name), errGlobalOnly
+	}
+	if id, err := wire.ParseID(seg(p, 1)); err == nil {
+		if name, ok := s.hooks().NameOf(id); ok {
+			return "hook:" + name, errGlobalOnly
+		}
+	}
+	return "", errGlobalOnly
+}
+
 func anyBoss(*Server, string, []byte) (string, error) { return "", errAnyBoss }
 
 func globalOnly(*Server, string, []byte) (string, error) { return "", errGlobalOnly }

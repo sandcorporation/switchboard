@@ -54,7 +54,16 @@ func newCLIHarnessWith(t *testing.T, setup func(*Server)) *cliHarness {
 
 func (h *cliHarness) run(env []string, args ...string) cliResult {
 	h.t.Helper()
+	return h.runIn("", env, args...)
+}
+
+// runIn is run with stdin (none when "").
+func (h *cliHarness) runIn(stdin string, env []string, args ...string) cliResult {
+	h.t.Helper()
 	cmd := exec.Command(os.Args[0], "-test.run=^TestCLIHelperProcess$")
+	if stdin != "" {
+		cmd.Stdin = strings.NewReader(stdin)
+	}
 	argJSON, _ := json.Marshal(args)
 	cmd.Env = append(cliEnv(), "SWITCHBOARD_TEST_CLI=1", "AGENT_MAIL_CONFIG_DIR="+h.dir, "SWITCHBOARD_TEST_ARGS="+string(argJSON))
 	cmd.Env = append(cmd.Env, env...)

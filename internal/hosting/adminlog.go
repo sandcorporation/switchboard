@@ -2,10 +2,12 @@ package hosting
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"log"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/sandcorporation/switchboard/internal/wire"
 )
@@ -53,9 +55,16 @@ func (s *Service) recordActionDetail(r *http.Request, action, target, detail str
 	if !ok {
 		return
 	}
-	if _, err := s.db.Exec(`INSERT INTO admin_actions(at,admin,method,action,target,addr,detail) VALUES(?,?,?,?,?,?,?)`,
-		s.clock().UnixMilli(), a.Admin, a.Method, action, target, a.Addr, detail); err != nil {
-		log.Printf("hosting: admin action %s: %v", action, err)
+	RecordAction(s.db, s.clock(), a, action, target, detail)
+}
+
+// RecordAction appends one admin action of a at the time given: the record
+// other packages' admin writes share (the webhooks', #549). A failed write
+// is logged, never fatal.
+func RecordAction(db *sql.DB, at time.Time, a Actor, action, target, detail string) {
+	if _, err := db.Exec(`INSERT INTO admin_actions(at,admin,method,action,target,addr,detail) VALUES(?,?,?,?,?,?,?)`,
+		at.UnixMilli(), a.Admin, a.Method, action, target, a.Addr, detail); err != nil {
+		log.Printf("admin action %s: %v", action, err)
 	}
 }
 

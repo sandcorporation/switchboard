@@ -197,7 +197,7 @@ switchboard schedule resume ID [--fire | --drop]
 
 ## Incoming webhooks
 
-Tools that send Discord- or Slack-style webhooks can post to `POST /hook/<value>`: each notice becomes alert mail to the role the webhook names (collapsed by subject within its window), and in forward mode it is also sent on to the original destination with retries. Webhooks are registered in the dashboard (설정 › 웹훅); `switchboard hooks list [--json]` lists them. The address value shows once and the original destination never again. How to register one and pick a mode: [docs/hooks.md](docs/hooks.md).
+Tools that send Discord- or Slack-style webhooks can post to `POST /hook/<value>`: each notice becomes alert mail to the role the webhook names (collapsed by subject within its window), and in forward mode it is also sent on to the original destination with retries. Webhooks are registered in the dashboard (설정 › 웹훅) or by a global boss role with `switchboard hooks add --name NAME --to ROLE --address-file PATH` (then `hooks edit`, `hooks rotate --yes`, `hooks rm --yes`; the address goes to the new owner-only file only); `switchboard hooks list [--json]` lists them. The address value shows once and the original destination never again. How to register one and pick a mode: [docs/hooks.md](docs/hooks.md).
 
 ## Docker deployment
 
