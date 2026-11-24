@@ -114,8 +114,15 @@ func TestSettingsShowNoSecrets(t *testing.T) {
 	s.hosting = true
 	s.presenceCfg.Remind = presence.RemindConfig{On: true}
 	top, body := settingsJSON(t, s)
-	if got, want := keysOf(top), []string{"answered_rule", "hosting", "reminders", "version"}; !slices.Equal(got, want) {
+	if got, want := keysOf(top), []string{"answered_rule", "hosting", "left_remind", "reminders", "version"}; !slices.Equal(got, want) {
 		t.Fatalf("settings keys %v, want %v", got, want)
+	}
+	var lr map[string]json.RawMessage
+	if err := json.Unmarshal(top["left_remind"], &lr); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := keysOf(lr), []string{"after", "after_seconds", "on", "since"}; !slices.Equal(got, want) {
+		t.Fatalf("left_remind keys %v, want %v", got, want)
 	}
 	var rs map[string]json.RawMessage
 	if err := json.Unmarshal(top["reminders"], &rs); err != nil {

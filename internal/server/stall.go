@@ -23,7 +23,8 @@ import (
 // (presence.Service.SweepOffline) and label stall notices to the sender of
 // mail held longer than SWITCHBOARD_LABEL_STALL (mail.Service.SweepLabels).
 // The same sweep sends due metrics alerts and directive reminders
-// (presence.SweepReminders, SWITCHBOARD_REMIND, off by default) and prunes
+// (presence.SweepReminders, SWITCHBOARD_REMIND, off by default), reminders
+// of open left items (mail.SweepLeftRemind, #553) and prunes
 // old presence_log, alerts and terminal_log rows.
 
 const (
@@ -129,6 +130,8 @@ type sweepResult struct {
 	Label   int
 	Alerts  int
 	Remind  int
+	// LeftRemind counts the [남긴 것] reminders (#553).
+	LeftRemind int
 	// NoSession counts the [미수신] notices (#300).
 	NoSession int
 	// Handoffs counts the held mail a sweep ended (#354).
@@ -171,6 +174,9 @@ func (s *Server) sweep(ctx context.Context) (sweepResult, error) {
 		return out, err
 	}
 	if out.Remind, err = s.presence().SweepReminders(ctx, insight.NewBaseResolver(s.db).Of); err != nil {
+		return out, err
+	}
+	if out.LeftRemind, err = s.mail().SweepLeftRemind(ctx); err != nil {
 		return out, err
 	}
 	if out.NoSession, err = s.presence().SweepNoSession(ctx, insight.NewBaseResolver(s.db).Of); err != nil {
@@ -229,6 +235,9 @@ func (s *Server) publishSweep(res sweepResult) {
 	}
 	if res.Autos > 0 {
 		kinds = append(kinds, "terminals", "mail")
+	}
+	if res.LeftRemind > 0 {
+		kinds = append(kinds, "mail")
 	}
 	if res.Forwarded > 0 {
 		kinds = append(kinds, "settings", "mail")

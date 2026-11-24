@@ -14,7 +14,8 @@ const (
 	LeftOpen    = "open"
 	LeftIssue   = "issue"   // raised as an issue: Value is its URL
 	LeftPassed  = "passed"  // passed on in a new directive: Value is its ID
-	LeftDropped = "dropped" // dropped by an admin: Value is why
+	LeftDone    = "done"    // done (#553): Value is empty
+	LeftDropped = "dropped" // dropped by an admin or the directive's sender: Value is why
 	LeftNoneSet = "none"    // the state of a none row
 )
 
@@ -33,8 +34,8 @@ type LeftAdd struct {
 	Left      []string `json:"left"`
 }
 
-// LeftEnd is the body of POST /api/left/{id}/issue (URL), /pass (Directive)
-// and /api/admin/left/{id}/drop (Reason).
+// LeftEnd is the body of POST /api/left/{id}/issue (URL), /pass (Directive),
+// /done (empty) and /drop (Reason), and of the same /api/admin/left/ paths.
 type LeftEnd struct {
 	URL       string `json:"url,omitempty"`
 	Directive int64  `json:"directive,omitempty"`
@@ -62,4 +63,16 @@ type LeftItem struct {
 // LeftList is the answer of POST /api/left: the rows it stored.
 type LeftList struct {
 	Items []LeftItem `json:"items"`
+}
+
+// LeftRemind is the reminder of open left items (#553): GET
+// /api/admin/settings reports it, PUT /api/admin/settings/left-remind takes
+// After. After is a duration such as 24h, "" when off; Since is when the
+// value was set (the time counted from), nil before the server first used
+// it.
+type LeftRemind struct {
+	On           bool       `json:"on"`
+	After        string     `json:"after"`
+	AfterSeconds int64      `json:"after_seconds"`
+	Since        *time.Time `json:"since"`
 }

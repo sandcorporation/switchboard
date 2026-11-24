@@ -102,8 +102,9 @@ function drawProgress(){
   $('progressNote').title=when(r.generated_at);
 }
 // leftLine is the second line of a 남긴 것 row (#470): the directive it came
-// from and its three ends. 이슈 and 새 지시 do what the directive's sender
-// does with left issue and left pass; 버림 is the admin's alone, with a reason.
+// from and its ends. 이슈, 새 지시 and 끝남 do what the directive's sender
+// does with left issue, left pass and left done (#553); 버림, with a reason,
+// needs a login allowed to discard.
 function leftLine(v){
   const box=node('div','','wsub'),msg=node('span','','msg');msg.setAttribute('role','status');
   const dir=setButton('지시 #'+v.directive,'linkish',()=>openMessage(v.directive));
@@ -119,6 +120,12 @@ function leftLine(v){
   box.append(dir,
     end('이슈',b=>apiSend('POST','left/'+id+'/issue',b),'#'+v.id+' 이슈 주소',a=>/^https?:\/\/\S+$/.test(a)?{url:a}:null),
     end('새 지시',b=>apiSend('POST','left/'+id+'/pass',b),'#'+v.id+'을(를) 넘길 지시 번호 ('+v.directive_from+'이(가) 보낸 지시)',a=>/^[1-9][0-9]*$/.test(a)?{directive:Number(a)}:null),
+    setButton('끝남','',async e=>{
+      if(!confirm('#'+v.id+' 끝남으로 처리할까요?'))return;
+      e.target.disabled=true;setMsg(msg,'보내는 중…');
+      try{await apiSend('POST','left/'+id+'/done',{});loadProgress()}
+      catch(err){e.target.disabled=false;setMsg(msg,err.message,'err')}
+    },'#'+v.id+' 끝남 — 다시 알리지 않음'),
     ...(can('discard')?[end('버림',b=>apiSend('POST','left/'+id+'/drop',b),'#'+v.id+' 버리는 까닭',a=>a?{reason:a}:null)]:[]),
     msg);
   return box;

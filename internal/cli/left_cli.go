@@ -64,14 +64,14 @@ func withLeft(p parsedArgs, msg map[string]any) error {
 	return nil
 }
 
-// cliLeft runs left add N TEXT, left issue ID URL and left pass ID
-// --directive M.
+// cliLeft runs left add N TEXT, left issue ID URL, left pass ID
+// --directive M, left done ID and left drop ID --reason TEXT.
 func cliLeft(c Config, p parsedArgs, out io.Writer) (int, error) {
 	if len(p.pos) == 0 {
-		return 0, usagef("left: add N TEXT | issue ID URL | pass ID --directive M")
+		return 0, usagef("left: add N TEXT | issue ID URL | pass ID --directive M | done ID | drop ID --reason TEXT")
 	}
 	action, args := p.pos[0], p.pos[1:]
-	if action == "issue" || action == "pass" {
+	if action == "issue" || action == "pass" || action == "done" || action == "drop" {
 		if len(args) == 0 {
 			return 0, usagef("left %s: ID is an item ID", action)
 		}
@@ -105,8 +105,19 @@ func cliLeft(c Config, p parsedArgs, out io.Writer) (int, error) {
 			return 0, usagef("left pass: --directive M, a directive you sent")
 		}
 		path, body = "/api/left/"+args[0]+"/pass", wire.LeftEnd{Directive: m}
+	case "done":
+		if len(args) != 1 {
+			return 0, usagef("left done ID")
+		}
+		path, body = "/api/left/"+args[0]+"/done", wire.LeftEnd{}
+	case "drop":
+		reason := strings.TrimSpace(p.values["--reason"])
+		if len(args) != 1 || reason == "" {
+			return 0, usagef("left drop ID --reason TEXT")
+		}
+		path, body = "/api/left/"+args[0]+"/drop", wire.LeftEnd{Reason: reason}
 	default:
-		return 0, usagef("left: unknown action %q (add, issue, pass)", action)
+		return 0, usagef("left: unknown action %q (add, issue, pass, done, drop)", action)
 	}
 	b, err := slotCall(c, "POST", path, body)
 	if err != nil {
@@ -129,6 +140,10 @@ func cliLeft(c Config, p parsedArgs, out io.Writer) (int, error) {
 	var it wire.LeftItem
 	if err := json.Unmarshal(b, &it); err != nil {
 		return 0, fmt.Errorf("unexpected response from server: %v", err)
+	}
+	if it.Value == "" {
+		fmt.Fprintf(out, "left #%d %s\n", it.ID, it.State)
+		return ExitOK, nil
 	}
 	fmt.Fprintf(out, "left #%d %s: %s\n", it.ID, it.State, it.Value)
 	return ExitOK, nil
