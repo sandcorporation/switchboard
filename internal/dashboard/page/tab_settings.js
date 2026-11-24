@@ -103,17 +103,43 @@ function setOpen(id){
 for(const ev of ['input','change'])$('detailBody').addEventListener(ev,e=>{if(detailCur&&detailCur.tab==='settings'&&e.target.closest('form'))setDirty=detailCur.id});
 $('detailBody').addEventListener('submit',()=>{setDirty=''},true);
 const permName={view:'보기',type:'입력',files:'파일',sessions:'세션',discard:'버리기'};
-// setLive is the session list's rows by role (frameData): a role's name
-// (its label), state, machine and context.
-function setLive(){const m=new Map();if(typeof frameData!=='undefined'&&frameData)for(const r of frameRows(frameData))m.set(r.role,r);return m}
+// setLive is the session list's rows (frameData) found by role: get(role)
+// is the session of that role and of its slots (team/coordinator-1,
+// team/worker-1-2 under team/coordinator, team/worker), the busiest one
+// when several run (setBusy order) — the same row the session list shows.
+const setBusy=['busy','compacting','blocked','error','idle','unknown','offline'];
+function setBusyRank(st){const k=/^(error|blocked):/.exec(st||'');const i=setBusy.indexOf(k?k[1]:st);return i<0?setBusy.length:i}
+function setLive(){
+  const rows=typeof frameData!=='undefined'&&frameData?frameRows(frameData):[];
+  return {get(role){
+    let best=null;
+    for(const r of rows){
+      if(r.role!==role&&!(r.role.startsWith(role+'-')&&/^(-\d+)+$/.test(r.role.slice(role.length))))continue;
+      if(!best||setBusyRank(r.st)<setBusyRank(best.st))best=r;
+    }
+    return best;
+  }};
+}
 const setStTone={'st-busy':'success','st-compacting':'success','st-blocked':'warning','st-error':'danger'};
 function setRoleName(v,s){return s&&s.label?s.label:v.role.slice(v.role.indexOf('/')+1)}
+// setRoleState is a role's state in the table and the detail badge: its
+// registration when ended (끊김·은퇴), else its session's state, else 꺼짐.
+function setRoleState(v,s){
+  if(v.revoked_at||v.retired_at)return roleBadge(v);
+  if(s&&s.st!=='offline'){const [t,c]=s.st==='unknown'?['모름','']:sessionStatus(s.st);return [t,setStTone[c]||'']}
+  return ['꺼짐',''];
+}
 function setRoleRow(v,live){
   const s=live.get(v.role);
-  let st=['꺼짐',''];
-  if(v.revoked_at||v.retired_at)st=roleBadge(v);
-  else if(s&&s.st!=='offline'){const [t,c]=sessionStatus(s.st);st=[t,setStTone[c]||'']}
-  return setRow('role:'+v.role,[setRoleName(v,s),v.role,(s&&s.machine)||v.last_machine||'',st,s&&s.ctx!==null&&s.ctx!==undefined?kTokens(s.ctx):'-']);
+  return setRow('role:'+v.role,[setRoleName(v,s),v.role,(s&&s.machine)||v.last_machine||'',setRoleState(v,s),s&&s.ctx!==null&&s.ctx!==undefined?kTokens(s.ctx):'-']);
+}
+// setLiveBadge re-badges an open role's detail from the session list
+// without redrawing its form (a live update must not drop typed values).
+function setLiveBadge(){
+  const c=detailCur;if(!c||c.tab!=='settings'||!c.id.startsWith('role:')||!setData||!Array.isArray(setData.roles))return;
+  const v=setData.roles.find(r=>'role:'+r.role===c.id);if(!v)return;
+  const t=setRoleState(v,setLive().get(v.role)),b=$('detailBadge');
+  b.textContent=t[0];b.className='sc-badge '+(toneClass[t[1]]||toneClass.neutral);
 }
 // setCatRows is category v's table rows: a list, {err} or null (not shown).
 function setCatRows(v){
@@ -638,7 +664,7 @@ async function findSetting(kind,key){
 const setHeads={
   qs:v=>v.fresh?{title:'새 질문 설정',badge:null}:({title:v.target,badge:v.can_ask?['질문 가능','success']:['질문 불가','neutral']}),
   refusals:v=>({title:'최근 거절',badge:[v.rows.length+'건',v.rows.length?'warning':'neutral']}),
-  role:v=>v.fresh?{title:'역할 초대',badge:null}:({title:setRoleName(v,setLive().get(v.role)),sub:v.role,badge:roleBadge(v)}),
+  role:v=>v.fresh?{title:'역할 초대',badge:null}:({title:setRoleName(v,setLive().get(v.role)),sub:v.role,badge:setRoleState(v,setLive().get(v.role))}),
   login:v=>({title:v.name,badge:v.disabled?['꺼짐','danger']:[v.kind==='builtin'?'내장':'외부','neutral']}),
   node:v=>({title:v.name,badge:v.revoked_at?['끊김','danger']:null}),
   group:v=>({title:v.fresh?'새 묶음':v.name,badge:null}),

@@ -23,7 +23,7 @@ function load(o) {
   ctx.can = p => ctx.perms.includes(p);
   vm.createContext(ctx);
   const src = ['tabs.js', 'tab_settings.js'].map(f => fs.readFileSync(path.join(__dirname, 'page', f), 'utf8')).join('\n');
-  vm.runInContext(src + '\n;Object.assign(this,{setTabNow,setScrNow,setScreens,setCats,setCatOn,setAddOk,setTabHref,settingsViewOfHash,showSettingsView,setCols});', ctx);
+  vm.runInContext(src + '\n;Object.assign(this,{setTabNow,setScrNow,setScreens,setCats,setCatOn,setAddOk,setTabHref,settingsViewOfHash,showSettingsView,setCols,setLive,setRoleRow,setRoleState});', ctx);
   return ctx;
 }
 const plain = v => JSON.parse(JSON.stringify(v));
@@ -87,4 +87,26 @@ test('the tab on screen: the open item\'s category, 화면 for its screens, else
   assert.equal(ctx.setScrNow(), 'sessions');
   ctx.detailCur = { tab: 'terminals', id: 'hs_1' }; ctx.curTab = 'terminals';
   assert.equal(ctx.setTabNow(), 'screens');
+});
+
+test('역할 줄 상태·컨텍스트: 슬롯 주소로 붙은 세션도 찾고, 여럿이면 가장 바쁜 것', () => {
+  const ctx = load();
+  const sess = (role, status, tok) => ({ role, online: true, status, context_tokens: tok, machine: 'm1' });
+  ctx.frameData = { terms: [], questions: [], perms: [], sessions: [
+    sess('team/boss-1', 'idle', 1000), sess('team/boss-2', 'busy', 2000), sess('team/boss-2-1', 'blocked:x', 3000),
+    sess('team/worker', 'idle', 500), sess('team/workers-1', 'busy', 9),
+  ] };
+  ctx.frameRows = d => d.sessions.map(s => ({ role: s.role, st: s.online ? s.status : 'offline', ctx: s.context_tokens, machine: s.machine, label: '' }));
+  ctx.sessionStatus = st => { const m = /^(blocked|error):/.exec(st); return m ? ['막힘', 'st-' + m[1]] : [{ busy: '바쁨', idle: '유휴' }[st], 'st-' + st]; };
+  ctx.termRole = () => ''; ctx.kTokens = n => n + 't'; ctx.setRow = (id, cells) => ({ id, cells });
+  const live = ctx.setLive();
+  assert.equal(live.get('team/boss').role, 'team/boss-2');
+  assert.equal(live.get('team/worker').role, 'team/worker');
+  assert.equal(live.get('team/none'), null);
+  const row = plain(ctx.setRoleRow({ role: 'team/boss' }, live));
+  assert.deepEqual(row.cells.slice(3), [['바쁨', 'success'], '2000t']);
+  // table and detail badge are the same value; ended registrations win; no session → 꺼짐
+  assert.deepEqual(plain(ctx.setRoleState({ role: 'team/boss' }, live.get('team/boss'))), ['바쁨', 'success']);
+  assert.deepEqual(plain(ctx.setRoleState({ role: 'team/boss', revoked_at: 'x' }, live.get('team/boss'))), ['끊김', 'danger']);
+  assert.deepEqual(plain(ctx.setRoleState({ role: 'team/none' }, null)), ['꺼짐', '']);
 });

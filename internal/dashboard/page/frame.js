@@ -101,6 +101,7 @@ function frameDraw(){
   if(!frameData)return;
   // 설정's 역할 table shows each role's state from the same list (#544).
   if(curTab==='settings'&&setTabNow()==='roles')drawSettings();
+  if(curTab==='settings')setLiveBadge();
   const list=$('sessList'),q=$('gsQ').value.trim().toLowerCase();
   const rows=frameRows(frameData).filter(r=>(!frameWait||r.wait>0)&&(!q||(r.role+' '+r.label+' '+r.machine).toLowerCase().includes(q)));
   const groups=new Map();
