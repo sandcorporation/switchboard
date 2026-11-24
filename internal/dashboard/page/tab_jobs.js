@@ -44,12 +44,22 @@ function drawJobs(jobs,scheds,autos){
   const rows=(list,each,empty)=>list.length?list.map(each):[node('p',empty,'empty ls-empty')];
   const sRows=sched.filter(hit).map(schedRow).concat(autos.filter(x=>listMatch(q,autoName(x.a),termRole(x.v),x.v.label)).map(x=>autoRow(x.v,x.a)));
   listFill($('jobs'),[
-    ...listGroup('jobs-sched','예약',sRows.length?sRows:[node('p','예약 없음','empty ls-empty')],{count:sRows.length,redraw:redraw}),
+    ...listGroup('jobs-sched','예약',sRows.length?sRows:[node('p','예약 없음','empty ls-empty')],{count:sRows.length,redraw:redraw,add:jobAdds()}),
     ...listGroup('jobs-live','돌고 있는 작업',rows(live.filter(hit),jobRow,'돌고 있는 작업 없음'),{count:live.filter(hit).length,redraw:redraw}),
     ...listGroup('jobs-ended','끝난 작업',rows(ended.filter(hit),j=>j.schedule?schedRow(j):jobRow(j),'끝난 작업 없음'),{count:ended.filter(hit).length,fold:true,redraw:redraw}),
   ],'');
   setTabCount('jobs',sched.length+live.length||null);
   $('jobsNote').textContent='';
+}
+// jobAdds are the 예약 head's buttons (#551): a new role schedule and, with
+// hosting, a new session's scheduled run; each opens an empty schedForm in
+// the detail (#jobs/new:sched, new:auto).
+function jobAdds(){
+  const box=node('span','','grp-adds');
+  const add=(text,title,id)=>{const b=node('button',text,'fr-ib grp-add');b.type='button';b.title=title;b.onclick=()=>openDetail('jobs',id,'body');return b};
+  box.append(add('+ 역할 예약','역할 예약을 만든다','new:sched'));
+  if(hostingOn)box.append(add('+ 세션 예약','세션 예약을 만든다','new:auto'));
+  return box;
 }
 // jobRowOf is one list row: top is the small line's parts, st an optional
 // [text,tone] at its right.
@@ -207,6 +217,29 @@ function schedForm(v,auto,save,cancel){
   };
   return f;
 }
+// drawNewSched is a new schedule's detail (#551): the role (or session) to
+// make it for, in the caller's view, then schedForm empty. A save opens the
+// new schedule.
+async function drawNewSched(j,box){
+  const pick=document.createElement('select');pick.required=true;
+  pick.title=j.session?'예약을 돌릴 세션':'예약 메일을 받을 역할';pick.setAttribute('aria-label',j.session?'세션':'역할');
+  if(j.session){for(const v of await api('terminals'))pick.append(new Option(termRole(v)+(v.label?' · '+v.label:''),v.id))}
+  else{
+    for(const v of await api('roles'))if(!v.retired_at)pick.append(new Option(v.role,v.role));
+    if($('jobRole').value)pick.value=$('jobRole').value;
+  }
+  if(!pick.options.length){box.append(node('p',j.session?'세션 없음':'역할 없음','empty'));return}
+  const f=schedForm({fresh:true},j.session,async b=>{
+    const at=pick.value;
+    const r=j.session?await apiSend('POST','terminals/'+encodeURIComponent(at)+'/autos',b):await apiSend('POST','schedules',Object.assign({role:at},b));
+    loadJobs();
+    openDetail('jobs',j.session?'auto:'+at+':'+r.id:'sched:'+r.id,'body');
+  },closeDetail);
+  const l=node('label',j.session?'세션':'역할');l.title=pick.title;
+  f.prepend(l,pick);f.id='schedNew';
+  box.append(f);
+  pick.focus();
+}
 // editButton opens schedForm with v's values below the detail's buttons;
 // a save sends the body (send) and draws the list and the detail again.
 function editButton(v,auto,send,title){
@@ -226,6 +259,7 @@ registerDetail('jobs',{
   load:async id=>{
     const i=id.indexOf(':'),kind=id.slice(0,i),rest=id.slice(i+1);
     try{
+      if(kind==='new')return rest==='sched'||rest==='auto'&&hostingOn?{fresh:true,session:rest==='auto'}:null;
       if(kind==='job')return await api('jobs/'+encodeURIComponent(rest));
       if(kind==='sched'){const sc=await api('schedules/'+encodeURIComponent(rest));sc.schedule=true;return sc}
       if(kind==='auto'&&hostingOn){
@@ -236,9 +270,9 @@ registerDetail('jobs',{
       return null;
     }catch(e){if(e.status===404)return null;throw e}
   },
-  head:j=>j.auto?{title:autoName(j.a),badge:j.a.state==='paused'?['멈춤','warning']:['활성','success']}:{title:'#'+j.id+' '+j.label,badge:jobBadge(j)},
-  subs:j=>[['body',j.auto||j.schedule?'예약':'명령']],
-  draw:async(j,sub,box)=>j.auto?drawJobAuto(j,box):j.schedule?drawSched(j,box):drawJob(j,box)
+  head:j=>j.fresh?{title:j.session?'새 세션 예약':'새 역할 예약',badge:null}:j.auto?{title:autoName(j.a),badge:j.a.state==='paused'?['멈춤','warning']:['활성','success']}:{title:'#'+j.id+' '+j.label,badge:jobBadge(j)},
+  subs:j=>[['body',j.fresh||j.auto||j.schedule?'예약':'명령']],
+  draw:async(j,sub,box)=>j.fresh?drawNewSched(j,box):j.auto?drawJobAuto(j,box):j.schedule?drawSched(j,box):drawJob(j,box)
 });
 // A linked thread: the directive with its state (열림 / 끝남, the answered
 // rule's Open), then the replies in order (답 marks one the answered rule
