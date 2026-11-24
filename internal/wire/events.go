@@ -19,4 +19,8 @@ type MailEvent struct {
 	// AnswersDirective: the mail answers a directive the recipient sent, and
 	// that directive's state (#275), as on wire.Message.
 	AnswersDirective *DirectiveRef `json:"answers_directive,omitempty"`
+	// LeftRemind: the mail is a [남긴 것] reminder (#565) and these are the
+	// items it lists that are still open, each needing a --verdict to
+	// complete it (#571): [] when none is open, absent for other mail.
+	LeftRemind []int64 `json:"left_remind,omitzero"`
 }

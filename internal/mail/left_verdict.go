@@ -57,6 +57,23 @@ func remindItems(db *sql.DB, id int64) ([]int64, error) {
 	return nil, nil
 }
 
+// openRemindItems is the items reminder id lists that are still open
+// (empty, not nil, when none is), nil for mail that is not a reminder: what a
+// session must judge to complete it, sent on its event (#571).
+func openRemindItems(db *sql.DB, id int64) []int64 {
+	items, err := remindItems(db, id)
+	if err != nil || len(items) == 0 {
+		return nil
+	}
+	open := []int64{}
+	for _, it := range items {
+		if itemOpen(db, it) {
+			open = append(open, it)
+		}
+	}
+	return open
+}
+
 // checkVerdict is why v cannot be taken, "" when it can; it trims v.Value.
 func checkVerdict(v *wire.LeftVerdict) string {
 	v.Value = strings.TrimSpace(v.Value)
