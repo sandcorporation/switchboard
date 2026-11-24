@@ -100,7 +100,7 @@ function pausedText(j){
 function jobAct(label,title,msg,doing,ask,send){
   const b=setButton(label,'',async()=>{
     let body;
-    if(ask){body=ask();if(body===false)return}
+    if(ask){body=await ask(b);if(body===false)return}
     b.disabled=true;setMsg(msg,doing);
     try{await send(body);loadJobs();drawDetail()}
     catch(e){b.disabled=false;setMsg(msg,e.message,'err')}
@@ -111,10 +111,10 @@ function jobAct(label,title,msg,doing,ask,send){
 function pauseButtons(j,msg){
   const id=encodeURIComponent(j.id),out=[];
   const resume=(label,title,body,doing,ask)=>out.push(jobAct(label,title,msg,doing,ask,()=>apiSend('POST','schedules/'+id+'/resume',body)));
-  if(j.state==='active')out.push(jobAct('멈춤','이 예약을 멈춘다 — 까닭을 남길 수 있다',msg,'멈추는 중…',()=>{const r=prompt('#'+j.id+' '+j.label+' 예약을 멈춥니다. 까닭 (선택)','');return r===null?false:{reason:r}},body=>apiSend('POST','schedules/'+id+'/pause',body)));
+  if(j.state==='active')out.push(jobAct('멈춤','이 예약을 멈춘다 — 까닭을 남길 수 있다',msg,'멈추는 중…',at=>askOn(at,{text:'#'+j.id+' '+j.label+' 예약을 멈춥니다.',input:'까닭 (선택)',ok:'멈춤 확인'}).then(r=>r===null?false:{reason:r}),body=>apiSend('POST','schedules/'+id+'/pause',body)));
   else if(j.state==='paused'&&j.passed){
     resume('지금 보내고 켜기','지난 시각의 프롬프트를 지금 보내고 예약을 다시 켠다',{passed:'fire'},'켜는 중…');
-    resume('버리고 끝내기','지난 시각을 버리고 예약을 끝낸다',{passed:'drop'},'끝내는 중…',()=>confirm('#'+j.id+' '+j.label+' 지난 시각을 버리고 예약을 끝낼까요?')?undefined:false);
+    resume('버리고 끝내기','지난 시각을 버리고 예약을 끝낸다',{passed:'drop'},'끝내는 중…',at=>askOn(at,{text:'#'+j.id+' '+j.label+' 지난 시각을 버리고 예약을 끝낼까요?',ok:'끝내기 확인'}).then(r=>r?undefined:false));
   }
   else if(j.state==='paused')resume('다시','멈춘 예약을 다시 켠다',{},'켜는 중…');
   return out;
@@ -135,9 +135,9 @@ function drawJob(j,box){
   const msg=node('span','','msg');msg.setAttribute('role','status');
   const id=encodeURIComponent(j.id),b=[];
   if(jobLive(j.state)){
-    const stop=jobAct('중지','이 작업을 멈춘다',msg,'멈추는 중…',()=>confirm('#'+j.id+' '+j.label+' 작업을 멈출까요?')?undefined:false,()=>apiSend('POST','jobs/'+id+'/stop'));
+    const stop=jobAct('중지','이 작업을 멈춘다',msg,'멈추는 중…',at=>askOn(at,{text:'#'+j.id+' '+j.label+' 작업을 멈출까요?',ok:'중지 확인'}).then(r=>r?undefined:false),()=>apiSend('POST','jobs/'+id+'/stop'));
     stop.disabled=!!j.stop_requested;b.push(stop);
-  }else b.push(jobAct('지우기','이 기록을 지운다 — 되돌릴 수 없다',msg,'지우는 중…',()=>confirm('#'+j.id+' '+j.label+' 기록을 지울까요? 되돌릴 수 없습니다.')?undefined:false,()=>apiSend('DELETE','jobs/'+id).then(closeDetail)));
+  }else b.push(jobAct('지우기','이 기록을 지운다 — 되돌릴 수 없다',msg,'지우는 중…',at=>askOn(at,{text:'#'+j.id+' '+j.label+' 기록을 지울까요? 되돌릴 수 없습니다.',ok:'지우기 확인',danger:true}).then(r=>r?undefined:false),()=>apiSend('DELETE','jobs/'+id).then(closeDetail)));
   jobActs(box,b,msg);
   box.append(dl([['종류',jobKinds[j.kind]||j.kind],['역할',j.role],['기계',j.machine],['작업 폴더',node('code',j.cwd)],['시작',when(j.started_at||j.created_at)],['만료',when(j.expires_at)],['ID',String(j.id)],['명령',node('pre',j.command)]]));
   if(j.error)box.append(node('p',j.error,'err'));
@@ -145,7 +145,7 @@ function drawJob(j,box){
 }
 function drawSched(j,box){
   const msg=node('span','','msg');msg.setAttribute('role','status');
-  const rm=jobAct('지우기','이 예약을 지운다 — 되돌릴 수 없다',msg,'지우는 중…',()=>confirm('#'+j.id+' '+j.label+' 예약을 지울까요? 되돌릴 수 없습니다.')?undefined:false,()=>apiSend('DELETE','schedules/'+encodeURIComponent(j.id)).then(closeDetail));
+  const rm=jobAct('지우기','이 예약을 지운다 — 되돌릴 수 없다',msg,'지우는 중…',at=>askOn(at,{text:'#'+j.id+' '+j.label+' 예약을 지울까요? 되돌릴 수 없습니다.',ok:'지우기 확인',danger:true}).then(r=>r?undefined:false),()=>apiSend('DELETE','schedules/'+encodeURIComponent(j.id)).then(closeDetail));
   const edit=j.state==='active'||j.state==='paused'?[editButton(j,false,body=>apiSend('PUT','schedules/'+encodeURIComponent(j.id),body),'시각·프롬프트·라벨을 고친다 — 번호와 기록은 그대로')]:[];
   jobActs(box,edit.concat(pauseButtons(j,msg),rm),msg);
   const cond=j.kind==='cron'?node('code',j.cron+' ('+j.tz+')'):when(j.next_fire_at||j.last_fire_at);
@@ -161,7 +161,7 @@ function drawJobAuto(x,box){
   b.push(jobAct('지금 실행','이 예약을 지금 한 번 돌린다',msg,'실행 요청 중…',null,()=>apiSend('POST','terminals/'+encodeURIComponent(v.id)+'/autos/'+a.id+'/run')));
   if(a.state==='paused')b.push(jobAct('다시','멈춘 예약을 다시 켠다',msg,'켜는 중…',null,()=>apiSend('POST','terminals/'+encodeURIComponent(v.id)+'/autos/'+a.id+'/resume')));
   else b.push(jobAct('멈춤','이 예약을 멈춘다',msg,'멈추는 중…',null,()=>apiSend('POST','terminals/'+encodeURIComponent(v.id)+'/autos/'+a.id+'/pause')));
-  b.push(jobAct('지우기','이 예약과 실행 기록을 지운다 — 되돌릴 수 없다',msg,'지우는 중…',()=>confirm(autoName(a)+'을(를) 지울까요? 실행 기록도 함께 지워지고 되돌릴 수 없습니다.')?undefined:false,()=>apiSend('DELETE','terminals/'+encodeURIComponent(v.id)+'/autos/'+a.id).then(closeDetail)));
+  b.push(jobAct('지우기','이 예약과 실행 기록을 지운다 — 되돌릴 수 없다',msg,'지우는 중…',at=>askOn(at,{text:autoName(a)+'을(를) 지울까요? 실행 기록도 함께 지워지고 되돌릴 수 없습니다.',ok:'지우기 확인',danger:true}).then(r=>r?undefined:false),()=>apiSend('DELETE','terminals/'+encodeURIComponent(v.id)+'/autos/'+a.id).then(closeDetail)));
   jobActs(box,b,msg);
   box.append(dl([['세션',termRole(v)+(v.label?' · '+v.label:'')],['cron',a.cron+' ('+a.tz+')'],['다음',a.state==='paused'?'-':when(a.next_fire_at)],['사전 확인',a.check?node('code',a.check):'-'],['대화',a.resume?'이어서':'새 대화'],['최대 실행',Math.round(a.max_run_ms/60000)+'분'],['알림 받는 역할',(a.notify||[]).join(', ')||'-'],['ID',String(a.id)],['프롬프트',node('pre',a.prompt||'')]]));
   box.append(node('h3','지난 실행','dsec'),autoRuns(a.runs||[]));

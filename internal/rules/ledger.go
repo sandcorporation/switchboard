@@ -28,6 +28,7 @@ import (
 //	POST   proposers     set a role's proposing on or off (full callers)
 //	POST   classify      classify a person's answer to c's question
 //	GET    unclassified  the answers still unclassified (ETag)
+//	GET    classes       every counted answer with its class (full callers)
 //	GET    topics        the topics, with the rows in force c sees
 //	GET    mine          the rows in force reaching c's role, for its session hook (ETag)
 //	POST   hits          count hits of c's rows ({"ids":[…]})
@@ -53,6 +54,8 @@ func (s *Service) API(w http.ResponseWriter, r *http.Request, c Caller, rest str
 		s.classifyAPI(w, r, c)
 	case rest == "unclassified" && r.Method == http.MethodGet:
 		s.unclassifiedAPI(w, r, c)
+	case rest == "classes" && r.Method == http.MethodGet:
+		s.classesAPI(w, c)
 	case rest == "tags" || strings.HasPrefix(rest, "tags/"):
 		s.tagsAPI(w, r, c, strings.TrimPrefix(strings.TrimPrefix(rest, "tags"), "/"))
 	default:

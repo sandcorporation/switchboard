@@ -59,6 +59,9 @@ type QuestionView struct {
 	// RelayTo are the addresses named at ask time that also get the
 	// answer's text as mail; omitted when none.
 	RelayTo []string `json:"relay_to,omitempty"`
+	// RequestID is the owner's request the question was asked under
+	// (#501); omitted for none (#581: the dashboard links it).
+	RequestID int64 `json:"request_id,omitempty"`
 
 	AskerBase string `json:"-"` // server-side only
 }

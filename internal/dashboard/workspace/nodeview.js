@@ -117,7 +117,7 @@ function wsNodeIndex(opts){
       const t=node('span','','ws-grant-text');t.append(node('span',g.role,'mono'),node('span',(g.dir_roots||[]).join(', '),'mono muted'));
       const x=node('button','거두기');x.type='button';x.dataset.key='g:'+n.name+':'+g.role;
       x.onclick=async()=>{
-        if(!confirm(g.role+' 역할의 '+n.name+' 허가를 거둘까요?'))return;
+        if(!await askOn(x,{text:g.role+' 역할의 '+n.name+' 허가를 거둘까요?',ok:'거두기 확인'}))return;
         const w=N.grantWithout(g,n.name);
         try{
           if(w.method==='DELETE')await apiSend('DELETE','host-grants?role='+encodeURIComponent(g.role));
@@ -142,7 +142,7 @@ msgs.set(n.name,[g.role+' 허가를 거뒀습니다.','ok'])}
       const acts=node('div','','ws-node-acts');
       const cut=node('button','끊기');cut.type='button';cut.dataset.key='x:'+n.name;
       cut.onclick=async()=>{
-        if(!confirm(n.name+' 노드를 끊을까요? 연결이 바로 끊기고 이 노드의 토큰은 다시 쓸 수 없습니다.'))return;
+        if(!await askOn(cut,{text:n.name+' 노드를 끊을까요? 연결이 바로 끊기고 이 노드의 토큰은 다시 쓸 수 없습니다.',ok:'끊기 확인',danger:true}))return;
         try{await apiSend('DELETE','nodes/'+encodeURIComponent(n.name));msgs.set(n.name,[n.name+' 노드를 끊었습니다.','ok'])}
         catch(e){msgs.set(n.name,[e.message,'err'])}
         load();

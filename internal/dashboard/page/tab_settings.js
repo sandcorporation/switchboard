@@ -93,10 +93,12 @@ function setRow(id,cells){
 // setDirty is the id of the open item whose form has values not saved;
 // opening another item asks first whether to drop them.
 let setDirty='';
-function setOpen(id){
+// Leaving a form with unsaved values asks at the top of its body (#581).
+async function setOpen(id){
   const c=detailCur;
   if(c&&c.tab==='settings'&&setDirty===c.id&&c.id!==id){
-    if(!confirm('저장하지 않은 값이 있습니다. 버리고 옮길까요?'))return;
+    if($('detailBody').querySelector(':scope>.ask'))return;
+    if(!await askOn($('detailBody'),{top:true,text:'저장하지 않은 값이 있습니다. 버리고 옮길까요?',ok:'버리고 옮김'}))return;
     setForms.clear();
   }
   setDirty='';openDetail('settings',id);
@@ -339,8 +341,8 @@ function drawQS(v,box){
   if(v.fresh){drawSetNote(box,'qs:+');box.append(qsForm(v));return}
   if(v.target!=='default'){
     const acts=node('div','','detail-acts');
-    acts.append(setButton('삭제','',async()=>{
-      if(!confirm(v.target+' 설정을 지울까요?'))return;
+    acts.append(setButton('삭제','',async e=>{
+      if(!await askOn(e.currentTarget,{text:v.target+' 설정을 지울까요?'}))return;
       try{await apiSend('DELETE','question-settings/'+targetPath(v.target));setForms.delete(v.target);setMsg($('settingsMsg'),v.target+' 설정을 지웠습니다.','ok');closeDetail();loadSettingsView()}
       catch(e){setNote('qs:'+v.target,e.message,'err');drawDetail()}
     }));
@@ -408,22 +410,23 @@ function drawRole(v,box){
   if(v.fresh){drawRoleInvite(box);return}
   const id='role:'+v.role,revoke=!v.revoked_at,acts=node('div','','detail-acts');
   if(!v.retired_at){
-    acts.append(setButton(revoke?'끊기':'되살리기','',async()=>{
+    acts.append(setButton(revoke?'끊기':'되살리기','',async e=>{
       const used=revoke&&v.last_used_at&&Date.now()-new Date(v.last_used_at).getTime()<864e5;
-      if(!confirm(revoke?v.role+' 역할을 끊을까요? 이 토큰으로 접속한 세션이 모두 끊깁니다.'+(used?'\n최근 사용: '+when(v.last_used_at)+(v.last_machine?' · '+v.last_machine:''):''):v.role+' 역할을 되살릴까요?'))return;
+      if(!await askOn(e.currentTarget,{text:revoke?v.role+' 역할을 끊을까요? 이 토큰으로 접속한 세션이 모두 끊깁니다.'+(used?' 최근 사용: '+when(v.last_used_at)+(v.last_machine?' · '+v.last_machine:''):''):v.role+' 역할을 되살릴까요?'}))return;
       try{await apiSend('POST','roles/'+targetPath(v.role)+(revoke?'/revoke?force=1':'/restore'));setNote(id,v.role+(revoke?' 역할을 끊었습니다.':' 역할을 되살렸습니다.'),'ok')}
       catch(e){setNote(id,e.message,'err')}
       loadSettingsView();drawDetail();
     }));
-    acts.append(setButton('토큰 바꾸기','',async()=>{
-      if(!confirm(v.role+' 토큰을 바꿀까요? 지금 토큰은 바로 못 쓰게 됩니다.'))return;
+    acts.append(setButton('토큰 바꾸기','',async e=>{
+      if(!await askOn(e.currentTarget,{text:v.role+' 토큰을 바꿀까요? 지금 토큰은 바로 못 쓰게 됩니다.'}))return;
       try{const r=await apiSend('POST','roles/'+targetPath(v.role)+'/rotate',{generate:true});roleToken={id:id,token:r.token};setNote(id,v.role+' 토큰을 바꿨습니다.','ok')}
       catch(e){setNote(id,e.message,'err')}
       loadSettingsView();drawDetail();
     }));
-    const retire=setButton('은퇴','danger',async()=>{
+    const retire=setButton('은퇴','danger',async e=>{
+      const at=e.currentTarget;
       let n='?';try{n=String(await roleSessions(v.role))}catch(e){}
-      if(!confirm(v.role+' 역할을 은퇴할까요? 되돌릴 수 없습니다. 같은 이름으로 다시 등록할 수 없습니다.\n지금 붙어 있는 세션: '+n))return;
+      if(!await askOn(at,{danger:true,text:v.role+' 역할을 은퇴할까요? 되돌릴 수 없습니다. 같은 이름으로 다시 등록할 수 없습니다. 지금 붙어 있는 세션: '+n}))return;
       try{await apiSend('POST','roles/'+targetPath(v.role)+'/retire?force=1');roleToken=null;setNote(id,v.role+' 역할을 은퇴했습니다.','ok')}
       catch(e){setNote(id,e.message,'err')}
       loadSettingsView();drawDetail();
@@ -442,8 +445,8 @@ function drawNode(v,box){
   const id='node:'+v.name;
   if(!v.revoked_at){
     const acts=node('div','','detail-acts');
-    acts.append(setButton('끊기','',async()=>{
-      if(!confirm(v.name+' 노드를 끊을까요? 연결이 바로 끊기고 이 노드의 토큰은 다시 쓸 수 없습니다.'))return;
+    acts.append(setButton('끊기','',async e=>{
+      if(!await askOn(e.currentTarget,{text:v.name+' 노드를 끊을까요? 연결이 바로 끊기고 이 노드의 토큰은 다시 쓸 수 없습니다.'}))return;
       try{await apiSend('DELETE','nodes/'+encodeURIComponent(v.name));setNote(id,v.name+' 노드를 끊었습니다.','ok')}
       catch(e){setNote(id,e.message,'err')}
       loadSettingsView();drawDetail();
@@ -525,8 +528,8 @@ function drawWorkGroup(g,box){
   const id='group:'+(g.fresh?'+':g.name);
   if(!g.fresh){
     const acts=node('div','','detail-acts');
-    const rm=setButton('지우기','',async()=>{
-      if(!confirm(g.name+' 묶음을 지울까요?'))return;
+    const rm=setButton('지우기','',async e=>{
+      if(!await askOn(e.currentTarget,{text:g.name+' 묶음을 지울까요?'}))return;
       try{await apiSend('DELETE','terminals/work-groups/'+encodeURIComponent(g.name));setForms.delete(id);setMsg($('settingsMsg'),g.name+' 묶음을 지웠습니다.','ok');closeDetail()}
       catch(e){setNote(id,e.message,'err');drawDetail()}
       loadSettingsView();
@@ -656,14 +659,14 @@ function drawHook(v,box){
   const id='hook:'+(v.fresh?'+':v.id);
   if(!v.fresh){
     const acts=node('div','','detail-acts');
-    acts.append(setButton('주소 다시 만들기','',async()=>{
-      if(!confirm(v.name+' 주소를 다시 만들까요? 지금 주소는 바로 못 쓰게 됩니다.'))return;
+    acts.append(setButton('주소 다시 만들기','',async e=>{
+      if(!await askOn(e.currentTarget,{text:v.name+' 주소를 다시 만들까요? 지금 주소는 바로 못 쓰게 됩니다.'}))return;
       try{const r=await apiSend('POST','hooks/'+v.id+'/address');hookAddr={id:v.id,token:r.token};setNote(id,'새 주소를 만들었습니다.','ok')}
       catch(e){setNote(id,e.message,'err')}
       loadSettingsView();drawDetail();
     },'새 받는 주소를 만들고 지금 주소를 끊음'));
-    acts.append(setButton('지우기','',async()=>{
-      if(!confirm(v.name+' 웹훅을 지울까요? 이 주소로 오는 알림은 더 받지 않습니다.'))return;
+    acts.append(setButton('지우기','',async e=>{
+      if(!await askOn(e.currentTarget,{text:v.name+' 웹훅을 지울까요? 이 주소로 오는 알림은 더 받지 않습니다.'}))return;
       try{await apiSend('DELETE','hooks/'+v.id);setForms.delete(id);setMsg($('settingsMsg'),v.name+' 웹훅을 지웠습니다.','ok');closeDetail()}
       catch(e){setNote(id,e.message,'err');drawDetail()}
       loadSettingsView();

@@ -24,7 +24,7 @@ function permAnswerForm(v){
   const msg=node('div','','msg');msg.setAttribute('role','status');
   const send=async decision=>{
     const word=decision==='allow'?'허용':'거절';
-    if(!confirm(v.requester+'의 '+v.tool+' 요청을 '+word+'할까요? 답은 바꿀 수 없습니다.'))return;
+    if(!await askOn(decision==='allow'?allow:deny,{text:v.requester+'의 '+v.tool+' 요청을 '+word+'할까요? 답은 바꿀 수 없습니다.',ok:word+' 확인',danger:decision!=='allow'}))return;
     allow.disabled=deny.disabled=true;
     try{
       await apiSend('POST','permissions/'+encodeURIComponent(v.id)+'/answer',{decision:decision,note:note.value});

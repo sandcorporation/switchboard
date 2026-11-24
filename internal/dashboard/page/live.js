@@ -4,7 +4,7 @@
 // (not while a field in it has focus), the others reload when next shown.
 // Reconnects back off exponentially (1s to 30s) and resume with boot+after.
 const liveReload={requests:loadRequests,progress:loadProgress,sessions:loadSessions,reports:loadReports,jobs:loadJobs,metrics:loadMetrics,mail:load,permissions:loadPermissions,rules:loadRules,questions:loadQuestions,settings:loadSettingsView,terminals:loadTerminals};
-const liveCounts={progress:refreshProgressCount,requests:refreshRequestCount,reports:refreshReportCount,questions:refreshQuestionCount,permissions:refreshPermissionCount,metrics:refreshMetricsCount};
+const liveCounts={rules:refreshRuleCount,progress:refreshProgressCount,requests:refreshRequestCount,reports:refreshReportCount,questions:refreshQuestionCount,permissions:refreshPermissionCount,metrics:refreshMetricsCount};
 let liveBoot='',liveSeq=0,liveDelay=1000,liveDirty=new Set(),liveStale=new Set(),liveTimer=0,liveDetail=false;
 function liveMark(kinds){
   if(ws)ws.live(kinds);
@@ -21,7 +21,8 @@ function liveMark(kinds){
 }
 function liveFlush(){
   liveTimer=0;
-  const a=document.activeElement,busy=a&&a.matches&&a.matches('input,textarea,select')&&($('panel-'+curTab).contains(a)||$('detail').contains(a));
+  // An open askOn question (#581) holds the redraw too, or it would go.
+  const a=document.activeElement,busy=a&&a.matches&&a.matches('input,textarea,select')&&($('panel-'+curTab).contains(a)||$('detail').contains(a))||!!document.querySelector('#detail .ask,#panel-'+curTab+' .ask');
   if(busy){liveTimer=setTimeout(liveFlush,2000);return}
   for(const k of liveDirty){if(tabShown(k))liveReload[k]();else if(tabLoaded.has(k))liveStale.add(k)}
   liveDirty.clear();
@@ -51,9 +52,9 @@ let curTab='';
 function showTab(name){
   if(name!=='terminals'&&$('termAdd').open)$('termAdd').close();
   curTab=name;
-  // 권한 요청 and 규칙 sit in 답이 필요함 (#514), 진행·세션 표·터미널 in 설정
-  // (#515): that row stays marked.
-  const mark=name==='permissions'||name==='rules'?'questions':setTabs.includes(name)?'settings':name;
+  // 권한 요청 sits in 답이 필요함 (#514), 세션 표·터미널 in 설정 (#515):
+  // that row stays marked. 규칙 is a menu row of its own (#581).
+  const mark=name==='permissions'?'questions':setTabs.includes(name)?'settings':name;
   for(const n of tabNames){
     const on=n===name,t=$('tab-'+n);
     t.setAttribute('aria-selected',n===mark?'true':'false');
@@ -63,7 +64,7 @@ function showTab(name){
     $('panel-'+n).hidden=ws&&!pageTab(n)?false:!on;
     if(n===mark)$('crumbTab').textContent=t.querySelector('.tab-name').textContent;
   }
-  frameSplit(listTab(name)&&!(name==='questions'&&questionView==='decisions'));
+  frameSplit(listTab(name));
   // A menu is on screen (#519): no session screen, no right column.
   frameScreen('menu');
   frameFull(fullTabs.includes(name));
@@ -80,9 +81,9 @@ function loadTab(name){
 }
 // tabShown: the current tab, or (workspace) any section on screen.
 function tabShown(k){return k===curTab||!!(ws&&ws.shown(k))}
-// Routes: #progress #sessions #metrics #mail #permissions #questions #settings (the last tab),
-// #settings-<tab> such as #settings-roles or #settings-qsettings (설정 tabs), #decisions (질문 tab,
-// 결정 view), #q=<id> (rewritten to #questions/<id>/answer), #terminal=<id> (an older link: it becomes
+// Routes: #progress #sessions #metrics #mail #permissions #questions #rules #settings (the last tab),
+// #settings-<tab> such as #settings-roles or #settings-qsettings (설정 tabs), #decisions (답이 필요함,
+// 결정 view, #581), #q=<id> (rewritten to #questions/<id>/answer), #terminal=<id> (an older link: it becomes
 // #terminals/<id>/screen), and #<tab>/<id>/<sub> for a tab with a detail panel
 // (registerDetail). No hash or an unknown one shows 지시 (#501).
 function route(){
@@ -92,7 +93,7 @@ function route(){
   if(parts[0]==='permissions'&&parts[1]){history.replaceState(null,'',detailHash('questions','p:'+parts[1]));route();return}
   if(parts.length>1&&details[parts[0]]&&visibleTabs().includes(parts[0])&&parts[1]){
     let id=parts[1];try{id=decodeURIComponent(id)}catch(e){}
-    if(parts[0]==='questions')showQuestionView('questions');
+    if(parts[0]==='questions')showQuestionView(id.startsWith('d:')?'decisions':'questions');
     // The 설정 menu marks the item's category (#538).
     if(parts[0]==='settings')showSettingsView(setKindView[id.slice(0,id.indexOf(':'))]);
     showTab(parts[0]);showDetail(parts[0],id,parts[2]||'');
@@ -113,7 +114,7 @@ function route(){
     history.replaceState(null,'',detailHash('terminals',id,'screen'));route();
     return;
   }
-  if(h==='decisions'){showTab('questions');showQuestionView('decisions');return}
+  if(h==='decisions'){showQuestionView('decisions');showTab('questions');return}
   // 설정 itself (#settings) leaves a list already on screen where it was (#536).
   if(settingsViewOfHash(h)){showSettingsView(settingsViewOfHash(h));showTab('settings');return}
   if(h==='questions'||h.startsWith('q='))showQuestionView('questions');
@@ -126,7 +127,7 @@ function route(){
   }
   showTab(visibleTabs().includes(h)?h:'requests');
 }
-// selectTab(name) also takes 'decisions' (the 결정 view of the 질문 tab).
+// selectTab(name) also takes 'decisions' (the 결정 view of 답이 필요함).
 function selectTab(name){
   if(location.hash==='#'+name)route();else location.hash=name;
 }
@@ -159,10 +160,8 @@ $('metDays30').onclick=()=>setMetricsDays(30);
 $('reloadReports').onclick=()=>loadReports();
 $('reloadRequests').onclick=()=>loadRequests();
 $('reloadRules').onclick=()=>loadRules();
-$('ruleService').onchange=()=>loadRules();
 $('ruleTopic').onchange=()=>loadRules();
-$('ruleAll').onchange=()=>loadRules();
-$('ruleProposed').onclick=()=>{rulesProposed=!rulesProposed;rulesKind='';loadRules()};
+$('ruleState').onchange=()=>loadRules();
 $('ruleForm').onsubmit=e=>{
   e.preventDefault();
   const body=Object.assign(ruleSourceBody($('ruleSource').value),{kind:$('ruleKind').value,text:$('ruleText').value,topic:$('ruleTopicIn').value.trim(),new_topic:$('ruleNewTopic').checked,scope:parseRuleScope($('ruleScope').value),group:$('ruleGroup').value.trim(),match:ruleMatchBody($('ruleWhenTool').value,$('ruleWhenCommand').value,$('ruleWhenPath').value)});
@@ -179,6 +178,7 @@ $('task').addEventListener('keydown',e=>{if(e.key==='Enter'){mailID='';load()}})
 loadMe().then(frameStart);
 route();
 if(!tabLoaded.has('questions'))refreshQuestionCount();
+if(!tabLoaded.has('rules'))refreshRuleCount();
 if(!tabLoaded.has('reports'))refreshReportCount();
 if(!tabLoaded.has('requests'))refreshRequestCount();
 if(!tabLoaded.has('progress'))refreshProgressCount();

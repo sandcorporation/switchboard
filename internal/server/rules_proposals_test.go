@@ -272,4 +272,21 @@ func TestAnswerClasses(t *testing.T) {
 	if _, full = unclassifiedAs(t, s, bossToken, internalBossRole, "", ""); full.Count != 0 || len(full.Roles) != 0 {
 		t.Fatalf("full after = %+v", full)
 	}
+
+	// The dashboard reads every answer's class (#581); only a full reader.
+	if w := callAs(s, "GET", "/api/rules/classes", workerToken, "team/worker", nil); w.Code != 403 {
+		t.Fatalf("classes as a worker: %d %s", w.Code, w.Body)
+	}
+	w = callAs(s, "GET", "/api/rules/classes", bossToken, internalBossRole, nil)
+	var all wire.AnswerClasses
+	if err := json.Unmarshal(w.Body.Bytes(), &all); w.Code != 200 || err != nil {
+		t.Fatalf("classes: %d %s", w.Code, w.Body)
+	}
+	got := map[string]wire.AnswerRef{}
+	for _, a := range all.Answers {
+		got[a.ID] = a
+	}
+	if len(all.Answers) != 3 || got[q1].Class != wire.AnswerOnce || got[q2].Class != wire.AnswerRule || got[q2].Rule != mineRow.ID || got[q3].Rule != src.ID {
+		t.Fatalf("classes = %+v", all.Answers)
+	}
 }

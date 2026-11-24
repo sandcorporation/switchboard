@@ -4,6 +4,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -21,7 +22,7 @@ func TestDashboardTabsSkeleton(t *testing.T) {
 	// since #514 put them in 답이 필요함, 메일, 보고, 작업 · 예약, 지표), then
 	// its foot (설정, 세션 표, 터미널).
 	last := -1
-	for _, name := range []string{"requests", "progress", "questions", "permissions", "rules", "mail", "reports", "jobs", "metrics", "settings", "sessions", "terminals"} {
+	for _, name := range []string{"requests", "progress", "questions", "permissions", "mail", "reports", "rules", "jobs", "metrics", "settings", "sessions", "terminals"} {
 		tab := `id="tab-` + name + `" data-tab="` + name + `" aria-controls="panel-` + name + `"`
 		i := strings.Index(body, tab)
 		if i < 0 {
@@ -213,7 +214,7 @@ func TestDashboardTerminalsTabOnlyWithHosting(t *testing.T) {
 		`terminals:loadTerminals}`,
 		`tabLoaders.terminals=loadTerminals;`,
 		`api('terminals')`,
-		`confirm(`,
+		`askOn(`,
 		"$('tab-terminals').hidden=!hostingOn;if(setData)loadSettingsView();",
 		`if(!setViewHash[v]||((v==='nodes'||v==='groups')&&!hostingOn))v='roles';`,
 		`api('nodes')`,
@@ -303,7 +304,7 @@ func TestDashboardDesignFrame(t *testing.T) {
 		`id="newSession"`, `id="whoName"`, `id="logout"`, `</header>`,
 		`<aside class="lp" id="lp" aria-label="주 메뉴">`, `id="gsQ"`,
 		`<div id="tabs" class="tabs" role="tablist" aria-label="메뉴" aria-orientation="vertical">`,
-		`id="tab-requests"`, `id="tab-progress"`, `id="tab-questions"`, `id="tab-permissions"`, `id="tab-rules"`, `id="tab-mail"`, `id="tab-reports"`, `id="tab-jobs"`, `id="tab-metrics"`,
+		`id="tab-requests"`, `id="tab-progress"`, `id="tab-questions"`, `id="tab-permissions"`, `id="tab-mail"`, `id="tab-reports"`, `id="tab-rules"`, `id="tab-jobs"`, `id="tab-metrics"`,
 		`id="sessWait"`, `id="sessList"`, `id="lpFoot"`, `id="tab-settings"`, `id="tab-sessions"`, `id="tab-terminals"`, `</aside>`,
 		`id="gripL" role="separator"`, `<div class="sc-app-main" id="appMain">`, `<main class="sc-app-page">`, `id="panel-progress"`, `</main>`,
 		`<footer class="fr-status" id="frStatus" aria-label="상태">`, `id="live"`, `id="stCount"`, `id="stHour"`, `id="stUsage"`, `</footer>`, `<script>`,
@@ -436,8 +437,8 @@ func TestDashboardTerminalsDetail(t *testing.T) {
 		"detailRow(tr,'terminals',v.id);",
 		"registerDetail('terminals',{",
 		"subs:()=>[['screen','화면'],['log','기록'],['autos','예약'],['settings','설정']],",
-		"add('지우기',()=>{if(confirm(",
-		"add('새 대화',()=>{if(confirm(",
+		"add('지우기',async e=>{if(await askOn(e.currentTarget,{",
+		"add('새 대화',async e=>{if(await askOn(e.currentTarget,{",
 		"node('p','바꾼 설정은 다음 시작부터 적용','muted')",
 		"api('terminals/'+id+'/events'),api('terminals/'+id+'/log')",
 		"termTable('termEvents',['시각','종류','종료 코드','재시작','요청'],events,",
@@ -523,9 +524,9 @@ func TestDashboardWaitAndDetails(t *testing.T) {
 		// 지시: thread first, 닫기 through the admin close API.
 		"subs:()=>[['thread','스레드'],['body','본문']],",
 		"apiSend('POST','messages/'+encodeURIComponent(x.m.id)+'/close')",
-		// 질문: 답하기 / 관련 결정; the form survives live redraws; a late 409 is one line.
+		// 질문: one body (#581); the form survives live redraws; a late 409 is one line.
 		"registerDetail('questions',{",
-		"subs:x=>[['answer',x.q.status==='pending'&&x.q.can_answer?'답하기':'답'],['decisions','관련 결정 '+x.decs.length]],",
+		"subs:()=>[['answer','답']],",
 		"if(!f){f=answerForm(q);qForms.set(q.id,f)}",
 		"qNotes.set(q.id,'이미 답했거나 거둔 질문입니다(409)');",
 		// 답이 필요함 (#514): questions, permission requests (p:<id>) and
@@ -589,8 +590,8 @@ func TestDashboardSettingsDetail(t *testing.T) {
 		"logins:[d.logins,v=>setRow('login:'+v.name,", "hooks:[d.hooks,hookRow],", "qsettings:[d.qs,v=>setRow('qs:'+v.target,", "watches:[d.watches,watchRow],",
 		"setRow('refusals:24h',['최근 거절',",
 		// A row asks before dropping values not saved (#544).
-		"if(!confirm('저장하지 않은 값이 있습니다. 버리고 옮길까요?'))return;",
-		"const listTabs=['requests','questions','mail','reports','jobs'];", "const fullTabs=['metrics','settings','progress','sessions','terminals'];",
+		"if(!await askOn($('detailBody'),{top:true,text:'저장하지 않은 값이 있습니다. 버리고 옮길까요?',ok:'버리고 옮김'}))return;",
+		"const listTabs=['requests','questions','mail','reports','rules','jobs'];", "const fullTabs=['metrics','settings','progress','sessions','terminals'];",
 		// 역할's + makes a one-time invite; 질문 설정's + a blank form in the panel.
 		"roleInvite=await apiSend('POST','invites',body)", "if(kind==='qs')return key==='+'?{fresh:true,",
 		"host?get(api('nodes')):null,host?get(api('terminals/work-groups')):null",
@@ -602,23 +603,23 @@ func TestDashboardSettingsDetail(t *testing.T) {
 		"function closeDetail(){if(detailCur){const b=details[detailCur.tab].back;location.hash=b?b(detailCur.id):detailCur.tab}}",
 		"if(parts[0]==='settings')showSettingsView(setKindView[id.slice(0,id.indexOf(':'))]);",
 		"apiSend('PUT','question-settings/'+targetPath(target),{can_ask:canAsk.checked,watchers:watchers,discord:discord.checked})",
-		"if(!confirm(v.target+' 설정을 지울까요?'))return;",
+		"if(!await askOn(e.currentTarget,{text:v.target+' 설정을 지울까요?'}))return;",
 		"apiSend('DELETE','question-settings/'+targetPath(v.target))",
 		"if(v.target!=='default'){",
 		"apiSend('POST','roles/'+targetPath(v.role)+(revoke?'/revoke?force=1':'/restore'))",
-		"' 역할을 끊을까요? 이 토큰으로 접속한 세션이 모두 끊깁니다.'+(used?'\\n최근 사용: '",
-		"confirm(v.name+' 노드를 끊을까요? 연결이 바로 끊기고 이 노드의 토큰은 다시 쓸 수 없습니다.')",
+		"' 역할을 끊을까요? 이 토큰으로 접속한 세션이 모두 끊깁니다.'+(used?' 최근 사용: '",
+		"askOn(e.currentTarget,{text:v.name+' 노드를 끊을까요? 연결이 바로 끊기고 이 노드의 토큰은 다시 쓸 수 없습니다.'})",
 		"apiSend('DELETE','nodes/'+encodeURIComponent(v.name))",
 		"apiSend('POST','terminals/work-groups',{name:n,threshold:thresholdOf(th)})",
 		"apiSend('PUT','terminals/work-groups/'+encodeURIComponent(g.name),{threshold:thresholdOf(th)})",
-		"if(!confirm(g.name+' 묶음을 지울까요?'))return;",
+		"if(!await askOn(e.currentTarget,{text:g.name+' 묶음을 지울까요?'}))return;",
 		"get(api('settings'))",
 		"settings:loadSettingsView,",
 		// #528: 지켜보기, the API watch rules.
 		"get(api('watches'))", "if(kind==='watch')return findWatch(key);",
 		"apiSend('POST','watches/test',body)", "apiSend('POST','watches',read())", "apiSend('PUT','watches/'+v.id,read())",
 		"apiSend('DELETE','watches/'+v.id)", "apiSend('POST','watches/'+v.id+'/'+(v.enabled?'off':'on'))",
-		"if(!confirm(v.name+' 규칙을 지울까요? 저장한 키도 지워집니다.'))return;",
+		"if(!await askOn(e.currentTarget,{text:v.name+' 규칙을 지울까요? 저장한 키도 지워집니다.'}))return;",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("dashboard missing %q", want)
@@ -667,7 +668,7 @@ func TestDashboardJobsTab(t *testing.T) {
 			t.Fatalf("jobs tab missing %q", want)
 		}
 	}
-	for _, want := range []string{"confirm('#'+j.id+' '+j.label+' 작업을 멈출까요?')?undefined:false", "confirm('#'+j.id+' '+j.label+' 기록을 지울까요? 되돌릴 수 없습니다.')?undefined:false", "confirm('#'+j.id+' '+j.label+' 예약을 지울까요? 되돌릴 수 없습니다.')?undefined:false"} {
+	for _, want := range []string{"askOn(at,{text:'#'+j.id+' '+j.label+' 작업을 멈출까요?',ok:'중지 확인'}).then(r=>r?undefined:false)", "askOn(at,{text:'#'+j.id+' '+j.label+' 기록을 지울까요? 되돌릴 수 없습니다.',ok:'지우기 확인',danger:true}).then(r=>r?undefined:false)", "askOn(at,{text:'#'+j.id+' '+j.label+' 예약을 지울까요? 되돌릴 수 없습니다.',ok:'지우기 확인',danger:true}).then(r=>r?undefined:false)"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("job stop and remove need a confirm: %q", want)
 		}
@@ -769,7 +770,7 @@ func TestDashboardWorkspaceLoadsWithHosting(t *testing.T) {
 		// A list screen (#514) stays in the page; the others are panels.
 		"$('panel-'+n).hidden=ws&&!pageTab(n)?false:!on;",
 		"frameFull(fullTabs.includes(name));", "if(ws&&!pageTab(name))ws.showMenu(name);",
-		"frameSplit(listTab(name)&&!(name==='questions'&&questionView==='decisions'));",
+		"frameSplit(listTab(name));",
 		// With hosting on, the list column shows only the list screen, and
 		// opening a terminal from the left pane leaves it for the workspace.
 		".fr-split .sc-app-page>[hidden],.fr-split .sc-app-page>:not(.lsec){display:none}",
@@ -802,8 +803,8 @@ func TestDashboardWorkspaceLoadsWithHosting(t *testing.T) {
 		"const nodeIdx=wsNodeIndex({openSession(v){",
 		"return {live:live,show:show,el:box};", "nodes(){return nodeIdx},",
 		"apiSend('POST','node-invites',{name:invName.value.trim()})",
-		"if(!confirm(n.name+' 노드를 끊을까요?",
-		"if(!confirm(g.role+' 역할의 '+n.name+' 허가를 거둘까요?'))return;",
+		"if(!await askOn(cut,{text:n.name+' 노드를 끊을까요?",
+		"if(!await askOn(x,{text:g.role+' 역할의 '+n.name+' 허가를 거둘까요?',ok:'거두기 확인'}))return;",
 	} {
 		if !strings.Contains(src, want) {
 			t.Errorf("workspace missing %q", want)
@@ -926,7 +927,7 @@ func TestDashboardRequestsTab(t *testing.T) {
 		"for(const x of d.report_list||[])rows.push(",
 		"for(const x of d.mail_list||[])rows.push(",
 		"else if(h.kind==='request')openRequest(h.id);",
-		"liveCounts={progress:refreshProgressCount,requests:refreshRequestCount,",
+		"liveCounts={rules:refreshRuleCount,progress:refreshProgressCount,requests:refreshRequestCount,",
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("requests tab missing %q", want)
@@ -1012,5 +1013,73 @@ func TestDashboardSettingsHoldsViews(t *testing.T) {
 	}
 	if src := workspaceSource(t); strings.Contains(src, "ws-idx") || strings.Contains(src, "lpFoot") {
 		t.Error("the workspace still adds a 메뉴/노드 switch to the left pane")
+	}
+}
+
+// TestDashboardNoBrowserDialogs pins #581: the dashboard asks in the screen
+// (askOn), never in a browser confirm or prompt dialog.
+func TestDashboardNoBrowserDialogs(t *testing.T) {
+	re := regexp.MustCompile(`(^|[^.\w])(confirm|prompt|alert)\(`)
+	for _, glob := range []string{"page/*.js", "page/*.html", "workspace/*.js"} {
+		files, err := filepath.Glob(glob)
+		if err != nil || len(files) == 0 {
+			t.Fatalf("%s: %v %d files", glob, err, len(files))
+		}
+		for _, f := range files {
+			if strings.HasSuffix(f, ".test.cjs") {
+				continue
+			}
+			b, err := os.ReadFile(f)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for i, line := range strings.Split(string(b), "\n") {
+				if re.MatchString(line) {
+					t.Errorf("%s:%d uses a browser dialog: %s", f, i+1, strings.TrimSpace(line))
+				}
+			}
+		}
+	}
+}
+
+// TestDashboardNeedsAndRulesFrame pins #581: 답이 필요함 has the 대기·결정
+// chips on the list screens' frame, 규칙 is its own menu row under 보고, and
+// the old hashes still open.
+func TestDashboardNeedsAndRulesFrame(t *testing.T) {
+	w := httptest.NewRecorder()
+	Page(w, httptest.NewRequest("GET", "/", nil))
+	body := w.Body.String()
+	for _, want := range []string{
+		`<div class="ls-chips" id="needChips"`, `id="viewQuestions"`, `id="viewDecisions"`, `<div id="decFilters" class="ls-filters" hidden>`,
+		`id="decPeriod"`, `id="decClass"`, `id="panel-rules" role="tabpanel" aria-labelledby="tab-rules"`, `id="ruleChips"`, `id="ruleState"`,
+		"const ruleChips=", "listGroup('need:'+k,label,rows,", "g('w','기다림',wait,", "g('qd','지난 질문',", "g('pd','지난 권한 요청',",
+		"listGroup('dec:'+k,k,rows.map(decisionRow),", "api('rules/classes')", "apiSend('POST','rules/classify',{question:q.id,once:true})",
+		"up.href=detailHash('rules','new:'+q.id);", "ex.href=decisionExport();",
+		"docTable(['고름','선택지','설명'],rows,'선택지 없음')", "docTable(['갈래','제목','상태'],questionLinks(x))",
+		"docTable(['갈래','제목','상태'],ruleLinks(r))", "docTable(['때','누가','무엇'],hits,'걸린 적 없음')",
+		"askOn(off,{text:'#'+r.id+' 줄을 무효로 돌릴까요? 되돌릴 수 없습니다.',ok:'무효로 확인',danger:true})",
+		"if(h==='decisions'){showQuestionView('decisions');showTab('questions');return}",
+		"showQuestionView(id.startsWith('d:')?'decisions':'questions');",
+		"const listTabs=['requests','questions','mail','reports','rules','jobs'];",
+		"if(!tabLoaded.has('rules'))refreshRuleCount();",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("dashboard missing %q", want)
+		}
+	}
+	// 규칙 is a menu row of its own, after 보고; not a hidden sub-row.
+	rep, rule := strings.Index(body, `id="tab-reports"`), strings.Index(body, `id="tab-rules"`)
+	if rep < 0 || rule < rep {
+		t.Error("규칙 is not after 보고 in the menu")
+	}
+	if i := strings.LastIndex(body[:rule], "<button"); i < 0 {
+		t.Error("규칙 has no menu button")
+	} else if tag := body[i : rule+strings.Index(body[rule:], ">")]; !strings.Contains(tag, `class="nv"`) || strings.Contains(tag, "hidden") {
+		t.Errorf("규칙 is not a plain menu row: %s", tag)
+	}
+	for _, gone := range []string{`id="needsRules"`, `id="decForm"`, `id="ruleProposed"`, `id="ruleService"`, `aria-label="질문 보기"`} {
+		if strings.Contains(body, gone) {
+			t.Errorf("dashboard still has %s", gone)
+		}
 	}
 }

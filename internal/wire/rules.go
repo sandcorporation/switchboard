@@ -482,6 +482,12 @@ type Unclassified struct {
 	Roles   []RoleCount `json:"roles,omitempty"`
 }
 
+// AnswerClasses is GET /api/rules/classes: every counted answer with its
+// class (empty while unclassified), oldest first.
+type AnswerClasses struct {
+	Answers []AnswerRef `json:"answers"`
+}
+
 // ClassifyRequest is POST /api/rules/classify: the answered question and
 // either the rule it became (Rule) or Once (for this job only).
 type ClassifyRequest struct {

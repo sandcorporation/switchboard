@@ -61,3 +61,24 @@ function linkTable(rows){
   t.append(thead,body);
   return t;
 }
+// docTable is a body table with its own heads (#581): rows of {cells, href,
+// hover, cls}; a cell is text or a node, and a row with href opens it. An
+// empty list shows one row of empty across the table.
+function docTable(heads,rows,empty){
+  const t=node('table','','dc-t dc-g'),head=node('tr','');
+  for(const h of heads)head.append(node('th',h));
+  const thead=document.createElement('thead');thead.append(head);
+  const body=document.createElement('tbody');
+  for(const x of rows){
+    const tr=node('tr','',x.cls||'');if(x.hover)tr.title=x.hover;
+    for(const c of x.cells){const td=node('td','');if(c instanceof Node)td.append(c);else td.textContent=c;tr.append(td)}
+    if(x.href)tr.onclick=e=>{if(!e.target.closest('a,button'))location.hash=x.href};
+    else tr.classList.add('dc-still');
+    body.append(tr);
+  }
+  if(!rows.length){const tr=node('tr','','dc-still'),td=node('td',empty||'없음','dc-dim');td.colSpan=heads.length;tr.append(td);body.append(tr)}
+  t.append(thead,body);
+  return t;
+}
+// docLink is a table cell's link: text that opens href.
+function docLink(text,href,hover){const a=node('a',text);a.href=href;a.title=hover||text;return a}

@@ -82,3 +82,36 @@ function kTokens(n){if(n===null||n===undefined)return '-';return n<10000?(n/1000
 function when(t){return t?new Date(t).toLocaleString('ko-KR'):'-'}
 function byLabel(by){return by==='panel'?'세션 패널':by}
 function ago(now,t){if(!t)return '-';const s=Math.max(0,Math.round((new Date(now)-new Date(t))/1000));return s<120?s+'초 전':s<7200?Math.round(s/60)+'분 전':Math.round(s/3600)+'시간 전'}
+// askOn (#581) is the in-screen question that stands in for the browser's
+// confirm and prompt dialogs: anchor (the button that asked) steps aside for the
+// question, an optional field (o.input, its placeholder; o.check tests the
+// trimmed text, o.bad is the error) and [o.ok] [취소]. It resolves true (or
+// the field's text) on o.ok, null on 취소 or Esc. An anchor that is no
+// button (o.top) keeps its place and the question goes in at its top.
+function askOn(anchor,o){
+  return new Promise(res=>{
+    const box=node('span','','ask');box.setAttribute('role','group');box.setAttribute('aria-label',o.text);
+    let inp=null;
+    if(o.input){inp=node('input','');inp.type='text';inp.placeholder=o.input;inp.title=o.input;inp.setAttribute('aria-label',o.input);inp.autocomplete='off';inp.maxLength=o.max||1000;inp.value=o.value||''}
+    const ok=node('button',o.ok||'확인',o.danger?'danger':'');ok.type='button';ok.title=o.tip||o.text;
+    const no=node('button','취소');no.type='button';no.title='하지 않는다';
+    const err=node('span','','msg err');err.setAttribute('role','status');
+    // A style rule may set the anchor's display (a bar's buttons do): hide it inline too.
+    const hid=anchor.hidden,disp=anchor.style.display;
+    const end=v=>{box.remove();if(!o.top){anchor.hidden=hid;anchor.style.display=disp}res(v);if(v===null&&!o.top&&anchor.isConnected)anchor.focus()};
+    ok.onclick=()=>{
+      if(!inp){end(true);return}
+      const v=inp.value.trim();
+      if(o.check&&!o.check(v)){err.textContent=o.bad||o.input;inp.focus();return}
+      end(v);
+    };
+    no.onclick=()=>end(null);
+    box.addEventListener('keydown',e=>{
+      if(e.key==='Escape'){e.preventDefault();e.stopPropagation();end(null)}
+      else if(e.key==='Enter'&&e.target===inp){e.preventDefault();ok.click()}
+    });
+    box.append(node('span',o.text,'ask-q'),...(inp?[inp]:[]),ok,no,err);
+    if(o.top)anchor.prepend(box);else{anchor.hidden=true;anchor.style.display='none';anchor.after(box)}
+    (inp||ok).focus();
+  });
+}

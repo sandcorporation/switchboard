@@ -131,6 +131,14 @@ func TestRequestRemainingWork(t *testing.T) {
 		t.Fatalf("ask: %d %s", w.Code, w.Body)
 	}
 	q := decodeQuestion(t, w.Body.Bytes())
+	// The question shows the request it was asked under (#581).
+	g := adminWrite(s, "GET", "/api/admin/questions?status=pending", "")
+	var listed struct {
+		Questions []wire.QuestionView `json:"questions"`
+	}
+	if err := json.Unmarshal(g.Body.Bytes(), &listed); g.Code != 200 || err != nil || len(listed.Questions) != 1 || listed.Questions[0].RequestID != rq.ID {
+		t.Fatalf("questions: %d %s, want request_id %d", g.Code, g.Body, rq.ID)
+	}
 
 	var leftID int64
 	if err := s.db.QueryRow(`SELECT id FROM left_items WHERE directive_id=? AND kind='item'`, toWorker).Scan(&leftID); err != nil {

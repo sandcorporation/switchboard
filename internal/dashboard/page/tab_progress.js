@@ -125,12 +125,13 @@ function leftLine(v){
   let req;
   if(v.request){req=setButton('지시 '+v.request,'linkish',()=>openRequest(v.request));if(v.request_title)req.title=v.request_title}
   const id=encodeURIComponent(v.id);
+  // Each end asks for its value on the row (#581), not in a browser prompt.
   const end=(label,send,ask,body)=>setButton(label,'',async e=>{
-    const a=prompt(ask,'');if(a===null)return;
-    const sent=body(a.trim());if(!sent){setMsg(msg,ask,'err');return}
-    e.target.disabled=true;setMsg(msg,'보내는 중…');
-    try{await send(sent);loadProgress()}
-    catch(err){e.target.disabled=false;setMsg(msg,err.message,'err')}
+    const b=e.currentTarget;
+    const a=await askOn(b,{text:label,input:ask,ok:label+' 확인',check:x=>!!body(x),bad:ask});if(a===null)return;
+    b.disabled=true;setMsg(msg,'보내는 중…');
+    try{await send(body(a));loadProgress()}
+    catch(err){b.disabled=false;setMsg(msg,err.message,'err')}
   });
   if(!v.request)req=end('지시에 붙이기',b=>apiSend('POST','left/'+id+'/request',b),'#'+v.id+'을(를) 붙일 지시 번호',a=>/^[1-9][0-9]*$/.test(a)?{request:Number(a)}:null);
   box.append(req,dir,
@@ -173,7 +174,7 @@ const progressDirective={
       const row=node('div','','row'),msg=node('span','','msg');msg.setAttribute('role','status');
       const close=node('button','닫기');close.type='button';close.title='끝난 것으로 닫기';
       close.onclick=async()=>{
-        if(!confirm('#'+x.m.id+' 지시를 닫을까요?'))return;
+        if(!await askOn(close,{text:'#'+x.m.id+' 지시를 닫을까요?',ok:'닫기 확인'}))return;
         close.disabled=true;setMsg(msg,'닫는 중…');
         try{await apiSend('POST','messages/'+encodeURIComponent(x.m.id)+'/close');setMsg(msg,'닫음','ok');loadProgress();drawDetail()}
         catch(e){close.disabled=false;setMsg(msg,e.message,'err')}

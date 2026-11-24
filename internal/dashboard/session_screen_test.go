@@ -24,7 +24,7 @@ func TestDashboardSessionScreen(t *testing.T) {
 		"sec('상태',status);\n  sec('답을 기다림',frameSessNeeds(role));\n  sec('메일',mail);\n  sec('작업',jobs);",
 		"else{frameScreen('sess');frameSessRole=role;frameSessDraw();if(ws)ws.followRole(role)}",
 		// A menu on screen hides the right column.
-		"frameSplit(listTab(name)&&!(name==='questions'&&questionView==='decisions'));\n  // A menu is on screen (#519): no session screen, no right column.\n  frameScreen('menu');",
+		"frameSplit(listTab(name));\n  // A menu is on screen (#519): no session screen, no right column.\n  frameScreen('menu');",
 		".ws-on.fr-menu .ws-side,.fr-menu .fr-grip-r,.fr-menu .ws-sidebtn{display:none}",
 		".ws-on.fr-menu .sc-app-main:not(.has-detail){grid-template-columns:minmax(0,1fr)}",
 		".fr-sess .sc-app-page>:not(#sessScreen){display:none}",
