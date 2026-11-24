@@ -57,6 +57,7 @@ type LeftEnd struct {
 	URL       string `json:"url,omitempty"`
 	Directive int64  `json:"directive,omitempty"`
 	Reason    string `json:"reason,omitempty"`
+	Request   int64  `json:"request,omitempty"` // /request (#564): the owner's request to attach the item to
 }
 
 // LeftItem is one row of the ledger.
@@ -75,6 +76,11 @@ type LeftItem struct {
 	// subject, for the views.
 	DirectiveFrom    string `json:"directive_from,omitempty"`
 	DirectiveSubject string `json:"directive_subject,omitempty"`
+	// Request is the owner's request the item belongs to (#564): the one
+	// it was attached to, else its directive's on the request chain; 0
+	// for none. RequestTitle is its title.
+	Request      int64  `json:"request,omitempty"`
+	RequestTitle string `json:"request_title,omitempty"`
 }
 
 // LeftList is the answer of POST /api/left: the rows it stored.

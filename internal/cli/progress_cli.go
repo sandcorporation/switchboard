@@ -51,20 +51,40 @@ func cliProgress(c Config, p parsedArgs) (int, error) {
 }
 
 // formatLeft renders the open 남긴 것 items (#470), oldest first: item ID,
-// the directive it came from, who recorded it, when, and the text ((적지
-// 않음) for an older CLI's ending answer). "" when there are none.
+// the owner's request it belongs to (지시 N, #564), the directive mail it
+// came from, who recorded it, when, and the text ((적지 않음) for an older
+// CLI's ending answer). The items under no request follow under 지시 없음,
+// with the command that attaches one. "" when there are none.
 func formatLeft(items []wire.LeftItem, now time.Time) string {
 	if len(items) == 0 {
 		return ""
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "\n남긴 것 %d\n", len(items))
-	for _, it := range items {
+	line := func(it wire.LeftItem) {
 		text := it.Text
 		if it.Kind == wire.LeftKindUnrecorded {
 			text = "(적지 않음)"
 		}
-		fmt.Fprintf(&b, "  #%d 지시 #%d %s %s — %s\n", it.ID, it.Directive, it.RecordedBy, relTime(now, it.RecordedAt), text)
+		req := ""
+		if it.Request != 0 {
+			req = fmt.Sprintf("지시 %d ", it.Request)
+		}
+		fmt.Fprintf(&b, "  #%d %s메일 #%d %s %s — %s\n", it.ID, req, it.Directive, it.RecordedBy, relTime(now, it.RecordedAt), text)
+	}
+	var loose []wire.LeftItem
+	fmt.Fprintf(&b, "\n남긴 것 %d\n", len(items))
+	for _, it := range items {
+		if it.Request == 0 {
+			loose = append(loose, it)
+			continue
+		}
+		line(it)
+	}
+	if len(loose) > 0 {
+		fmt.Fprintf(&b, "  지시 없음 %d (left attach ID --request-id N, or left done|drop|pass)\n", len(loose))
+		for _, it := range loose {
+			line(it)
+		}
 	}
 	return b.String()
 }

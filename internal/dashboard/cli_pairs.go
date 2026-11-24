@@ -44,6 +44,7 @@ var CLIPairs = []CLIPair{
 	{Method: "POST", Path: "left/{}/pass", CLI: "left pass"},
 	{Method: "POST", Path: "left/{}/done", CLI: "left done"},
 	{Method: "POST", Path: "left/{}/drop", CLI: "left drop"},
+	{Method: "POST", Path: "left/{}/request", CLI: "left attach"},
 	{Method: "GET", Path: "questions", CLI: "question list"},
 	{Method: "POST", Path: "questions/{}/answer", CLI: "question answer"},
 	{Method: "GET", Path: "decisions", CLI: "decisions"},

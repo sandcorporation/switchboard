@@ -170,3 +170,74 @@ func TestRequestRemainingWork(t *testing.T) {
 		t.Fatalf("list remaining after %d", n)
 	}
 }
+
+func progressLeft(t *testing.T, s *Server) map[string]wire.LeftItem {
+	t.Helper()
+	w := adminRequest(s, "GET", "/api/admin/progress", "", nil)
+	if w.Code != 200 {
+		t.Fatalf("progress: %d %s", w.Code, w.Body)
+	}
+	var r struct{ Left []wire.LeftItem }
+	if err := json.Unmarshal(w.Body.Bytes(), &r); err != nil {
+		t.Fatal(err)
+	}
+	out := map[string]wire.LeftItem{}
+	for _, it := range r.Left {
+		out[it.Text] = it
+	}
+	return out
+}
+
+// TestLeftCarriesRequest: a 남긴 것 row carries its owner's request — the
+// request of its directive on the chain — and one under no request can be
+// attached to one by the directive's sender, a boss role or the dashboard
+// (#564).
+func TestLeftCarriesRequest(t *testing.T) {
+	t.Parallel()
+	s := chainServer(t)
+	rq := addRequest(t, s, "이름 바꾸기", "옛 이름 다 바꿔")
+	other := addRequest(t, s, "다른 일", "다른 일")
+
+	chainSend(t, s, reportBossToken, reportBossRole, map[string]any{"recipient": chainCoordRole, "subject": "이름", "body": "x", "task_id": "t-1", "request_id": rq.ID})
+	toWorker := chainSend(t, s, chainCoordToken, chainCoordRole, map[string]any{"recipient": reportWorkerRole, "subject": "착수", "body": "x", "task_id": "t-1"})
+	chainReply(t, s, reportWorkerToken, reportWorkerRole, toWorker, map[string]any{"body": "끝", "done": true, "left": []string{"문서"}})
+	loose := chainSend(t, s, chainCoordToken, chainCoordRole, map[string]any{"recipient": reportWorkerRole, "subject": "따로", "body": "x"})
+	chainReply(t, s, reportWorkerToken, reportWorkerRole, loose, map[string]any{"body": "끝", "done": true, "left": []string{"정리"}})
+
+	left := progressLeft(t, s)
+	if it := left["문서"]; it.Request != rq.ID || it.RequestTitle != "이름 바꾸기" {
+		t.Fatalf("chained item %+v", it)
+	}
+	b := left["정리"]
+	if b.Request != 0 || b.RequestTitle != "" {
+		t.Fatalf("loose item %+v", b)
+	}
+	path := "/api/left/" + itoa(b.ID) + "/request"
+	if w := callAs(s, "POST", path, reportWorkerToken, reportWorkerRole, map[string]any{"request": rq.ID}); w.Code != 403 {
+		t.Fatalf("worker attach: %d %s", w.Code, w.Body)
+	}
+	if w := callAs(s, "POST", path, chainCoordToken, chainCoordRole, map[string]any{"request": 999}); w.Code != 400 {
+		t.Fatalf("unknown request: %d %s", w.Code, w.Body)
+	}
+	if w := callAs(s, "POST", path, chainCoordToken, chainCoordRole, map[string]any{"request": rq.ID}); w.Code != 200 {
+		t.Fatalf("sender attach: %d %s", w.Code, w.Body)
+	}
+	if it := progressLeft(t, s)["정리"]; it.Request != rq.ID {
+		t.Fatalf("after attach %+v", it)
+	}
+	if got := openKinds(bossRequest(t, s, rq.ID)); !slices.Contains(got, "left:"+itoa(b.ID)) {
+		t.Fatalf("request remaining %v", got)
+	}
+	if w := callAs(s, "POST", path, reportBossToken, reportBossRole, map[string]any{"request": other.ID}); w.Code != 200 {
+		t.Fatalf("boss attach: %d %s", w.Code, w.Body)
+	}
+	if w := adminWrite(s, "POST", "/api/admin/left/"+itoa(b.ID)+"/request", `{"request":`+itoa(rq.ID)+`}`); w.Code != 200 {
+		t.Fatalf("admin attach: %d %s", w.Code, w.Body)
+	}
+	if w := adminWrite(s, "POST", "/api/admin/left/"+itoa(b.ID)+"/request", `{"request":999}`); w.Code != 400 {
+		t.Fatalf("admin unknown: %d %s", w.Code, w.Body)
+	}
+	if it := progressLeft(t, s)["정리"]; it.Request != rq.ID {
+		t.Fatalf("after admin attach %+v", it)
+	}
+}

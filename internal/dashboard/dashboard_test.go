@@ -507,7 +507,7 @@ func TestDashboardWaitAndDetails(t *testing.T) {
 	}
 	for _, want := range []string{
 		// 대기: kinds in order, oldest first, the counts the menu shows.
-		"const waitKinds=[['q','질문','warning'],['p','권한','info'],['s','오류','danger'],['d','지시','neutral'],['m','멈춤','warning'],['l','남긴 것','warning'],['v','옛 판','warning']];",
+		"const waitKinds=[['q','질문','warning'],['p','권한','info'],['s','오류','danger'],['d','지시','neutral'],['m','멈춤','warning'],['l','남긴 것','warning'],['n','지시 없음','neutral'],['v','옛 판','warning']];",
 		"for(const x of p.stalled||[])by.m.push(",
 		"for(const [k,label,tone] of waitKinds)for(const x of by[k].sort((a,b)=>(b.age||0)-(a.age||0)))",
 		"api('questions?status=pending&limit=500'),api('permissions?status=pending')",
@@ -544,10 +544,12 @@ func TestDashboardWaitAndDetails(t *testing.T) {
 		"if(v.status==='pending'&&v.can_answer)box.append(permAnswerForm(v));",
 		// 남긴 것 (#470): a 대기 row per open item, its second line the
 		// directive and [이슈] [새 지시] [버림]; a column in the service table.
-		"for(const x of d.r.left||[])by.l.push(",
+		"for(const x of d.r.left||[])by[x.request?'l':'n'].push(",
 		"item:x.kind==='unrecorded'?'적지 않음':x.text",
 		"if(x.left)it.append(leftLine(x.left));",
-		"setButton('지시 #'+v.directive,'linkish',()=>openMessage(v.directive))",
+		"setButton('메일 #'+v.directive,'linkish',()=>openMessage(v.directive))",
+		"req=setButton('지시 '+v.request,'linkish',()=>openRequest(v.request))",
+		"end('지시에 붙이기',b=>apiSend('POST','left/'+id+'/request',b)",
 		"end('이슈',b=>apiSend('POST','left/'+id+'/issue',b)",
 		"end('새 지시',b=>apiSend('POST','left/'+id+'/pass',b)",
 		"end('버림',b=>apiSend('POST','left/'+id+'/drop',b)",
@@ -684,7 +686,7 @@ func TestDashboardShowsCLIVersion(t *testing.T) {
 		"if(v.cli==='old'){tr.children[5].classList.add('cli-old');tr.children[5].append(' ',badge('옛 판','warning'))}",
 		"['v','옛 판','warning']",
 		"for(const x of d.r.cli_behind||[])by.v.push({id:x.machine,",
-		"if(x.kind!=='v'&&x.kind!=='l')detailRow(tr,'progress',x.kind+':'+x.id);",
+		"if(x.kind!=='v'&&x.kind!=='l'&&x.kind!=='n')detailRow(tr,'progress',x.kind+':'+x.id);",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("dashboard missing %q", want)

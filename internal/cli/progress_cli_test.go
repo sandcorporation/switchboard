@@ -44,14 +44,17 @@ func TestProgressSessionShowsSubagents(t *testing.T) {
 	}
 }
 
-// The 남긴 것 items (#470): a count in the service block and a list after.
+// The 남긴 것 items (#470): a count in the service block and a list after,
+// each with its owner's request; the ones under none follow under 지시 없음
+// with the command that attaches one (#564).
 func TestProgressLeft(t *testing.T) {
 	now := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
 	out := formatProgress([]wire.ServiceProgress{{Service: "team", Badge: "idle", Left: 2}}, now) + formatLeft([]wire.LeftItem{
 		{ID: 7, Directive: 3, Kind: wire.LeftKindItem, Text: "rename the files", RecordedBy: "team/worker", RecordedAt: now.Add(-2 * time.Hour)},
-		{ID: 8, Directive: 4, Kind: wire.LeftKindUnrecorded, RecordedBy: "team/worker", RecordedAt: now},
+		{ID: 8, Directive: 4, Kind: wire.LeftKindUnrecorded, RecordedBy: "team/worker", RecordedAt: now, Request: 15},
 	}, now)
-	for _, want := range []string{"  남긴 것 2\n", "\n남긴 것 2\n", "  #7 지시 #3 team/worker 2시간 전 — rename the files\n", "  #8 지시 #4 team/worker 방금 — (적지 않음)\n"} {
+	want := "\n남긴 것 2\n  #8 지시 15 메일 #4 team/worker 방금 — (적지 않음)\n  지시 없음 1 (left attach ID --request-id N, or left done|drop|pass)\n  #7 메일 #3 team/worker 2시간 전 — rename the files\n"
+	for _, want := range []string{"  남긴 것 2\n", want} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("progress text missing %q:\n%s", want, out)
 		}

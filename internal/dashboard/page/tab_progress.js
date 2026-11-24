@@ -4,7 +4,9 @@
 // sessions in error or blocked, directives over the pending alert threshold,
 // directives answered but not completed whose sessions sit idle (멈춤),
 // what answers that ended directives left undone (남긴 것, #470: a second
-// line with the directive and [이슈] [새 지시] [버림]), in that order of
+// line with the owner's request (지시 N, #564), the directive mail and
+// [이슈] [새 지시] [끝남] [버림]; the ones under no request in their own
+// 지시 없음 group with [지시에 붙이기]), in that order of
 // kind, oldest first within a kind) and then a row per service. Rows open in the detail panel under #progress/<kind>:<id>:
 // q: 질문, p: 권한, s: 세션, d: 지시, m: 멈춤 (the directive), svc: 서비스. The tab number is the
 // open directives older than the pending alert threshold (0 hides it).
@@ -12,7 +14,7 @@ const badgeLabel={error:'오류',blocked:'막힘',busy:'바쁨',compacting:'comp
 const badgeTone={error:'danger',blocked:'warning',busy:'info',compacting:'info',idle:'success',none:'neutral'};
 function rel(now,t){if(!t)return '-';const s=Math.max(0,Math.round((new Date(now)-new Date(t))/1000));return s<60?'방금':dur(s)+' 전'}
 function secsSince(now,t){return Math.max(0,Math.round((new Date(now)-new Date(t))/1000))}
-const waitKinds=[['q','질문','warning'],['p','권한','info'],['s','오류','danger'],['d','지시','neutral'],['m','멈춤','warning'],['l','남긴 것','warning'],['v','옛 판','warning']];
+const waitKinds=[['q','질문','warning'],['p','권한','info'],['s','오류','danger'],['d','지시','neutral'],['m','멈춤','warning'],['l','남긴 것','warning'],['n','지시 없음','neutral'],['v','옛 판','warning']];
 const waitCols=['종류','항목','역할','지난 시간'];
 const svcCols=['서비스','상태','세션','열린 지시','남긴 것','마지막 소식'];
 // recipLabel is an open directive's recipient state: offline apart from idle (#269).
@@ -22,8 +24,8 @@ const svcChips=[['all','전체',()=>true],['problem','문제 있음',p=>/^(error
 let progressSeq=0,progressData=null,svcFilter='all';
 // waitItems builds the 대기 rows: {kind,id,item,role,age} with age in seconds.
 function waitItems(d){
-  const now=d.r.generated_at,by={q:[],p:[],s:[],d:[],m:[],l:[],v:[]};
-  for(const x of d.r.left||[])by.l.push({id:String(x.id),item:x.kind==='unrecorded'?'적지 않음':x.text,role:x.recorded_by,age:secsSince(now,x.recorded_at),left:x});
+  const now=d.r.generated_at,by={q:[],p:[],s:[],d:[],m:[],l:[],n:[],v:[]};
+  for(const x of d.r.left||[])by[x.request?'l':'n'].push({id:String(x.id),item:x.kind==='unrecorded'?'적지 않음':x.text,role:x.recorded_by,age:secsSince(now,x.recorded_at),left:x});
   for(const x of d.r.cli_behind||[])by.v.push({id:x.machine,item:x.machine+' · '+(x.version==='unknown'?'판 모름':x.version),role:x.roles.join(', '),age:null});
   for(const q of d.questions)by.q.push({id:q.id,item:q.questions.map(x=>x.header).join(' · '),role:q.asker,age:secsSince(now,q.created_at)});
   for(const v of d.perms)by.p.push({id:v.id,item:v.tool+(v.summary?' · '+v.summary:''),role:v.requester,age:secsSince(now,v.created_at)});
@@ -63,7 +65,7 @@ function drawProgress(){
       const it=cell(x.item,'','witem');
       if(x.left)it.append(leftLine(x.left));
       tr.append(k,it,cardBreak(),cell(x.role,'','mono'),cell(x.age==null?'-':dur(x.age),'','num nowrap'));
-      if(x.kind!=='v'&&x.kind!=='l')detailRow(tr,'progress',x.kind+':'+x.id);
+      if(x.kind!=='v'&&x.kind!=='l'&&x.kind!=='n')detailRow(tr,'progress',x.kind+':'+x.id);
       wait.append(tr);
     }
     if(!items.length)emptyRow(wait,waitCols.length,'대기 없음');
@@ -107,8 +109,10 @@ function drawProgress(){
 // needs a login allowed to discard.
 function leftLine(v){
   const box=node('div','','wsub'),msg=node('span','','msg');msg.setAttribute('role','status');
-  const dir=setButton('지시 #'+v.directive,'linkish',()=>openMessage(v.directive));
+  const dir=setButton('메일 #'+v.directive,'linkish',()=>openMessage(v.directive));
   if(v.directive_subject)dir.title=v.directive_subject;
+  let req;
+  if(v.request){req=setButton('지시 '+v.request,'linkish',()=>openRequest(v.request));if(v.request_title)req.title=v.request_title}
   const id=encodeURIComponent(v.id);
   const end=(label,send,ask,body)=>setButton(label,'',async e=>{
     const a=prompt(ask,'');if(a===null)return;
@@ -117,7 +121,8 @@ function leftLine(v){
     try{await send(sent);loadProgress()}
     catch(err){e.target.disabled=false;setMsg(msg,err.message,'err')}
   });
-  box.append(dir,
+  if(!v.request)req=end('지시에 붙이기',b=>apiSend('POST','left/'+id+'/request',b),'#'+v.id+'을(를) 붙일 지시 번호',a=>/^[1-9][0-9]*$/.test(a)?{request:Number(a)}:null);
+  box.append(req,dir,
     end('이슈',b=>apiSend('POST','left/'+id+'/issue',b),'#'+v.id+' 이슈 주소',a=>/^https?:\/\/\S+$/.test(a)?{url:a}:null),
     end('새 지시',b=>apiSend('POST','left/'+id+'/pass',b),'#'+v.id+'을(를) 넘길 지시 번호 ('+v.directive_from+'이(가) 보낸 지시)',a=>/^[1-9][0-9]*$/.test(a)?{directive:Number(a)}:null),
     setButton('끝남','',async e=>{

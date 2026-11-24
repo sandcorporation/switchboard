@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/sandcorporation/switchboard/internal/identity"
+	"github.com/sandcorporation/switchboard/internal/requests"
 	"github.com/sandcorporation/switchboard/internal/store"
 	"github.com/sandcorporation/switchboard/internal/wire"
 )
@@ -133,6 +134,9 @@ func leftNote(w http.ResponseWriter, r *http.Request) (wire.LeftNote, bool) {
 //	                             directive, which the caller sent
 //	POST /api/left/{id}/done     done (#553)
 //	POST /api/left/{id}/drop     LeftEnd.Reason: dropped, and why (#553)
+//	POST /api/left/{id}/request  LeftEnd.Request: attached to that owner's
+//	                             request (#564); the directive's sender or a
+//	                             boss role, either seeing the request
 //
 // Only the role (base) that sent the item's directive may end it. The
 // dashboard admin ends items with AdminLeftAPI.
@@ -149,6 +153,19 @@ func (s *Service) LeftAPI(w http.ResponseWriter, r *http.Request, p identity.Pri
 	if !ok {
 		return
 	}
+	if action == "request" {
+		d, err := s.Get(item.Directive)
+		if !s.ids.IsBoss(p) && (err != nil || identity.BaseOf(s.db, d.Sender) != p.Base) {
+			http.Error(w, "only the role that sent the directive or a boss role may attach what it left to a request", http.StatusForbidden)
+			return
+		}
+		if err := requests.Linkable(s.db, s.ids, p, in.Request); err != nil {
+			http.Error(w, "request: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+		s.attachLeft(w, item.ID, in.Request)
+		return
+	}
 	if action != "issue" && action != "pass" && action != "done" && action != "drop" {
 		http.NotFound(w, r)
 		return
@@ -161,9 +178,10 @@ func (s *Service) LeftAPI(w http.ResponseWriter, r *http.Request, p identity.Pri
 	s.endBy(w, item, action, in, p.Base, p.Role)
 }
 
-// AdminLeftAPI serves POST /api/admin/left/{id}/{issue,pass,done,drop} for
-// a signed-in dashboard admin (#470, #553): issue, pass and done as the
-// directive's sender would, drop with LeftEnd.Reason (required). The admin
+// AdminLeftAPI serves POST /api/admin/left/{id}/{issue,pass,done,drop,request}
+// for a signed-in dashboard admin (#470, #553, #564): issue, pass and done as
+// the directive's sender would, drop with LeftEnd.Reason (required), request
+// attaches the item to LeftEnd.Request. The admin
 // routes also take a boss role's token (boss write, #399): admin is false
 // then and all are refused; a role ends items with its CLI.
 func (s *Service) AdminLeftAPI(w http.ResponseWriter, r *http.Request, admin bool, user, rest string) {
@@ -181,6 +199,13 @@ func (s *Service) AdminLeftAPI(w http.ResponseWriter, r *http.Request, admin boo
 	}
 	by := "admin:" + user
 	switch action {
+	case "request":
+		var n int
+		if in.Request <= 0 || s.db.QueryRow(`SELECT COUNT(*) FROM requests WHERE id=?`, in.Request).Scan(&n) != nil || n == 0 {
+			http.Error(w, "request: no such request", http.StatusBadRequest)
+			return
+		}
+		s.attachLeft(w, item.ID, in.Request)
 	case "drop", "done":
 		s.endBy(w, item, action, in, "", by)
 	case "issue", "pass":
@@ -311,6 +336,22 @@ func (s *Service) addLeft(w http.ResponseWriter, r *http.Request, p identity.Pri
 	writeJSON(w, out)
 }
 
+// attachLeft attaches item id (not a none row) to request rid and answers
+// the row (#564).
+func (s *Service) attachLeft(w http.ResponseWriter, id, rid int64) {
+	if _, err := s.db.Exec(`UPDATE left_items SET request_id=? WHERE id=? AND kind<>?`, rid, id, wire.LeftKindNone); err != nil {
+		http.Error(w, "update failed", http.StatusInternalServerError)
+		return
+	}
+	it, err := s.leftItem(id)
+	if err != nil {
+		http.Error(w, "no such item", http.StatusNotFound)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	writeJSON(w, it)
+}
+
 // endLeft moves open item id to state, recording who, when and value, and
 // answers the row. A row that is not open (or a none row) answers 409.
 func (s *Service) endLeft(w http.ResponseWriter, id int64, state, by, value string) {
@@ -332,12 +373,16 @@ func (s *Service) endLeft(w http.ResponseWriter, id int64, state, by, value stri
 	writeJSON(w, it)
 }
 
-const leftCols = `l.id,l.directive_id,l.kind,l.text,l.recorded_by,l.recorded_at,l.state,l.ended_by,l.ended_at,l.value,COALESCE(m.sender,''),COALESCE(m.subject,'')`
+const leftCols = `l.id,l.directive_id,l.kind,l.text,l.recorded_by,l.recorded_at,l.state,l.ended_by,l.ended_at,l.value,COALESCE(m.sender,''),COALESCE(m.subject,''),` + requests.LeftRequestExpr + `,COALESCE(rq.title,'')`
+
+// leftFrom reads left items with their directive and request (#564): the
+// request they were attached to, else their directive's on the chain.
+const leftFrom = ` FROM left_items l LEFT JOIN messages m ON m.id=l.directive_id LEFT JOIN chain c ON c.id=l.directive_id LEFT JOIN requests rq ON rq.id=` + requests.LeftRequestExpr
 
 func scanLeft(sc interface{ Scan(...any) error }) (wire.LeftItem, error) {
 	var it wire.LeftItem
 	var rec, end string
-	if err := sc.Scan(&it.ID, &it.Directive, &it.Kind, &it.Text, &it.RecordedBy, &rec, &it.State, &it.EndedBy, &end, &it.Value, &it.DirectiveFrom, &it.DirectiveSubject); err != nil {
+	if err := sc.Scan(&it.ID, &it.Directive, &it.Kind, &it.Text, &it.RecordedBy, &rec, &it.State, &it.EndedBy, &end, &it.Value, &it.DirectiveFrom, &it.DirectiveSubject, &it.Request, &it.RequestTitle); err != nil {
 		return it, err
 	}
 	it.RecordedAt, _ = time.Parse(time.RFC3339Nano, rec)
@@ -350,13 +395,13 @@ func scanLeft(sc interface{ Scan(...any) error }) (wire.LeftItem, error) {
 }
 
 func (s *Service) leftItem(id int64) (wire.LeftItem, error) {
-	return scanLeft(s.db.QueryRow(`SELECT `+leftCols+` FROM left_items l LEFT JOIN messages m ON m.id=l.directive_id WHERE l.id=?`, id))
+	return scanLeft(s.db.QueryRow(requests.ChainSQL+`SELECT `+leftCols+leftFrom+` WHERE l.id=?`, id))
 }
 
 // OpenLeft is every open item and unrecorded row, oldest first: the 남긴 것
 // rows of 진행 대기.
 func OpenLeft(q *sql.DB) ([]wire.LeftItem, error) {
-	rows, err := q.Query(`SELECT `+leftCols+` FROM left_items l LEFT JOIN messages m ON m.id=l.directive_id WHERE l.state=? ORDER BY l.id`, wire.LeftOpen)
+	rows, err := q.Query(requests.ChainSQL+`SELECT `+leftCols+leftFrom+` WHERE l.state=? ORDER BY l.id`, wire.LeftOpen)
 	if err != nil {
 		return nil, err
 	}

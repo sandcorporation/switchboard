@@ -105,7 +105,7 @@ func remaining(it *items, states map[int64]string) ([]wire.RequestOpenItem, wire
 			continue
 		}
 		open = append(open, wire.RequestOpenItem{Kind: wire.RequestOpenLeft, ID: strconv.FormatInt(l.id, 10), Title: l.text, Who: l.by, At: l.at,
-			Close: fmt.Sprintf("left done %d, left drop %d --reason TEXT or left pass %d DIRECTIVE", l.id, l.id, l.id)})
+			Close: fmt.Sprintf("left done %d, left drop %d --reason TEXT or left pass %d --directive M", l.id, l.id, l.id)})
 	}
 	sort.SliceStable(open, func(i, j int) bool { return open[i].At.Before(open[j].At) })
 	return open, fin
