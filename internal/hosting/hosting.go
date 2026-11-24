@@ -57,6 +57,7 @@ type Service struct {
 	clock      func() time.Time
 	roleExists func(base string) bool
 	creds      *RoleCredentials
+	roles      *Roles
 }
 
 // New builds the service. roleExists answers whether base is a registered
@@ -181,9 +182,6 @@ func (s *Service) validate(c *wire.HostedSessionCreate) error {
 	if !wire.ValidRole(c.Base) {
 		return invalidf("base: invalid role %q", c.Base)
 	}
-	if s.roleExists == nil || !s.roleExists(c.Base) {
-		return invalidf("base: role %s does not exist", c.Base)
-	}
 	if !profilePattern.MatchString(c.Profile) {
 		return invalidf("profile: invalid name %q (1-64 of A-Z a-z 0-9 _ -)", c.Profile)
 	}
@@ -245,14 +243,25 @@ func ValidID(id string) bool { return idPattern.MatchString(id) }
 
 // Create validates and stores a new record with a fresh id and agent
 // session id.
+// It is the dashboard admin form's: a boss base needs no AnotherBoss.
 func (s *Service) Create(c wire.HostedSessionCreate) (wire.HostedSession, error) {
-	return s.create(c, "")
+	return s.create(c, "", false)
+}
+
+// CreateGuarded is Create for a CLI's add (the admin's DB_PATH or a boss
+// role's token, #562): a boss base needs AnotherBoss.
+func (s *Service) CreateGuarded(c wire.HostedSessionCreate) (wire.HostedSession, error) {
+	return s.create(c, "", true)
 }
 
 // create is Create of a record added under dirRoot (a role's grant root,
 // #369; empty for the admin's records).
-func (s *Service) create(c wire.HostedSessionCreate, dirRoot string) (wire.HostedSession, error) {
+func (s *Service) create(c wire.HostedSessionCreate, dirRoot string, guard bool) (wire.HostedSession, error) {
 	if err := s.validate(&c); err != nil {
+		return wire.HostedSession{}, err
+	}
+	newRole, err := s.baseRole(c, guard)
+	if err != nil {
 		return wire.HostedSession{}, err
 	}
 	suffix, err := randomHex(16)
@@ -283,6 +292,11 @@ func (s *Service) create(c wire.HostedSessionCreate, dirRoot string) (wire.Hoste
 	if err != nil {
 		return wire.HostedSession{}, err
 	}
+	if newRole {
+		if err := s.roles.Create(h.Base); err != nil {
+			return wire.HostedSession{}, err
+		}
+	}
 	res, err := s.db.Exec(`INSERT INTO hosted_sessions(id,node,base,label,parent,profile,directory,agent_session_id,launched,args,env,restart,desired,work_group,skip_permissions,cols,rows,created_at,updated_at,dir_root,adapter) SELECT ?,?,?,?,?,?,?,?,0,?,?,?,?,?,?,?,?,?,?,?,? WHERE ?<>? OR `+cond,
 		append([]any{h.ID, h.Node, h.Base, h.Label, h.Parent, h.Profile, h.Directory, h.AgentSessionID, string(args), string(env), h.Restart, h.Desired, h.Group, boolInt(h.SkipPermissions), h.Cols, h.Rows, now, now, h.DirRoot, h.Adapter, h.Desired, DesiredRunning}, gargs...)...)
 	if err != nil && strings.Contains(err.Error(), "UNIQUE") {
@@ -295,6 +309,13 @@ func (s *Service) create(c wire.HostedSessionCreate, dirRoot string) (wire.Hoste
 		return wire.HostedSession{}, CapacityError{Node: h.Node, Max: max}
 	}
 	h.AcceptingWork = s.acceptingWork(h)
+	if newRole {
+		if _, known, err := s.nodeCredentials(h.Node); err == nil && !known {
+			if err := s.recordEvent(wire.HostedEvent{ID: h.ID, At: now, Kind: wire.HostedEventCredentialUnknown, Reason: credentialsUnknown(h.Node, h.Base)}); err != nil {
+				return h, err
+			}
+		}
+	}
 	return h, nil
 }
 

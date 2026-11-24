@@ -172,6 +172,14 @@ SWITCHBOARD_PROFILE=boss switchboard host stop <id>
 SWITCHBOARD_PROFILE=boss switchboard host remove <id>
 ```
 
+A session of a new role, with a boss role's token (a group boss within its groups) or the admin's `DB_PATH`, on a node that takes role credentials:
+
+```sh
+SWITCHBOARD_PROFILE=boss switchboard host add --base team/worker --create-role --node NODE --profile NAME --dir PATH
+```
+
+It registers the role and adds the session in one step; the role's token is random and shown nowhere. Without `--create-role` a missing role is refused and the refusal shows the command with it; a host grant never registers a role. A base that is a boss role is refused without `--another-boss`.
+
 Without a grant the server answers `403`. The limits of a grant and of the role's own sessions: [hosting-pc.md, Sessions a role adds under itself](hosting-pc.md#sessions-a-role-adds-under-itself).
 
 ## Order of the move

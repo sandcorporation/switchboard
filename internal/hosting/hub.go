@@ -440,6 +440,9 @@ func (h *Hub) nodeSocket(w http.ResponseWriter, r *http.Request, name string) {
 	defer cancel()
 	c := &nodeConn{name: name, out: make(chan nodeOut, nodeQueue), cancel: cancel}
 	c.held, c.takes = parseHeld(r.Header.Values(config.HeaderPrefix + config.NodeCredentialsHeaderName))
+	if err := h.svc.setNodeCredentials(name, c.takes); err != nil {
+		log.Printf("hosting: node %s: recording whether it takes role credentials: %v", name, err)
+	}
 	c.files = r.Header.Get(config.HeaderPrefix+config.NodeFilesHeaderName) == "1"
 	c.write = c.files && r.Header.Get(config.HeaderPrefix+config.NodeFileWriteHeaderName) == "1"
 	c.ops = c.write && r.Header.Get(config.HeaderPrefix+config.NodeFileOpsHeaderName) == "1"

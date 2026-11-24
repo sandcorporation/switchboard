@@ -278,7 +278,7 @@ sbterm
 
 Check: `host add` prints the new session ID; `host list` shows it with node `local`, base `team/worker`, `DESIRED` `running`, restart `always`. `sbterm` (`GET /api/admin/terminals`) shows it with state `running` and a pid. `--group NAME` puts it in a work group (`host group add NAME --threshold N`); `--restart` is `always`, `on-failure` or `never`; words after `'--'` go to the agent (the quotes keep PowerShell from eating `--`). `host list` shows `PERMS` `skip`: see [Permission mode](#permission-mode).
 
-If it fails: `base role ... must exist` → W5 did not register `team/worker`. `sblogin` gets `401` → the code was used already in this 30-second step; wait 30 s and run `sblogin` again. State stays `waiting` → `SWITCHBOARD_HOSTING_MAX` (default 4) sessions are running already. State `crashloop` or `exited` → open the session in the dashboard (`http://127.0.0.1:8090`, tab Terminals) to read the agent's screen; a first start in a new folder can stop at the agent's folder-trust question, which someone at the PC answers there once.
+If it fails: `base: role ... does not exist` → W5 did not register `team/worker`. `sblogin` gets `401` → the code was used already in this 30-second step; wait 30 s and run `sblogin` again. State stays `waiting` → `SWITCHBOARD_HOSTING_MAX` (default 4) sessions are running already. State `crashloop` or `exited` → open the session in the dashboard (`http://127.0.0.1:8090`, tab Terminals) to read the agent's screen; a first start in a new folder can stop at the agent's folder-trust question, which someone at the PC answers there once.
 
 ### W8. Verify
 
@@ -590,7 +590,7 @@ sbterm
 
 Check: `host add` prints the new session ID; `host list` shows it with node `local`, base `team/worker`, `DESIRED` `running`, restart `always`. `sbterm` (`GET /api/admin/terminals`) shows it as `running` with a pid. `--group NAME` puts it in a work group (`host group add NAME --threshold N`); `--restart` is `always`, `on-failure` or `never`; words after `--` go to the agent. `host list` shows `PERMS` `skip`: see [Permission mode](#permission-mode).
 
-If it fails: `base role ... must exist` → L5 did not register `team/worker`. `sblogin` fails with `401` → the code was used already in this 30-second step; wait 30 s and run `sblogin` again. State stays `waiting` → `SWITCHBOARD_HOSTING_MAX` (default 4) sessions are running already. State `crashloop` or `exited` → open the session in the dashboard (`http://127.0.0.1:8090`, tab Terminals) to read the agent's screen; a first start in a new folder can stop at the agent's folder-trust question, which someone at the PC answers there once.
+If it fails: `base: role ... does not exist` → L5 did not register `team/worker`. `sblogin` fails with `401` → the code was used already in this 30-second step; wait 30 s and run `sblogin` again. State stays `waiting` → `SWITCHBOARD_HOSTING_MAX` (default 4) sessions are running already. State `crashloop` or `exited` → open the session in the dashboard (`http://127.0.0.1:8090`, tab Terminals) to read the agent's screen; a first start in a new folder can stop at the agent's folder-trust question, which someone at the PC answers there once.
 
 ### L8. Verify
 
@@ -692,6 +692,14 @@ A node on a second machine runs hosted sessions there for the instance above (th
 | Start at sign-in | Task Scheduler task `switchboard-node` | systemd user unit `switchboard-node.service` |
 
 The host gives each session on the node its own credential of the session's base role over the node channel. The node writes it into its profile folder as `hosted-<record id>.json` (user-only: mode 0600, a protected DACL on Windows) and starts the session with `SWITCHBOARD_PROFILE=hosted-<record id>`, which a profile named in the folder's own agent settings does not replace (for `claude` the node also puts its identity variables in the env of the session's `--settings`, which Claude Code applies over the folder's `.claude/settings*.json`); the role's own token never leaves the host machine and no profile is copied by hand. `--profile` of `host add` is still required but the node does not read it. The credential stops working (401) when the record is removed, the node is revoked or the role is revoked; a node that lost its profile folder gets new ones when it attaches. The host's own node (`local`) keeps using the profiles named in its records.
+
+A session of a role that is not registered yet, on a node that takes role credentials:
+
+```sh
+switchboard host add --base team/worker --create-role --node NODE --profile NAME --dir PATH
+```
+
+It registers the role and adds the session in one step; the role's token is random and shown nowhere. It is the admin's (`DB_PATH`) or a boss role's (its token, a group boss within its groups); a role's host grant does not allow it. Without `--create-role` a missing role is refused and the refusal shows the command with it. A node that takes no role credentials, such as the host's own `local`, is refused a new role: it has no profile of it. A base that is a boss role is refused without `--another-boss`, which runs one more session of that boss role.
 
 ### H1. Open the host to the node machine
 

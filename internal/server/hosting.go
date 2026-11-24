@@ -319,7 +319,27 @@ func (s *Server) hostingAutoMail(to hosting.AutoMailTo, subject, body, key strin
 
 // hostingService is the hosted-session store over this server's database.
 func (s *Server) hostingService() *hosting.Service {
-	return hosting.New(s.db, s.now, func(base string) bool { return identity.RoleExists(s.db, base) }).WithCredentials(roleCredentials(s.db, s.now))
+	return hosting.New(s.db, s.now, func(base string) bool { return identity.RoleExists(s.db, base) }).WithCredentials(roleCredentials(s.db, s.now)).WithRoles(&hosting.Roles{
+		IsBoss: func(role string) bool { return s.ids().IsBoss(identity.Principal{Role: role, Base: role}) },
+		Create: func(role string) error { return identity.RegisterHostedRole(s.db, s.bossRoles, role, s.now()) },
+	})
+}
+
+// instanceRoles is hosting.Roles for the admin's DB_PATH commands (#562):
+// the global boss roles are SWITCHBOARD_BOSS_ROLES of the command's own
+// environment, the groups the database's.
+func instanceRoles(db *sql.DB, getenv func(string) string) *hosting.Roles {
+	global := map[string]bool{}
+	roles, _ := config.EnvAliasFrom(getenv, "BOSS_ROLES")
+	for _, r := range strings.Split(roles, ",") {
+		if r = strings.TrimSpace(r); r != "" {
+			global[r] = true
+		}
+	}
+	return &hosting.Roles{
+		IsBoss: func(role string) bool { return identity.IsBossRole(db, global, role) },
+		Create: func(role string) error { return identity.RegisterHostedRole(db, global, role, time.Now()) },
+	}
 }
 
 // roleCredentials is identity's role credential store as hosting takes it
@@ -411,7 +431,7 @@ func withInstanceDB(cmd string, fn func(*hosting.Service) error) (int, error) {
 		return 0, err
 	}
 	defer db.Close()
-	if err = fn(hosting.New(db, time.Now, func(base string) bool { return identity.RoleExists(db, base) }).WithCredentials(roleCredentials(db, time.Now))); err != nil {
+	if err = fn(hosting.New(db, time.Now, func(base string) bool { return identity.RoleExists(db, base) }).WithCredentials(roleCredentials(db, time.Now)).WithRoles(instanceRoles(db, os.Getenv))); err != nil {
 		return 0, err
 	}
 	return 0, nil

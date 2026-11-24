@@ -215,7 +215,17 @@ func Init(db *sql.DB) error {
 	if e = migrateHooks(db); e != nil {
 		return e
 	}
+	if e = migrateNodeCredentials(db); e != nil {
+		return e
+	}
 	return migrateHourlyIndexes(db)
+}
+
+// migrateNodeCredentials adds nodes.credentials (#562): whether the node
+// asked for role credentials when it last attached, 1 yes, 0 no, null not
+// known (it has not attached since).
+func migrateNodeCredentials(db *sql.DB) error {
+	return addColumns(db, []columnAdd{{"nodes", "credentials", `INTEGER`}})
 }
 
 // migrateAlertMail adds the collapsing alert mail's columns (#525):

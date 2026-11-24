@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"fmt"
 	"io"
 	"strconv"
 	"strings"
@@ -42,7 +43,7 @@ func cliHost(p parsedArgs, stdout io.Writer) (int, error) {
 			return 0, usagef("host %s: %s is for host auto", action, o)
 		}
 	}
-	addOnly := []string{"--node", "--base", "--profile", "--dir", "--label", "--parent", "--restart", "--group", "--adapter", "--ask-permissions"}
+	addOnly := []string{"--node", "--base", "--profile", "--dir", "--label", "--parent", "--restart", "--group", "--adapter", "--ask-permissions", "--create-role", "--another-boss"}
 	var skip *bool
 	if p.bool("--ask-permissions") {
 		skip = new(bool)
@@ -142,7 +143,7 @@ func cliHost(p parsedArgs, stdout io.Writer) (int, error) {
 	add := wire.HostedSessionCreate{
 		Node: p.values["--node"], Base: p.values["--base"], Profile: p.values["--profile"], Directory: p.values["--dir"],
 		Label: p.values["--label"], Parent: p.values["--parent"], Restart: p.values["--restart"], Group: p.values["--group"], Adapter: p.values["--adapter"], Args: p.extra,
-		SkipPermissions: skip,
+		SkipPermissions: skip, CreateRole: p.bool("--create-role"), AnotherBoss: p.bool("--another-boss"),
 	}
 	if action == "nodes" {
 		// The node list is a boss role's view through the server, with or
@@ -160,9 +161,60 @@ func cliHost(p parsedArgs, stdout io.Writer) (int, error) {
 			args := append([]string{}, p.extra...)
 			change.Args = &args
 		}
-		return hostAsRole(action, id, add, change, p, stdout)
+		code, err := hostAsRole(action, id, add, change, p, stdout)
+		return code, addRetry(action, err, p)
 	}
-	return host(action, id, add, p.bool("--json"), stdout)
+	code, err := host(action, id, add, p.bool("--json"), stdout)
+	return code, addRetry(action, err, p)
+}
+
+// addRetry adds to a refused `host add` the command that goes on (#562):
+// with --create-role for a base that is not a role, with --another-boss for
+// a boss base.
+func addRetry(action string, err error, p parsedArgs) error {
+	if action != "add" || err == nil {
+		return err
+	}
+	switch msg := err.Error(); {
+	case strings.Contains(msg, "host add --create-role registers it") && !p.bool("--create-role"):
+		return fmt.Errorf("%w\nto register it with the session: %s", err, addCommand(p, "--create-role"))
+	case strings.Contains(msg, "is a boss role; for a session of another role") && !p.bool("--another-boss"):
+		return fmt.Errorf("%w\nanother role: %s\none more boss session: %s", err, addCommand(p, "--create-role", "<new role>"), addCommand(p, "--another-boss"))
+	}
+	return err
+}
+
+// addCommand is the `host add` p gives with flag added; base, when given,
+// replaces --base.
+func addCommand(p parsedArgs, flag string, base ...string) string {
+	parts := []string{progName(), "host", "add"}
+	for _, o := range []string{"--node", "--base", "--profile", "--dir", "--label", "--parent", "--restart", "--group", "--adapter"} {
+		if o == "--base" && len(base) > 0 {
+			parts = append(parts, o, base[0]) // a placeholder, as written
+		} else if v, ok := p.values[o]; ok {
+			parts = append(parts, o, shellWord(v))
+		}
+	}
+	for _, o := range []string{"--ask-permissions", "--create-role", "--another-boss"} {
+		if p.bool(o) || o == flag {
+			parts = append(parts, o)
+		}
+	}
+	if len(p.extra) > 0 {
+		parts = append(parts, "--")
+		for _, a := range p.extra {
+			parts = append(parts, shellWord(a))
+		}
+	}
+	return strings.Join(parts, " ")
+}
+
+// shellWord quotes v for a POSIX shell unless it needs none.
+func shellWord(v string) string {
+	if v != "" && strings.Trim(v, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_./:=@,+-") == "" {
+		return v
+	}
+	return "'" + strings.ReplaceAll(v, "'", `'\''`) + "'"
 }
 
 // autoOnly are the options of `host auto` alone.
@@ -181,7 +233,7 @@ func cliHostAuto(p parsedArgs, stdout io.Writer) (int, error) {
 	if len(p.extra) > 0 {
 		return 0, usagef("host auto: arguments after -- are for host add")
 	}
-	for _, o := range []string{"--node", "--base", "--profile", "--dir", "--parent", "--restart", "--group", "--threshold", "--remaining", "--adapter", "--ask-permissions", "--skip-permissions"} {
+	for _, o := range []string{"--node", "--base", "--profile", "--dir", "--parent", "--restart", "--group", "--threshold", "--remaining", "--adapter", "--ask-permissions", "--skip-permissions", "--create-role", "--another-boss"} {
 		if _, ok := p.values[o]; ok {
 			return 0, usagef("host auto: %s is for host add", o)
 		}

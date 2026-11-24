@@ -132,6 +132,13 @@ type HostedSessionCreate struct {
 	// --ask-permissions` sends false. `host set --skip-permissions` sends it
 	// with the set action.
 	SkipPermissions *bool `json:"skip_permissions,omitempty"`
+	// CreateRole registers Base when it is not a role yet (#562, `host add
+	// --create-role`): a boss role's, within its groups, or the admin's.
+	// The new role's token is random and kept nowhere but as its hash.
+	CreateRole bool `json:"create_role,omitempty"`
+	// AnotherBoss lets a new record's Base be a boss role (#562, `host add
+	// --another-boss`); without it such an add is refused.
+	AnotherBoss bool `json:"another_boss,omitempty"`
 }
 
 // HostedSessionChange is the body of PUT /api/admin/terminals/{id}. A nil
@@ -402,6 +409,10 @@ const (
 	// The node could not bring the agent's plugin to its version before a
 	// launch (#477); Reason says why. The session launched anyway.
 	HostedEventPluginFailed = "plugin-failed"
+	// host add --create-role registered the base role on a node that has
+	// not said whether it takes role credentials (#562); Reason says what
+	// goes wrong if it does not and how to fix it.
+	HostedEventCredentialUnknown = "credential-unknown"
 )
 
 // Who asked for a hosted session event, where known.

@@ -34,7 +34,12 @@ func (s *Service) AdminTerminalsAPI(w http.ResponseWriter, r *http.Request, rest
 			if !ok {
 				return true
 			}
-			h, err := s.Create(c)
+			create := s.Create
+			if a, ok := actorOf(r.Context()); ok && a.Method == "boss" {
+				// A boss role's token (#562), not the admin's form.
+				create = s.CreateGuarded
+			}
+			h, err := create(c)
 			if err == nil {
 				s.recordAction(r, wire.ActionSessionAdd, h.ID)
 			}

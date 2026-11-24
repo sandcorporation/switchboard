@@ -224,11 +224,14 @@ func (s *Service) admit(role string, c *wire.HostedSessionCreate) (string, error
 // RoleCreate adds c as role's record within its grant (parent role, a
 // group of the grant or none) and records who added it in the session's history.
 func (s *Service) RoleCreate(role string, c wire.HostedSessionCreate) (wire.HostedSession, error) {
+	if c.CreateRole {
+		return wire.HostedSession{}, ErrCreateRoleForbidden
+	}
 	root, err := s.admit(role, &c)
 	if err != nil {
 		return wire.HostedSession{}, err
 	}
-	h, err := s.create(c, root)
+	h, err := s.create(c, root, true)
 	if err != nil {
 		return h, err
 	}
