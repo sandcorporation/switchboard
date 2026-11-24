@@ -85,7 +85,7 @@ function runAt(t){
 }
 function schedRow(j){
   const st=jobBadge(j),next=j.next_fire_at&&j.state==='active'?'다음 '+shortWhen(j.next_fire_at):'';
-  const r=jobRowOf('sched:'+j.id,['#'+j.id,j.kind==='cron'?j.cron:'1회',j.role,next,j.last_run_at&&'지금 실행 · '+runAt(j.last_run_at)],j.label,j.state==='active'?null:st);
+  const r=jobRowOf('sched:'+j.id,['#'+j.id,j.kind==='cron'?j.cron:'1회',j.last_run_at&&'지금 실행 · '+runAt(j.last_run_at),j.role,next],j.label,j.state==='active'?null:st);
   if(!jobLive(j.state))r.classList.add('done');
   return r;
 }
@@ -115,16 +115,18 @@ function jobAct(label,title,msg,doing,ask,send){
 }
 // runButton mails the prompt now (#588), after a confirm in the page; the
 // next fire stays. A run again within the server's window is the same run.
+// runFlash keeps the sent line for a minute across the detail's redraws.
+let runFlash=null;
 function runButton(j,msg){
+  if(runFlash&&runFlash.id===j.id&&Date.now()-runFlash.at<60000)setMsg(msg,runFlash.text);
   if(j.state!=='active'&&j.state!=='paused')return [];
   const b=setButton('지금 실행','',async()=>{
     if(!await askOn(b,{text:'#'+j.id+' '+j.label+' 프롬프트를 지금 한 통 보냅니다. 다음 회차는 그대로입니다.',ok:'보내기 확인'}))return;
     b.disabled=true;setMsg(msg,'보내는 중…');
     try{
       const r=await apiSend('POST','schedules/'+encodeURIComponent(j.id)+'/run');
-      b.disabled=false;
-      setMsg(msg,(r.repeated?'이미 보냄 · ':'지금 실행 · ')+runAt(r.schedule.last_run_at||new Date())+' · 메일 #'+r.mail_id);
-      loadJobs();
+      runFlash={id:j.id,at:Date.now(),text:(r.repeated?'이미 보냄 · ':'지금 실행 · ')+runAt(r.schedule.last_run_at||new Date())+' · 메일 #'+r.mail_id};
+      await loadJobs();drawDetail();
     }catch(e){b.disabled=false;setMsg(msg,e.message,'err')}
   });
   b.title='프롬프트를 지금 한 번 보낸다 — 다음 회차는 그대로';
