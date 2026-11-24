@@ -91,17 +91,20 @@ test('the tab on screen: the open item\'s category, 화면 for its screens, else
 
 test('역할 줄 상태·컨텍스트: 슬롯 주소로 붙은 세션도 찾고, 여럿이면 가장 바쁜 것', () => {
   const ctx = load();
+  vm.runInContext("setData = { roles: [{ role: 'team/boss' }, { role: 'team/worker' }, { role: 'team/worker-1' }, { role: 'team/none' }] }", ctx);
   const sess = (role, status, tok) => ({ role, online: true, status, context_tokens: tok, machine: 'm1' });
   ctx.frameData = { terms: [], questions: [], perms: [], sessions: [
     sess('team/boss-1', 'idle', 1000), sess('team/boss-2', 'busy', 2000), sess('team/boss-2-1', 'blocked:x', 3000),
-    sess('team/worker', 'idle', 500), sess('team/workers-1', 'busy', 9),
+    sess('team/worker', 'idle', 500), sess('team/worker-1', 'blocked:x', 7), sess('team/worker-1-2', 'busy', 8), sess('team/worker-3', 'busy', 9), sess('team/workers-1', 'busy', 9),
   ] };
   ctx.frameRows = d => d.sessions.map(s => ({ role: s.role, st: s.online ? s.status : 'offline', ctx: s.context_tokens, machine: s.machine, label: '' }));
   ctx.sessionStatus = st => { const m = /^(blocked|error):/.exec(st); return m ? ['막힘', 'st-' + m[1]] : [{ busy: '바쁨', idle: '유휴' }[st], 'st-' + st]; };
   ctx.termRole = () => ''; ctx.kTokens = n => n + 't'; ctx.setRow = (id, cells) => ({ id, cells });
   const live = ctx.setLive();
   assert.equal(live.get('team/boss').role, 'team/boss-2');
-  assert.equal(live.get('team/worker').role, 'team/worker');
+  // overlapping role names: each session counts for its longest registered role only
+  assert.equal(live.get('team/worker').role, 'team/worker-3');
+  assert.equal(live.get('team/worker-1').role, 'team/worker-1-2');
   assert.equal(live.get('team/none'), null);
   const row = plain(ctx.setRoleRow({ role: 'team/boss' }, live));
   assert.deepEqual(row.cells.slice(3), [['바쁨', 'success'], '2000t']);
