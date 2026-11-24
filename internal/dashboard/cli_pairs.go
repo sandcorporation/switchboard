@@ -112,7 +112,7 @@ var CLIPairs = []CLIPair{
 	{Method: "POST", Path: "node-invites", CLI: "node invite"},
 	{Method: "GET", Path: "admin-actions", Why: "the admin's own action record (#446), read where the actions are taken: the 노드 index and a session's 기록"},
 	{Method: "GET", Path: "settings", CLI: "settings"},
-	{Method: "PUT", Path: "settings/left-remind", Why: "the server-wide reminder time of open left items (#553) is a signed-in admin's setting; each role ends its items with left done and left drop"},
+	{Method: "PUT", Path: "settings/remind/{}", Why: "the server-wide reminder times (mail, left items, requests; #553, #586) are a signed-in admin's setting; each role ends its work with reply --done, left done or request done"},
 	{Method: "GET", Path: "watches", CLI: "watch list"},
 	{Method: "POST", Path: "watches", Why: "an API watch is registered on the dashboard only (#528): its key is typed there once and never shown again"},
 	{Method: "POST", Path: "watches/test", Why: "the dashboard's check of a rule before it is saved (#528); registering is the dashboard's"},

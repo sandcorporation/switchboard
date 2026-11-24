@@ -55,7 +55,10 @@ function requestItem(r){
   if(r.open_questions)top+=' · 답 '+r.open_questions;
   else if(r.reports||r.mail)top+=' · 보고 '+(r.reports||0)+' · 메일 '+(r.mail||0);
   if(r.remaining)top+=' · 남은 일 '+r.remaining;
-  return listRow('requests',String(r.id),{top:top,right:shortWhen(at),rightHover:when(at),title:r.title,
+  if(r.owner_wait)top+=' · 대표 확인 대기';
+  // 기한 넘김 (#586): open and quiet for the request reminder time.
+  const over=!!r.overdue,right=(over?'기한 넘김 · ':'')+shortWhen(at);
+  return listRow('requests',String(r.id),{top:top,right:right,tone:over?'danger':'',rightHover:(over?'마지막 소식 '+when(r.quiet_since)+' — 다시 알림 기한 넘김 · ':'')+when(at),title:r.title,
     hover:'#'+r.id+' '+r.title+(news?' — '+news:''),cls:r.status==='waiting'||r.status==='done'?'un':''});
 }
 // requestOpen is the 아직 남은 일 table (#564): mail no one ended, questions
@@ -98,7 +101,7 @@ registerDetail('requests',{
   head:d=>{
     const [,label,tone]=requestLabel(d.status);
     const n=(d.question_list||[]).length,rep=(d.report_list||[]).length,mail=(d.mail_list||[]).length;
-    return {title:'#'+d.id+' '+d.title,badge:[label+(d.remaining?' · 남은 일 '+d.remaining:''),tone],crumb:{path:['지시 #'+d.id,d.author],
+    return {title:'#'+d.id+' '+d.title,badge:[label+(d.remaining?' · 남은 일 '+d.remaining:'')+(d.owner_wait?' · 대표 확인 대기':'')+(d.overdue?' · 기한 넘김':''),d.overdue?'danger':tone],crumb:{path:['지시 #'+d.id,d.author],
       meta:[[shortWhen(d.created_at)+' 등록','등록한 때 — '+when(d.created_at)],['질문 '+n+' · 보고 '+rep+' · 메일 '+mail,'이 지시에 딸린 것']]}};
   },
   subs:()=>[['body','지시']],

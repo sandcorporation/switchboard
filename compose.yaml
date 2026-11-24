@@ -23,11 +23,6 @@ x-switchboard-environment: &switchboard-environment
   SWITCHBOARD_ALERT_PENDING: ${SWITCHBOARD_ALERT_PENDING:-}
   SWITCHBOARD_ALERT_ERROR: ${SWITCHBOARD_ALERT_ERROR:-}
   SWITCHBOARD_ALERT_BLOCKED: ${SWITCHBOARD_ALERT_BLOCKED:-}
-  SWITCHBOARD_REMIND: ${SWITCHBOARD_REMIND:-}
-  SWITCHBOARD_REMIND_AFTER: ${SWITCHBOARD_REMIND_AFTER:-}
-  SWITCHBOARD_REMIND_MAX: ${SWITCHBOARD_REMIND_MAX:-}
-  SWITCHBOARD_REMIND_IDLE: ${SWITCHBOARD_REMIND_IDLE:-}
-  SWITCHBOARD_REMIND_IDLE_MAX: ${SWITCHBOARD_REMIND_IDLE_MAX:-}
   # Secret values at rest (#525): 32 bytes in base64 (a credential: keep it in the external .env); empty keeps the key file in the data folder.
   SWITCHBOARD_SECRETS_KEY: ${SWITCHBOARD_SECRETS_KEY:-}
   # Optional timing and client settings; empty means the built-in default (see README).

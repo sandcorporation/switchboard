@@ -5,7 +5,7 @@ import "time"
 type ProgressReport struct {
 	GeneratedAt   time.Time         `json:"generated_at"`
 	PendingAlertS int64             `json:"pending_alert_s"` // SWITCHBOARD_ALERT_PENDING in seconds; 0: off
-	IdleAfterS    int64             `json:"idle_after_s"`    // SWITCHBOARD_REMIND_IDLE in seconds; 0: off
+	IdleAfterS    int64             `json:"idle_after_s"`    // the idle threshold in seconds (1h); 0: off
 	Services      []ServiceProgress `json:"services"`
 	// CLIBehind is one row per machine with an old CLI (#308),
 	// the 옛 판 rows of 진행 대기.
@@ -24,7 +24,7 @@ type ServiceProgress struct {
 	LastActivityAt *time.Time          `json:"last_activity_at"`
 	OpenDirectives []ProgressDirective `json:"open_directives"`
 	// Stalled lists the directives answered but not completed whose
-	// recipient's sessions have been idle since for SWITCHBOARD_REMIND_IDLE
+	// recipient's sessions have been idle since for the idle threshold (1h)
 	// (#268), the 대기 멈춤 rows.
 	Stalled []ProgressStall `json:"stalled"`
 	// Left counts the open 남긴 것 items the service's roles recorded (#470).

@@ -101,13 +101,12 @@ func TestAdminCloseDirective(t *testing.T) {
 	}
 }
 
-// A closed directive gets no further reminder nor sender notice: the
+// A closed directive gets no further reminder: the
 // reminder sweep reads the same no_reply flag as progress.
 func TestRemindStopsOnClose(t *testing.T) {
 	t.Parallel()
 	s, clock := slotsWithRoles(t)
-	remindOn(s)
-	sweepOnce(t, s)
+	remindOn(t, s)
 	closed := apiMail(t, s, clock, "hq/boss", "/api/messages", map[string]any{"recipient": "team/worker", "subject": "closed"})
 	open := apiMail(t, s, clock, "hq/boss", "/api/messages", map[string]any{"recipient": "team/worker", "subject": "open"})
 	readAs(t, s, "team/worker", closed.ID)
@@ -119,7 +118,7 @@ func TestRemindStopsOnClose(t *testing.T) {
 	if code, body := closeAs(s, "hq/boss", closed.ID); code != 200 {
 		t.Fatalf("close: %d %s", code, body)
 	}
-	for _, h := range []time.Duration{3, 7, 15, 40} {
+	for _, h := range []time.Duration{2, 3} {
 		sweepAt(t, s, clock, start.Add(h*remindGap))
 	}
 	want := []string{
@@ -127,7 +126,6 @@ func TestRemindStopsOnClose(t *testing.T) {
 		fmt.Sprintf("team/worker remind:%d:1", open.ID),
 		fmt.Sprintf("team/worker remind:%d:2", open.ID),
 		fmt.Sprintf("team/worker remind:%d:3", open.ID),
-		fmt.Sprintf("hq/boss remind-sender:%d", open.ID),
 	}
 	if got := remindKeys(t, s); strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Fatalf("reminders %v, want %v", got, want)

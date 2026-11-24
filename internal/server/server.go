@@ -636,6 +636,15 @@ func (s *Server) adminRoutes(w http.ResponseWriter, r *http.Request, path string
 		s.mail().Close(w, r, "", mail.CurrentID(s.db, id))
 		return
 	}
+	if kind, ok := strings.CutPrefix(path, "settings/remind/"); ok {
+		// One reminder kind's time (#586): a signed-in admin's.
+		if boss != nil || r.Method != http.MethodPut {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		s.remindAPI(w, r, kind)
+		return
+	}
 	if path == "settings/left-remind" {
 		// The reminder of open left items (#553): a signed-in admin's.
 		if boss != nil || r.Method != http.MethodPut {

@@ -8,7 +8,7 @@ import (
 
 // Request status (#501), derived on every read, never stored.
 const (
-	RequestWaiting  = "waiting"  // a linked panel question is unanswered
+	RequestWaiting  = "waiting"  // a linked panel question is unanswered, or the boss role marked it waiting on the owner (#586)
 	RequestDone     = "done"     // the boss role marked it done and nothing came after; not checked yet
 	RequestProgress = "progress" // anything else
 	RequestChecked  = "checked"  // done, and a dashboard login checked it
@@ -68,6 +68,15 @@ type RequestNoteNew struct {
 // Check refuses an empty text or one over its limit.
 func (q *RequestNoteNew) Check() error { return checkRequestText(q.Text) }
 
+// RequestWaitNew is the body of POST /api/requests/{id}/wait (switchboard
+// request wait, #586): Off clears the 「대표 확인 대기」 mark, else it is set.
+type RequestWaitNew struct {
+	Off bool `json:"off,omitempty"`
+}
+
+// Check accepts every body.
+func (q *RequestWaitNew) Check() error { return nil }
+
 // RequestDoneNew is the body of POST /api/requests/{id}/done (switchboard
 // request done): the result in one line.
 type RequestDoneNew struct {
@@ -123,6 +132,15 @@ type Request struct {
 	// Remaining is how much work is left under the request (#564): its
 	// unanswered directive mail, open panel questions and open left items.
 	Remaining int `json:"remaining"`
+	// OwnerWait is when the boss role marked the request 「대표 확인 대기」
+	// (request wait, #586), nil when not marked.
+	OwnerWait *time.Time `json:"owner_wait,omitempty"`
+	// QuietSince is the request's last news of any kind (#586): a note, a
+	// report, mail on its chain, a question or its answer, the waiting mark.
+	QuietSince time.Time `json:"quiet_since"`
+	// Overdue: open and quiet for the request reminder time (#586). A
+	// waiting one gets no reminder mail; the dashboard marks it instead.
+	Overdue bool `json:"overdue,omitempty"`
 }
 
 // RequestList is GET /api/requests and /api/admin/requests, newest first.

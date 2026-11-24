@@ -38,7 +38,7 @@ const setCols={
   qsettings:[['대상',0,'mono'],['질문'],['디스코드',1],['지켜봄',1,'num']],
   watches:[['이름'],['받는 역할',0,'mono st-dim'],['주기',1],['최근',1,'st-dim'],['상태']],
   hooks:[['이름'],['방식'],['받는 역할',1,'mono st-dim'],['최근',1,'st-dim'],['상태']],
-  reminders:[['이름'],['다시 알림'],['판',1,'st-dim']],
+  reminders:[['종류'],['받는 쪽',1,'st-dim'],['기한'],['넘긴 것']],
 };
 function setCatOn(c){return !c.host||hostingOn}
 function setAddOk(c){return !!c.add&&setCatOn(c)&&(!c.addPerm||can(c.addPerm))}
@@ -163,7 +163,7 @@ function setCatRows(v){
     qsettings:[d.qs,v=>setRow('qs:'+v.target,[v.target,v.can_ask?['가능','success']:'불가',v.discord?'켬':'끔',String(v.watchers.length)])],
     watches:[d.watches,watchRow],
     hooks:[d.hooks,hookRow],
-    reminders:[d.srv&&!d.srv.err?[d.srv,{left:d.srv}]:d.srv,s=>s.left?setRow('server:left',['남긴 것',leftRemindText(s.left.left_remind),'']):setRow('server:now',['서버',s.reminders.on?['켬','success']:'끔',s.version])],
+    reminders:[d.srv&&!d.srv.err?[...(d.srv.remind||[]).map(k=>({k:k})),{srv:d.srv}]:d.srv,s=>s.k?remindRow(s.k):setRow('server:now',['서버','','판 '+s.srv.version,''])],
   }[v];
   if(!each||each[0]===null)return null;
   if(!Array.isArray(each[0]))return each[0];
@@ -541,37 +541,54 @@ function drawWorkGroup(g,box){
   box.append(groupForm(g));
   if(!g.fresh)box.append(dl([['세션',String(g.sessions)],['바뀐 때',when(g.updated_at)]]));
 }
-// 다시 알림 (#223): the reminder settings and the server version, as the
-// start-up line reports them.
-function drawServer(s,box){
-  if(s.key==='left'){drawLeftRemind(s.left_remind,box);return}
-  const r=s.reminders,st=document.createElement('span');
-  st.append(badge(r.on?'켬':'끔',r.on?'success':'neutral'));
-  box.append(dl([['다시 알림',st],['첫 알림',r.after],['최대 횟수',String(r.max)],['멈춤 문턱',r.idle==='off'?'끔':r.idle],['멈춤 알림',r.idle==='off'?'-':String(r.idle_max||1)+'번'],['켠 때',r.since?when(r.since):r.on?'첫 점검 전':'-'],['서버 판',s.version],['터미널 호스팅',s.hosting?'켬':'끔'],['답 규칙 판',String(s.answered_rule.version)],['마지막 이주',ruleLast(s.answered_rule.last)]]));
+// 다시 알림 (#223, #586): one row per reminder kind (mail, left items,
+// requests) with who gets it, its time and how many are past it; the 서버
+// row holds the version and the idle check.
+const remindName={mail:'메일',left:'남긴 것',request:'지시'};
+const remindTip={mail:'읽고 끝나지 않은 지시 메일이 이 시간 동안 답이 없으면 받은 역할에게',left:'남긴 것이 이 시간 넘게 처리되지 않으면 지시한 역할에게 묶어서',request:'진행 중 지시에 이 시간 동안 소식이 없으면 맡은 대장에게 — 대표 답 대기면 보내지 않음'};
+function remindTime(k){
+  if(!k.on)return '끔';
+  const m=Math.round(k.after_seconds/60),h=Math.floor(m/60),r=m%60;
+  return (h?h+'시간':'')+(r?(h?' ':'')+r+'분':'');
 }
-// 남긴 것 (#553): the reminder time of open left items, in hours; empty
-// is off. A new value counts from when it is saved.
-function leftRemindText(r){return r.on?leftRemindHours(r)+'시간':'끔'}
-function leftRemindHours(r){return String(Math.round(r.after_seconds/36)/100)}
-function drawLeftRemind(r,box){
-  drawSetNote(box,'server:left');
-  box.append(dl([['리마인드',leftRemindText(r)],['기준 시각',r.since?when(r.since):'-']]));
-  const key='server:left',stamp=String(r.after_seconds)+(r.since||''),kept=setForms.get(key);
+function remindOver(k){
+  const t=k.overdue+'건'+(k.kind==='request'?' · 대표 답 대기 '+k.waiting:'');
+  return [t,k.overdue||k.waiting?'warning':''];
+}
+function remindRow(k){
+  const tr=setRow('server:'+k.kind,[remindName[k.kind]||k.kind,k.to,k.on?remindTime(k):['끔','neutral'],remindOver(k)]);
+  tr.title=remindTip[k.kind]||'';
+  return tr;
+}
+function drawServer(s,box){
+  const k=(s.remind||[]).find(x=>x.kind===s.key);
+  if(k){drawRemindKind(k,box);return}
+  const r=s.reminders;
+  box.append(dl([['멈춤 문턱',r.idle==='off'?'끔':r.idle],['멈춤 알림',r.idle==='off'||!r.on?'-':String(r.idle_max||1)+'번'],['서버 판',s.version],['터미널 호스팅',s.hosting?'켬':'끔'],['답 규칙 판',String(s.answered_rule.version)],['마지막 이주',ruleLast(s.answered_rule.last)]]));
+}
+function remindHours(k){return k.on?String(Math.round(k.after_seconds/36)/100):''}
+function drawRemindKind(k,box){
+  const key='server:'+k.kind;
+  drawSetNote(box,key);
+  const over=remindOver(k),overEl=document.createElement('span');
+  overEl.append(over[1]?badge(over[0],over[1]):over[0]);
+  box.append(dl([['받는 쪽',k.to],['기한',remindTime(k)],['기준 시각',k.since?when(k.since):'-'],['넘긴 것',overEl]]));
+  const stamp=String(k.after_seconds)+(k.since||''),kept=setForms.get(key);
   if(kept&&kept.stamp===stamp){box.append(kept.form);return}
   const f=node('form','','settings-form termform');
-  const l=node('label','리마인드 (시간) '),h=document.createElement('input');
-  h.type='number';h.min='1';h.max='8760';h.step='1';h.inputMode='numeric';h.placeholder='끔';h.value=r.on?leftRemindHours(r):'';
-  h.title='남긴 것이 이 시간 넘게 처리되지 않으면 지시한 역할에게 묶어 알림 — 비우면 끔';h.setAttribute('aria-label','리마인드 (시간)');
+  const l=node('label','기한 (시간) '),h=document.createElement('input');
+  h.type='number';h.min='0';h.max='8760';h.step='any';h.inputMode='decimal';h.placeholder='끔';h.value=remindHours(k);
+  h.title=(remindTip[k.kind]||'')+' — 비우거나 0이면 끔, 0.5는 30분';h.setAttribute('aria-label','기한 (시간)');
   l.append(h);
-  const save=node('button','저장');save.type='submit';save.title='저장';
+  const save=node('button','저장');save.type='submit';save.title='저장 — 바꾼 때부터 다시 셈';
   const row=node('div','','row');row.append(save);
   f.append(l,row);
   f.onsubmit=async e=>{
     e.preventDefault();
-    const v=h.value.trim();
+    const v=parseFloat(h.value),mins=isFinite(v)&&v>0?Math.max(1,Math.round(v*60)):0;
     try{
-      await apiSend('PUT','settings/left-remind',{after:v?v+'h':''});
-      setForms.delete(key);setNote(key,v?'리마인드를 '+v+'시간으로 저장했습니다.':'리마인드를 껐습니다.','ok');
+      const got=await apiSend('PUT','settings/remind/'+k.kind,{after:mins?mins+'m':''});
+      setForms.delete(key);setNote(key,mins?'기한을 '+remindTime(got)+'으로 저장했습니다.':'껐습니다.','ok');
     }catch(err){setNote(key,err.message,'err')}
     loadSettingsView();drawDetail();
   };
@@ -710,7 +727,7 @@ const setHeads={
   node:v=>({title:v.name,badge:v.revoked_at?['끊김','danger']:null}),
   group:v=>({title:v.fresh?'새 묶음':v.name,badge:null}),
   hook:v=>({title:v.fresh?'새 웹훅':v.name,badge:v.fresh?null:v.dest==='unreadable'?['다시 등록 필요','danger']:[hookModeName[v.mode]||v.mode,'neutral']}),
-  server:v=>v.key==='left'?{title:'다시 알림 · 남긴 것',badge:v.left_remind.on?['켬','success']:['끔','neutral']}:{title:'다시 알림 · 서버',badge:v.reminders.on?['켬','success']:['끔','neutral']},
+  server:v=>{const k=(v.remind||[]).find(x=>x.kind===v.key);return k?{title:'다시 알림 · '+(remindName[k.kind]||k.kind),badge:k.on?['켬','success']:['끔','neutral']}:{title:'다시 알림 · 서버',badge:null}},
   view:()=>({title:'노드',badge:null}),
 };
 const setDraws={qs:drawQS,refusals:drawRefusals,role:drawRole,login:drawLogin,node:drawNode,group:drawWorkGroup,hook:drawHook,server:drawServer,view:(v,box)=>{const n=ws.nodes();box.append(n.el);n.show()}};
@@ -723,6 +740,6 @@ registerDetail('settings',{
   },
   // The line beside the name: a role's address, else the item's tab.
   head:x=>{const h=setHeads[x.k](x.v);if(h.sub===undefined){const c=setCatOf(setKindView[x.k]);h.sub=c?c.name:''}return h},
-  subs:x=>x.k==='qs'||(x.k==='role'&&x.v.fresh)||x.k==='group'||x.k==='watch'||x.k==='hook'||(x.k==='server'&&x.v.key==='left')?[['edit','설정']]:[['info','정보']],
+  subs:x=>x.k==='qs'||(x.k==='role'&&x.v.fresh)||x.k==='group'||x.k==='watch'||x.k==='hook'||(x.k==='server'&&x.v.key in remindName)?[['edit','설정']]:[['info','정보']],
   draw:async(x,sub,box)=>{await setDraws[x.k](x.v,box);if(x.k!=='view')setFoot(box)}
 });

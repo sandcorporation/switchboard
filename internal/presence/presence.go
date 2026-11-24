@@ -43,7 +43,7 @@ type Config struct {
 	Interval  time.Duration  // expected heartbeat interval; 0 means defaultPresenceInterval
 	Missed    int            // heartbeats a session may miss; 0 means defaultPresenceMissed
 	Retain    *time.Duration // how long offline sessions stay listed; nil means defaultPresenceRetain
-	Remind    RemindConfig   // directive reminders (remind.go)
+	Remind    RemindConfig   // the idle check's knobs (remind.go)
 	// Rule is the answered rule open directives follow; the zero value means
 	// mail.CurrentAnsweredRule. Only tests set another (a later version).
 	Rule mail.AnsweredRule
@@ -122,7 +122,7 @@ func Configure(c *Config, getenv func(string) string) error {
 		}
 		c.Retain = &d
 	}
-	return configureRemind(&c.Remind, getenv)
+	return nil
 }
 
 func (s *Service) heartbeatInterval() time.Duration {
