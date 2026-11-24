@@ -112,7 +112,24 @@ type Schedule struct {
 	PausedBy    *ScheduleActor `json:"paused_by,omitempty"`
 	PauseReason string         `json:"pause_reason,omitempty"`
 	Passed      bool           `json:"passed,omitempty"`
+	// LastRunAt is the last run now (#588): a mail outside the fire times
+	// that moved neither the next fire nor last_fire_at.
+	LastRunAt *time.Time `json:"last_run_at,omitempty"`
 }
+
+// ScheduleRun is the answer of POST /api/schedules/ID/run (switchboard
+// schedule run, #588): the schedule (its next fire unchanged) and the mail
+// sent. Repeated is a run again within ScheduleRunWindow of the last one,
+// which sent nothing new: MailID is that run's mail.
+type ScheduleRun struct {
+	Schedule Schedule `json:"schedule"`
+	MailID   int64    `json:"mail_id"`
+	Repeated bool     `json:"repeated,omitempty"`
+}
+
+// ScheduleRunWindow is how long after a run now another run of the same
+// schedule is the same run (a double click, a retry).
+const ScheduleRunWindow = 30 * time.Second
 
 // ScheduleCreate is the body of POST /api/schedules (switchboard schedule
 // add) and of the dashboard's POST /api/admin/schedules (#551). A cron

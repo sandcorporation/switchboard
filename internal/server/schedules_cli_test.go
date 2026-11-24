@@ -45,6 +45,7 @@ func TestScheduleCLI(t *testing.T) {
 		{"schedule", "add", "--in", "5m"},
 		{"schedule", "add", "--at", "tomorrow", "--prompt", "x"},
 		{"schedule", "show"},
+		{"schedule", "run"},
 	} {
 		if r := h.run(tz, bad...); r.code != cli.ExitUsage {
 			t.Errorf("%v: %+v", bad, r)
@@ -57,6 +58,31 @@ func TestScheduleCLI(t *testing.T) {
 	r = h.run(tz, "schedule", "show", itoa(id))
 	if r.code != cli.ExitOK || !strings.Contains(r.stdout, "(Asia/Seoul)") || !strings.Contains(r.stdout, "prompt   Check the build") {
 		t.Fatalf("show: %+v", r)
+	}
+	// run (#588): one mail now, the next fire in show unchanged.
+	nextLine := func() string {
+		r := h.run(tz, "schedule", "show", itoa(id))
+		for _, l := range strings.Split(r.stdout, "\n") {
+			if strings.HasPrefix(l, "next ") {
+				return l
+			}
+		}
+		t.Fatalf("show has no next: %+v", r)
+		return ""
+	}
+	before := nextLine()
+	r = h.run(tz, "schedule", "run", "#"+itoa(id))
+	if r.code != cli.ExitOK || !strings.HasPrefix(r.stdout, "sent #"+itoa(id)+" now (mail #") || !strings.Contains(r.stdout, "unchanged") {
+		t.Fatalf("run: %+v", r)
+	}
+	if after := nextLine(); after != before {
+		t.Fatalf("next moved: %q -> %q", before, after)
+	}
+	if m := scheduleMail(t, h.s, "a"); len(m) != 1 || m[0].Subject != "[주기] standup · 지금 실행" || !strings.Contains(r.stdout, "(mail #"+itoa(m[0].ID)+")") {
+		t.Fatalf("run mail %+v %q", m, r.stdout)
+	}
+	if r = h.run(tz, "schedule", "run", itoa(id)); r.code != cli.ExitOK || !strings.HasPrefix(r.stdout, "already sent #") {
+		t.Fatalf("run again: %+v", r)
 	}
 	if r = h.run(tz, "schedule", "rm", itoa(id)); r.code != cli.ExitOK {
 		t.Fatalf("rm: %+v", r)
