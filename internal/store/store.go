@@ -859,6 +859,18 @@ func migrateLeftRemind(db *sql.DB) error {
 		}
 	}
 	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS left_remind(id INTEGER PRIMARY KEY CHECK(id=1), after_s INTEGER NOT NULL, since INTEGER NOT NULL)`)
+	if err != nil {
+		return err
+	}
+	return migrateLeftRemindItems(db)
+}
+
+// migrateLeftRemindItems adds left_remind_items (#565, additive): the items
+// a [남긴 것] reminder lists, by the reminder's message ID as stored. Mail
+// with rows here is a reminder; completing it takes a verdict for each of
+// its items still open.
+func migrateLeftRemindItems(db *sql.DB) error {
+	_, err := db.Exec(`CREATE TABLE IF NOT EXISTS left_remind_items(message_id INTEGER NOT NULL,item_id INTEGER NOT NULL,PRIMARY KEY(message_id,item_id))`)
 	return err
 }
 

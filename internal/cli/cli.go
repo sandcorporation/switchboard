@@ -72,6 +72,8 @@ var (
 	// reply --complete, complete and close (and send --complete).
 	optLeft     = option{"--left", "ITEM", "an answer that ends a directive: one thing it left undone (repeatable); the directive's sender raises or passes it on"}
 	optLeftNone = option{"--left-none", "", "an answer that ends a directive: nothing is left undone"}
+	// optVerdict goes with completing a [남긴 것] reminder (#565).
+	optVerdict = option{"--verdict", "ITEM=VERDICT", "completing a [남긴 것] reminder: one item's verdict, done, keep (stays open, reminded again), drop:REASON or issue:URL (repeatable; every open item it lists needs one)"}
 )
 
 var commands = []command{
@@ -117,7 +119,7 @@ var commands = []command{
 			{"--task", "ID", "task identifier to attach"},
 			optUrgent, optNoReply,
 			{"--complete", "ID[,ID...]", "mail you received to mark complete with this send (repeatable; one transaction, refused unless every ID is yours)"},
-			optLeft, optLeftNone,
+			optLeft, optLeftNone, optVerdict,
 			{"--idempotency-key", "KEY", "retry-safe key; resending with the same key returns the first message and marks nothing twice"},
 			optRequestID, optJSON, optProfile,
 		}},
@@ -174,13 +176,13 @@ var commands = []command{
 			optUrgent,
 			{"--directive", "", "the reply carries new work: count it as a directive in progress"},
 			optNoReply,
-			optLeft, optLeftNone,
+			optLeft, optLeftNone, optVerdict,
 			{"--idempotency-key", "KEY", "retry-safe key; resending with the same key returns the first reply and marks nothing twice"},
 			optRequestID,
 			optJSON, optProfile,
 		}},
 	{name: "ack", args: "ID", nargs: 1, summary: "Acknowledge a message", options: []option{optJSON, optProfile}},
-	{name: "complete", args: "ID", nargs: 1, summary: "Mark a message complete; completing a directive sent to you ends it, so say what is left (--left or --left-none)", options: []option{optLeft, optLeftNone, optJSON, optProfile}},
+	{name: "complete", args: "ID", nargs: 1, summary: "Mark a message complete; completing a directive sent to you ends it, so say what is left (--left or --left-none)", options: []option{optLeft, optLeftNone, optVerdict, optJSON, optProfile}},
 	{name: "close", args: "ID", nargs: 1, summary: "Close a directive you sent: it needs no answer (no longer open, never reminded); given an answer's ID, close the directive it answers and complete the answer. Closing a directive that has not ended ends it: say what is left (--left or --left-none)", options: []option{optLeft, optLeftNone, optJSON, optProfile}},
 	{name: "left", args: "add N TEXT | issue ID URL | pass ID | done ID | drop ID", nargs: 3, optArgs: true,
 		summary: "What an answer that ended a directive left undone (진행 대기 남긴 것): add TEXT to directive N you ended; the directive's sender raises item ID as an issue (URL), passes it on in a directive it sent (--directive M), marks it done, or drops it (--reason). An item left open gets the sender a reminder each reminder time (설정 · 다시 알림)",

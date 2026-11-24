@@ -351,7 +351,8 @@ func (s *Service) send(w http.ResponseWriter, r *http.Request, p identity.Princi
 	complete := m.Complete
 	m.Complete = nil
 	claim := claimOf(m.Left, m.LeftNone)
-	m.Left, m.LeftNone = nil, false
+	verdicts := m.Verdicts
+	m.Left, m.LeftNone, m.Verdicts = nil, false, nil
 	var ending []int64 // directives the send ends (#470)
 	for i, id := range complete {
 		id = CurrentID(s.db, id) // held mail handed to a session has a new ID (#392)
@@ -385,11 +386,22 @@ func (s *Service) send(w http.ResponseWriter, r *http.Request, p identity.Princi
 		http.Error(w, "--left: end one directive at a time when saying what is left, or use left add", 400)
 		return
 	}
+	// A [남긴 것] reminder completes with a verdict per open item (#565).
+	judge, msg := s.verdicts(role, complete, verdicts)
+	if msg != "" {
+		http.Error(w, msg, 400)
+		return
+	}
 	if len(complete) > 0 {
 		then := inTx
 		inTx = func(tx *sql.Tx, now time.Time) error {
 			if err := markComplete(tx, role, complete, now); err != nil {
 				return err
+			}
+			if judge != nil {
+				if err := judge(tx, now); err != nil {
+					return err
+				}
 			}
 			for _, d := range ending {
 				if err := recordLeft(tx, d, role, claim, now); err != nil {
@@ -735,6 +747,7 @@ func (s *Service) Status(w http.ResponseWriter, r *http.Request, role string, id
 	// or --left-none, records into that directive's ledger (#483).
 	var answered int64
 	answeredEnding := false
+	var judge func(*sql.Tx, time.Time) error // verdicts on a reminder (#565)
 	if status == "complete" {
 		note, ok := leftNote(w, r)
 		if !ok {
@@ -743,6 +756,11 @@ func (s *Service) Status(w http.ResponseWriter, r *http.Request, role string, id
 		claim = claimOf(note.Left, note.LeftNone)
 		ending = s.isDirective(m) && !s.ended(id)
 		if msg := claim.problem(ending, id); msg != "" {
+			http.Error(w, msg, 400)
+			return
+		}
+		var msg string
+		if judge, msg = s.verdicts(role, []int64{id}, note.Verdicts); msg != "" {
 			http.Error(w, msg, 400)
 			return
 		}
@@ -758,6 +776,11 @@ func (s *Service) Status(w http.ResponseWriter, r *http.Request, role string, id
 	e = store.InTx(r.Context(), s.db, func(tx *sql.Tx) error {
 		if _, err := tx.Exec(`INSERT INTO role_states(role,message_id,status,updated_at) VALUES(?,?,?,?) ON CONFLICT(role,message_id) DO UPDATE SET status=excluded.status,updated_at=excluded.updated_at`, role, id, status, time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
 			return err
+		}
+		if judge != nil {
+			if err := judge(tx, s.now()); err != nil {
+				return err
+			}
 		}
 		switch {
 		case ending:
@@ -813,7 +836,8 @@ func (s *Service) Reply(w http.ResponseWriter, r *http.Request, p identity.Princ
 	m.Done = false
 	// reply --complete to a directive ends it (#470): it says what is left.
 	claim := claimOf(m.Left, m.LeftNone)
-	m.Left, m.LeftNone = nil, false
+	verdicts := m.Verdicts
+	m.Left, m.LeftNone, m.Verdicts = nil, false, nil
 	ending := done && s.isDirective(orig)
 	if msg := claim.problem(ending, id); msg != "" {
 		http.Error(w, msg, 400)
@@ -821,6 +845,18 @@ func (s *Service) Reply(w http.ResponseWriter, r *http.Request, p identity.Princ
 	}
 	if len(claim.items) > 0 && !ending {
 		http.Error(w, "--left goes with reply --complete to a directive, or left add", 400)
+		return
+	}
+	// reply --complete of a [남긴 것] reminder judges each open item (#565).
+	var judge func(*sql.Tx, time.Time) error
+	if done {
+		var msg string
+		if judge, msg = s.verdicts(orig.Recipient, []int64{id}, verdicts); msg != "" {
+			http.Error(w, msg, 400)
+			return
+		}
+	} else if len(verdicts) > 0 {
+		http.Error(w, "--verdict goes with reply --complete of a [남긴 것] reminder", 400)
 		return
 	}
 	b, _ := json.Marshal(m)
@@ -832,6 +868,11 @@ func (s *Service) Reply(w http.ResponseWriter, r *http.Request, p identity.Princ
 		inTx = func(tx *sql.Tx, now time.Time) error {
 			if err := markComplete(tx, orig.Recipient, []int64{id}, now); err != nil {
 				return err
+			}
+			if judge != nil {
+				if err := judge(tx, now); err != nil {
+					return err
+				}
 			}
 			if !ending {
 				return nil

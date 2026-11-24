@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sandcorporation/switchboard/internal/identity"
 	"github.com/sandcorporation/switchboard/internal/store"
 	"github.com/sandcorporation/switchboard/internal/wire"
 )
@@ -17,6 +18,8 @@ import (
 // time after it was recorded gets its directive's sender one mail from the
 // system sender, all of that sender's due items in one, and again each
 // reminder time after that until the item ends (issue, pass, done, drop).
+// The mail completes only with a verdict on each open item it lists
+// (left_verdict.go, #565).
 //
 // The time is counted from the later of the item's recorded_at, the last
 // reminder (reminded_at) and since, when the reminder time was last set: the
@@ -159,11 +162,32 @@ func (s *Service) SweepLeftRemind(ctx context.Context) (int, error) {
 			if len(marked) == 0 {
 				return nil
 			}
-			subject, body := leftRemindMail(marked, after)
 			key := "left-remind:" + to + ":" + strconv.FormatInt(marked[0].id, 10) + ":" + strconv.FormatInt(now.UnixMilli(), 10)
+			subject, body := leftRemindMail(0, marked, after)
 			var err error
 			stored, err = InsertSystemMailOnce(tx, to, subject, body, "", "normal", key, now)
-			return err
+			if err != nil || !stored {
+				return err
+			}
+			// The body ends with the complete of this very mail (#565), so
+			// it is written again once the mail has its ID.
+			var id int64
+			if err = tx.QueryRow(`SELECT id FROM messages WHERE sender=? AND idem=?`, identity.SystemSender, key).Scan(&id); err != nil {
+				return err
+			}
+			_, body = leftRemindMail(id, marked, after)
+			if _, err = tx.Exec(`UPDATE messages SET body=? WHERE id=?`, body, id); err != nil {
+				return err
+			}
+			for i, it := range marked {
+				if i == leftRemindLines {
+					break
+				}
+				if _, err = tx.Exec(`INSERT OR IGNORE INTO left_remind_items(message_id,item_id) VALUES(?,?)`, id, it.id); err != nil {
+					return err
+				}
+			}
+			return nil
 		})
 		if err != nil {
 			return sent, err
@@ -207,10 +231,10 @@ FROM left_items l LEFT JOIN messages m ON m.id=l.directive_id WHERE l.state=? AN
 	return out, rows.Err()
 }
 
-// leftRemindMail is one reminder's subject and body: a line per item (its
+// leftRemindMail is reminder id's subject and body: a line per item (its
 // ID, text and directive), at most leftRemindLines, then how many more, then
-// the commands that end an item.
-func leftRemindMail(items []dueLeft, after time.Duration) (subject, body string) {
+// the verdicts and the complete that takes one for each listed item (#565).
+func leftRemindMail(id int64, items []dueLeft, after time.Duration) (subject, body string) {
 	subject = fmt.Sprintf("[남긴 것] %d건 처리 안 됨", len(items))
 	var b strings.Builder
 	fmt.Fprintf(&b, "남긴 것이 %s 넘게 처리되지 않았다.\n\n", ShortDuration(after))
@@ -221,7 +245,14 @@ func leftRemindMail(items []dueLeft, after time.Duration) (subject, body string)
 		}
 		fmt.Fprintf(&b, "#%d %s — 지시 #%d %s\n", it.id, oneLine(it.text, leftRemindText), it.directive, oneLine(it.subject, leftRemindText))
 	}
-	b.WriteString("\n처리: left done ID · left drop ID --reason \"까닭\" · left issue ID URL · left pass ID --directive M")
+	b.WriteString("\n판정(항목마다): done 끝남 · keep 그대로 둠(다음 알림에 다시) · drop:까닭 버림 · issue:URL 이슈로 넘김\n")
+	fmt.Fprintf(&b, "끝내기: complete %d", id)
+	for i, it := range items {
+		if i == leftRemindLines {
+			break
+		}
+		fmt.Fprintf(&b, " --verdict %d=판정", it.id)
+	}
 	return subject, b.String()
 }
 

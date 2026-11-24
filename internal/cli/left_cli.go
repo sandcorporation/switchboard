@@ -20,11 +20,31 @@ func setLeftHeader(req *http.Request) {
 	req.Header.Set(config.HeaderPrefix+config.LeftHeaderName, "1")
 }
 
-// leftNoteOf is the --left and --left-none of p, nil when neither is given.
-// Both together is a usage error.
+// verdictsOf reads each --verdict ITEM=done|keep|drop:REASON|issue:URL
+// (#565); the server checks the verdicts and the values.
+func verdictsOf(p parsedArgs) ([]wire.LeftVerdict, error) {
+	var out []wire.LeftVerdict
+	for _, raw := range p.multi["--verdict"] {
+		item, rest, ok := strings.Cut(strings.TrimSpace(raw), "=")
+		id, err := strconv.ParseInt(item, 10, 64)
+		if !ok || err != nil || id <= 0 {
+			return nil, usagef("--verdict %q: ITEM=done|keep|drop:REASON|issue:URL", raw)
+		}
+		verdict, value, _ := strings.Cut(rest, ":")
+		out = append(out, wire.LeftVerdict{Item: id, Verdict: strings.TrimSpace(verdict), Value: value})
+	}
+	return out, nil
+}
+
+// leftNoteOf is the --left, --left-none and --verdict of p, nil when none is
+// given. --left and --left-none together is a usage error.
 func leftNoteOf(p parsedArgs) (*wire.LeftNote, error) {
 	items := p.multi["--left"]
 	none := p.bool("--left-none")
+	verdicts, err := verdictsOf(p)
+	if err != nil {
+		return nil, err
+	}
 	if len(items) > 0 && none {
 		return nil, usagef("use --left or --left-none, not both")
 	}
@@ -33,10 +53,10 @@ func leftNoteOf(p parsedArgs) (*wire.LeftNote, error) {
 			return nil, usagef("--left: an empty item")
 		}
 	}
-	if len(items) == 0 && !none {
+	if len(items) == 0 && !none && len(verdicts) == 0 {
 		return nil, nil
 	}
-	return &wire.LeftNote{Left: items, LeftNone: none}, nil
+	return &wire.LeftNote{Left: items, LeftNone: none, Verdicts: verdicts}, nil
 }
 
 // noteBody is the request body for note, nil for none.
@@ -60,6 +80,9 @@ func withLeft(p parsedArgs, msg map[string]any) error {
 	}
 	if note.LeftNone {
 		msg["left_none"] = true
+	}
+	if len(note.Verdicts) > 0 {
+		msg["verdicts"] = note.Verdicts
 	}
 	return nil
 }

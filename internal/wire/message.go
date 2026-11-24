@@ -35,6 +35,7 @@ type Message struct {
 	Complete       []int64         `json:"complete,omitempty"`        // send --complete: mail the sender received to mark complete with the send (#327); request only
 	Left           []string        `json:"left,omitempty"`            // request only (#470): what the answer ending a directive left undone (--left, repeatable)
 	LeftNone       bool            `json:"left_none,omitempty"`       // request only (#470): the answer ending a directive left nothing undone (--left-none)
+	Verdicts       []LeftVerdict   `json:"verdicts,omitempty"`        // request only (#565): completing a [남긴 것] reminder judges each open item it lists (--verdict, repeatable)
 	RequestID      int64           `json:"request_id,omitempty"`      // request only (#501): the owner's request this mail is part of (send --request-id)
 	DirectiveState string          `json:"directive_state,omitempty"` // reply response: the replied-to directive's state, open or done (#269)
 	IdempotencyKey string          `json:"-"`

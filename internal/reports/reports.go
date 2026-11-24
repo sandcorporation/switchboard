@@ -8,6 +8,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"slices"
 	"sort"
@@ -90,6 +91,18 @@ func (s *Service) API(w http.ResponseWriter, r *http.Request, p identity.Princip
 	if len(bad) > 0 {
 		http.Error(w, "unknown mail ID(s): "+joinIDs(bad), http.StatusBadRequest)
 		return
+	}
+	// A [남긴 것] reminder completes only with its verdicts (#565).
+	for _, m := range received {
+		open, err := mail.Unjudged(s.db, m)
+		if err != nil {
+			http.Error(w, "query failed", http.StatusInternalServerError)
+			return
+		}
+		if len(open) > 0 {
+			http.Error(w, fmt.Sprintf("mail #%d is a [남긴 것] reminder with items to judge: complete %d --verdict ITEM=done|keep|drop:REASON|issue:URL for each, then link it", m, m), http.StatusBadRequest)
+			return
+		}
 	}
 	var id int64
 	now := s.now().UTC().Format(time.RFC3339Nano)
