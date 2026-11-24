@@ -115,9 +115,12 @@ type Schedule struct {
 }
 
 // ScheduleCreate is the body of POST /api/schedules (switchboard schedule
-// add). A cron schedule has Cron and TZ (the machine's zone); a once
-// schedule has At.
+// add) and of the dashboard's POST /api/admin/schedules (#551). A cron
+// schedule has Cron and TZ (the machine's zone); a once schedule has At.
 type ScheduleCreate struct {
+	// Role is the role the schedule is for: the admin path's, a role in the
+	// caller's view (#551). On the role path it is the token's role or empty.
+	Role           string     `json:"role,omitempty"`
 	Kind           string     `json:"kind"`
 	Cron           string     `json:"cron,omitempty"`
 	At             *time.Time `json:"at,omitempty"`

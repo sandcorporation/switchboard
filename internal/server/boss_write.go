@@ -57,6 +57,14 @@ var bossWriteRoutes = []bossWriteRoute{
 	}},
 	{http.MethodPost, pathShape("jobs/*/stop"), jobOwner},
 	{http.MethodDelete, pathShape("jobs/*"), jobOwner},
+	// A new schedule (#551) is the role's its body names.
+	{http.MethodPost, pathShape("schedules"), func(_ *Server, _ string, body []byte) (string, error) {
+		var c wire.ScheduleCreate
+		if json.Unmarshal(body, &c) != nil || strings.TrimSpace(c.Role) == "" {
+			return "", errNoTarget
+		}
+		return strings.TrimSpace(c.Role), nil
+	}},
 	{http.MethodDelete, pathShape("schedules/*"), scheduleOwner},
 	{http.MethodPut, pathShape("schedules/*"), scheduleOwner},
 	{http.MethodPost, pathShape("schedules/*/pause"), scheduleOwner},
@@ -84,6 +92,7 @@ var bossWriteRoutes = []bossWriteRoute{
 	{http.MethodDelete, terminal(""), terminalOwner},
 	{http.MethodPost, terminal("/restart"), terminalOwner},
 	{http.MethodPost, terminal("/new-conversation"), terminalOwner},
+	{http.MethodPost, pathShape("terminals/*/autos"), terminalOwner},
 	{http.MethodPost, pathShape("terminals/*/autos/*/run"), terminalOwner},
 	{http.MethodPost, pathShape("terminals/*/autos/*/pause"), terminalOwner},
 	{http.MethodPost, pathShape("terminals/*/autos/*/resume"), terminalOwner},

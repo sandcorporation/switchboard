@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -44,7 +45,7 @@ func (s *Service) ScheduleAPI(w http.ResponseWriter, r *http.Request, p identity
 	if rest == "" {
 		switch r.Method {
 		case http.MethodPost:
-			s.createSchedule(w, r, p)
+			s.createSchedule(w, r, s.ViewOf(p), p.Role)
 		case http.MethodGet:
 			role := r.URL.Query().Get("role")
 			if !s.ids.IsBoss(p) {
@@ -109,12 +110,17 @@ func (s *Service) ScheduleAPI(w http.ResponseWriter, r *http.Request, p identity
 //
 //	GET    ""   the schedules in view, ?role= and ?state=; no prompt text
 //	            (ListSchedules)
+//	POST   ""   create for a role in view (wire.ScheduleCreate.Role, #551)
 //	GET    "ID" one schedule with its prompt (recorded: ShowSchedule)
 //	DELETE "ID" remove
 //	PUT    "ID" edit (EditSchedule, #516)
 //	POST   "ID/pause", "ID/resume" (PauseSchedule, ResumeSchedule)
 func (s *Service) ScheduleAdminAPI(w http.ResponseWriter, r *http.Request, v View, rest string) {
 	if rest == "" {
+		if r.Method == http.MethodPost {
+			s.createSchedule(w, r, v, "")
+			return
+		}
 		if r.Method != http.MethodGet {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
@@ -161,11 +167,38 @@ func (s *Service) ScheduleAdminAPI(w http.ResponseWriter, r *http.Request, v Vie
 	s.removeSchedule(w, id)
 }
 
-func (s *Service) createSchedule(w http.ResponseWriter, r *http.Request, p identity.Principal) {
+// dashboardMachine is the machine of a schedule made on the dashboard
+// (#551), which has no machine of its own.
+const dashboardMachine = "dashboard"
+
+// createSchedule adds a schedule. own is the token's role on the role path
+// (the body's role, if any, must be it); "" on the admin path, where the
+// body names a role in v's view that exists and is not retired (#551).
+func (s *Service) createSchedule(w http.ResponseWriter, r *http.Request, v View, own string) {
 	var q wire.ScheduleCreate
 	if json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&q) != nil {
 		http.Error(w, "invalid JSON", http.StatusBadRequest)
 		return
+	}
+	q.Role = strings.TrimSpace(q.Role)
+	if own != "" {
+		if q.Role != "" && q.Role != own {
+			http.Error(w, "a role adds its own schedules", http.StatusForbidden)
+			return
+		}
+		q.Role = own
+	} else {
+		if q.Machine == "" {
+			q.Machine = dashboardMachine
+		}
+		if q.Role == "" {
+			http.Error(w, "role required", http.StatusBadRequest)
+			return
+		}
+		if !v.Sees(q.Role) || !s.liveRole(q.Role) {
+			http.Error(w, "unknown role", http.StatusNotFound)
+			return
+		}
 	}
 	if err := q.Check(); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -176,7 +209,7 @@ func (s *Service) createSchedule(w http.ResponseWriter, r *http.Request, p ident
 		key = q.IdempotencyKey
 	}
 	if key != "" {
-		if sc, ok := s.scheduleByIdem(p.Role, key); ok {
+		if sc, ok := s.scheduleByIdem(q.Role, key); ok {
 			writeJSON(w, http.StatusOK, sc)
 			return
 		}
@@ -193,10 +226,10 @@ func (s *Service) createSchedule(w http.ResponseWriter, r *http.Request, p ident
 	}
 	q.TZ = tz
 	res, err := s.db.Exec(`INSERT INTO schedules(role,machine,kind,label,prompt,cron,tz,state,created_at,expires_at,duration_s,no_extend,next_fire_at,idem) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-		p.Role, q.Machine, q.Kind, q.Label, q.Prompt, q.Cron, q.TZ, wire.ScheduleActive, stamp(now), stamp(now.Add(expires)), int64(expires/time.Second), q.NoExtend, stamp(next.UTC()), nullable(key))
+		q.Role, q.Machine, q.Kind, q.Label, q.Prompt, q.Cron, q.TZ, wire.ScheduleActive, stamp(now), stamp(now.Add(expires)), int64(expires/time.Second), q.NoExtend, stamp(next.UTC()), nullable(key))
 	if err != nil {
 		// A concurrent retry with the same key won the insert.
-		if sc, ok := s.scheduleByIdem(p.Role, key); key != "" && ok {
+		if sc, ok := s.scheduleByIdem(q.Role, key); key != "" && ok {
 			writeJSON(w, http.StatusOK, sc)
 			return
 		}
@@ -213,7 +246,21 @@ func (s *Service) createSchedule(w http.ResponseWriter, r *http.Request, p ident
 		http.Error(w, "query failed", http.StatusInternalServerError)
 		return
 	}
+	if s.notify != nil && (v.Admin != "" || v.Role != sc.Role) {
+		// Made by someone else (#551): the owner is told, as for an edit.
+		text := fmt.Sprintf("예약 #%d %s 을(를) %s 이(가) 만들었습니다.", sc.ID, sc.Label, v.actor().Label())
+		if err := s.notify(r.Context(), sc.Role, "[예약 생김] "+sc.Label, text, "schedule-create:"+strconv.FormatInt(sc.ID, 10)); err != nil {
+			log.Printf("schedule create %d: notice to %s: %v", sc.ID, sc.Role, err)
+		}
+	}
 	writeJSON(w, http.StatusCreated, sc)
+}
+
+// liveRole reports whether role is registered and not retired.
+func (s *Service) liveRole(role string) bool {
+	var n int
+	err := s.db.QueryRow(`SELECT COUNT(*) FROM roles WHERE role=? AND retired_at IS NULL`, role).Scan(&n)
+	return err == nil && n > 0
 }
 
 // firstFire is a new time's first fire after now and its zone, as create
