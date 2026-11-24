@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/sandcorporation/switchboard/internal/wire"
@@ -133,4 +134,23 @@ func openCount(it *items, open map[int64]string) int {
 		}
 	}
 	return n
+}
+
+// refuseDone is why request d cannot be marked done, "" when it can: work
+// is left under it and it is not done or checked already (#564). The text
+// names every piece left and the command that ends it, in one go.
+func refuseDone(d wire.RequestDetail) string {
+	if len(d.RemainingList) == 0 || d.Status == wire.RequestDone || d.Status == wire.RequestChecked {
+		return ""
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "request %d has %d left; end each, then mark it done:", d.ID, len(d.RemainingList))
+	for _, o := range d.RemainingList {
+		name := o.Kind + " " + o.ID
+		if o.Kind != wire.RequestOpenQuestion {
+			name = o.Kind + " #" + o.ID
+		}
+		fmt.Fprintf(&b, "\n  %s %s — %s", name, o.Title, o.Close)
+	}
+	return b.String()
 }

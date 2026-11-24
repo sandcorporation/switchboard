@@ -140,7 +140,7 @@ function requestBar(d){
         drawDetail();
       }catch(e){btn.disabled=false;setMsg(msg,e.message,'err')}
     };
-  }else{btn.disabled=true;btn.title='아직 끝나지 않아 누를 수 없다'}
+  }else{btn.disabled=true;btn.title=d.remaining?'남은 일 '+d.remaining+' — 다 끝나야 지시를 닫는다':'아직 끝나지 않아 누를 수 없다'}
   bar.append(btn);
   return bar;
 }

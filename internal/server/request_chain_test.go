@@ -241,3 +241,54 @@ func TestLeftCarriesRequest(t *testing.T) {
 		t.Fatalf("after admin attach %+v", it)
 	}
 }
+
+// TestRequestDoneRefusedWhileWorkLeft: marking a request done is refused
+// while work is left under it, with each piece and the command that ends it
+// in one answer; once all ended it closes. A request already done stays
+// done when work turns up under it later (#564).
+func TestRequestDoneRefusedWhileWorkLeft(t *testing.T) {
+	t.Parallel()
+	s := chainServer(t)
+	rq := addRequest(t, s, "이름 바꾸기", "옛 이름 다 바꿔")
+	done := func(want int) string {
+		t.Helper()
+		w := callAs(s, "POST", "/api/requests/"+itoa(rq.ID)+"/done", reportBossToken, reportBossRole, map[string]any{"result": "다 됨"})
+		if w.Code != want {
+			t.Fatalf("done: want %d, got %d %s", want, w.Code, w.Body)
+		}
+		return w.Body.String()
+	}
+	toCoord := chainSend(t, s, reportBossToken, reportBossRole, map[string]any{"recipient": chainCoordRole, "subject": "이름", "body": "x", "task_id": "t-1", "request_id": rq.ID})
+	toWorker := chainSend(t, s, chainCoordToken, chainCoordRole, map[string]any{"recipient": reportWorkerRole, "subject": "착수", "body": "x", "task_id": "t-1"})
+	chainReply(t, s, reportWorkerToken, reportWorkerRole, toWorker, map[string]any{"body": "끝", "done": true, "left": []string{"문서"}})
+	var leftID int64
+	if err := s.db.QueryRow(`SELECT id FROM left_items WHERE directive_id=? AND kind='item'`, toWorker).Scan(&leftID); err != nil {
+		t.Fatal(err)
+	}
+	msg := done(409)
+	for _, want := range []string{"request " + itoa(rq.ID) + " has 2 left", "mail #" + itoa(toCoord) + " 이름 — complete " + itoa(toCoord) + " --left-none", "left #" + itoa(leftID) + " 문서 — left done " + itoa(leftID)} {
+		if !strings.Contains(msg, want) {
+			t.Fatalf("refusal lacks %q:\n%s", want, msg)
+		}
+	}
+	if d := bossRequest(t, s, rq.ID); d.Status != wire.RequestProgress || d.DoneAt != nil {
+		t.Fatalf("refused done changed it: %+v", d.Request)
+	}
+	// A kept item (still open) blocks as well; passing it on is one way out.
+	again := chainSend(t, s, chainCoordToken, chainCoordRole, map[string]any{"recipient": reportWorkerRole, "subject": "문서 마저", "body": "x"})
+	if w := callAs(s, "POST", "/api/left/"+itoa(leftID)+"/pass", chainCoordToken, chainCoordRole, map[string]any{"directive": again}); w.Code != 200 {
+		t.Fatalf("pass: %d %s", w.Code, w.Body)
+	}
+	chainReply(t, s, chainCoordToken, chainCoordRole, toCoord, map[string]any{"body": "끝", "done": true, "left_none": true})
+	if d := decodeRequest(t, callAs(s, "POST", "/api/requests/"+itoa(rq.ID)+"/done", reportBossToken, reportBossRole, map[string]any{"result": "다 됨"}), 200); d.Status != wire.RequestDone {
+		t.Fatalf("done: %+v", d.Request)
+	}
+	// Work turning up under a done request leaves it done, and done again
+	// (a new result) is not refused.
+	late := chainSend(t, s, chainCoordToken, chainCoordRole, map[string]any{"recipient": reportWorkerRole, "subject": "하나 더", "body": "x", "task_id": "t-1"})
+	d := bossRequest(t, s, rq.ID)
+	if d.Status != wire.RequestDone || d.Remaining != 1 || d.RemainingList[0].ID != itoa(late) {
+		t.Fatalf("late work: %+v %+v", d.Request, d.RemainingList)
+	}
+	done(200)
+}

@@ -77,7 +77,8 @@ func stamp(t time.Time) string { return t.UTC().Format(time.RFC3339Nano) }
 
 // API serves /api/requests for a boss role (403 otherwise): POST "" adds a
 // request, POST {id}/notes adds the owner's later words, POST {id}/done marks
-// it done with a result line; GET "" lists the requests the role may see
+// it done with a result line (409 with the list while work is left under
+// it, #564); GET "" lists the requests the role may see
 // (?status=open|waiting|done|progress|checked), GET {id} reads one. A retry
 // of an add with the same idempotency key (header Idempotency-Key, else the
 // body's idempotency_key) returns the first request with 200.
@@ -126,6 +127,17 @@ func (s *Service) API(w http.ResponseWriter, r *http.Request, p identity.Princip
 	case "done":
 		var q wire.RequestDoneNew
 		if !decode(w, r, &q) {
+			return
+		}
+		// Work left refuses a new close (#564); a request already done or
+		// checked stays as it is.
+		d, derr := s.Detail(id)
+		if derr != nil {
+			http.Error(w, "query failed", http.StatusInternalServerError)
+			return
+		}
+		if msg := refuseDone(d); msg != "" {
+			http.Error(w, msg, http.StatusConflict)
 			return
 		}
 		// Marking done again (after later news reopened it) starts a new check.
