@@ -131,14 +131,18 @@ func leftNote(w http.ResponseWriter, r *http.Request) (wire.LeftNote, bool) {
 //	                             or sender)
 //	POST /api/left/{id}/issue    LeftEnd.URL: raised as an issue
 //	POST /api/left/{id}/pass     LeftEnd.Directive: passed on in that
-//	                             directive, which the caller sent
+//	                             directive, sent by the item's sender
 //	POST /api/left/{id}/done     done (#553)
 //	POST /api/left/{id}/drop     LeftEnd.Reason: dropped, and why (#553)
 //	POST /api/left/{id}/request  LeftEnd.Request: attached to that owner's
 //	                             request (#564); the directive's sender or a
 //	                             boss role, either seeing the request
 //
-// Only the role (base) that sent the item's directive may end it. The
+// The role (base) that sent the item's directive ends it (issue, pass,
+// done, drop), and so does a boss role over that directive (#570): a global
+// boss for any item, a group boss for items of directives inside its groups
+// (bossOver). A boss passes the item on in a directive the item's own
+// sender sent, as the admin does; ended_by records who ended it. The
 // dashboard admin ends items with AdminLeftAPI.
 func (s *Service) LeftAPI(w http.ResponseWriter, r *http.Request, p identity.Principal, rest string) {
 	if r.Method != http.MethodPost {
@@ -171,11 +175,26 @@ func (s *Service) LeftAPI(w http.ResponseWriter, r *http.Request, p identity.Pri
 		return
 	}
 	d, err := s.Get(item.Directive)
-	if err != nil || identity.BaseOf(s.db, d.Sender) != p.Base {
-		http.Error(w, "only the role that sent the directive may end what it left", http.StatusForbidden)
+	if err != nil {
+		http.Error(w, "only the role that sent the directive or a boss role over it may end what it left", http.StatusForbidden)
 		return
 	}
-	s.endBy(w, item, action, in, p.Base, p.Role)
+	sender := identity.BaseOf(s.db, d.Sender)
+	if sender != p.Base && !s.bossOver(p, d) {
+		http.Error(w, "only the role that sent the directive or a boss role over it may end what it left", http.StatusForbidden)
+		return
+	}
+	// A boss passes the item on, as the dashboard admin does, in a
+	// directive the item's own sender sent (#570).
+	s.endBy(w, item, action, in, sender, p.Role)
+}
+
+// bossOver reports whether p may end what directive d left though it did
+// not send d (#570): a global boss always, a group boss when both d's
+// sender and recipient are in the groups it is boss of (or its own).
+func (s *Service) bossOver(p identity.Principal, d wire.Message) bool {
+	see, ok := s.ids.BossScope(p)
+	return ok && see(d.Sender) && see(d.Recipient)
 }
 
 // AdminLeftAPI serves POST /api/admin/left/{id}/{issue,pass,done,drop,request}
