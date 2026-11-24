@@ -28,14 +28,16 @@ import (
 
 // Service serves requests over one database.
 type Service struct {
-	db  *sql.DB
-	now func() time.Time
-	ids *identity.Service
+	db         *sql.DB
+	now        func() time.Time
+	ids        *identity.Service
+	mailStates MailStates
 }
 
-// New builds the service.
-func New(db *sql.DB, now func() time.Time, ids *identity.Service) *Service {
-	return &Service{db: db, now: now, ids: ids}
+// New builds the service; mailStates tells which linked mail is an open or
+// ended directive (nil: none is).
+func New(db *sql.DB, now func() time.Time, ids *identity.Service, mailStates MailStates) *Service {
+	return &Service{db: db, now: now, ids: ids, mailStates: mailStates}
 }
 
 // ErrUnknown is Linkable's error for a request that does not exist or that
@@ -328,6 +330,7 @@ type items struct {
 	reports   []wire.RequestReport
 	mail      []wire.RequestMail
 	direct    map[int64]bool // mail sent with the request's number
+	left      []leftRow
 }
 
 // gather reads the notes and linked items of the requests in want (every
@@ -451,7 +454,10 @@ func (s *Service) gather(ctx context.Context, want map[int64]*row) (map[int64]*i
 		q.Answers = answerLines(as)
 		get(rid).questions = append(get(rid).questions, q)
 	}
-	return out, rows.Err()
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, s.gatherLeft(ctx, out, keep)
 }
 
 // answerLines is one line per answered question: the chosen labels and the
@@ -554,8 +560,13 @@ func (s *Service) list(ctx context.Context, visible func(author string) bool, st
 	if err != nil {
 		return out, err
 	}
+	open, err := s.states(mailIDs(its), true)
+	if err != nil {
+		return out, err
+	}
 	for _, rw := range all {
 		summarize(rw, its[rw.ID])
+		rw.Remaining = openCount(its[rw.ID], open)
 		if status == "" || rw.Status == status || status == wire.RequestOpen && rw.Status != wire.RequestChecked {
 			out.Requests = append(out.Requests, rw.Request)
 		}
@@ -585,6 +596,12 @@ func (s *Service) Detail(id int64) (wire.RequestDetail, error) {
 	d.QuestionList = nonNil(it.questions)
 	d.ReportList = nonNil(it.reports)
 	d.MailList = nonNil(it.mail)
+	states, err := s.states(mailIDs(its), false)
+	if err != nil {
+		return d, err
+	}
+	d.RemainingList, d.Finished = remaining(it, states)
+	d.Remaining = len(d.RemainingList)
 	sort.SliceStable(d.QuestionList, func(i, j int) bool { return d.QuestionList[i].CreatedAt.Before(d.QuestionList[j].CreatedAt) })
 	return d, nil
 }

@@ -120,6 +120,9 @@ type Request struct {
 	OpenQuestions int          `json:"open_questions"`
 	Mail          int          `json:"mail"`
 	Last          *RequestNews `json:"last,omitempty"`
+	// Remaining is how much work is left under the request (#564): its
+	// unanswered directive mail, open panel questions and open left items.
+	Remaining int `json:"remaining"`
 }
 
 // RequestList is GET /api/requests and /api/admin/requests, newest first.
@@ -156,7 +159,8 @@ type RequestReport struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
-// RequestMail is a linked mail (one sent with the request's number).
+// RequestMail is a linked mail: one sent with the request's number, or one
+// below it on the request chain (#564).
 type RequestMail struct {
 	ID        int64     `json:"id"`
 	Sender    string    `json:"sender"`
@@ -173,4 +177,37 @@ type RequestDetail struct {
 	QuestionList []RequestQuestion `json:"question_list"`
 	ReportList   []RequestReport   `json:"report_list"`
 	MailList     []RequestMail     `json:"mail_list"`
+	// RemainingList is the work left (#564), oldest first; Finished counts
+	// what has ended.
+	RemainingList []RequestOpenItem `json:"remaining_list"`
+	Finished      RequestFinished   `json:"finished"`
+}
+
+// Kinds of a RequestOpenItem (#564).
+const (
+	RequestOpenMail     = "mail"     // directive mail its recipient has not ended
+	RequestOpenQuestion = "question" // a panel question not answered
+	RequestOpenLeft     = "left"     // a left item not ended
+)
+
+// RequestOpenItem is one piece of work left under a request: its kind, its
+// ID as its own command takes it, its title (the mail's subject, the
+// question's first header, the left item's text), who holds it (the mail's
+// recipient, the question's asker, the role that recorded the left item),
+// since when, and the command that ends it.
+type RequestOpenItem struct {
+	Kind  string    `json:"kind"`
+	ID    string    `json:"id"`
+	Title string    `json:"title"`
+	Who   string    `json:"who,omitempty"`
+	At    time.Time `json:"at"`
+	Close string    `json:"close"`
+}
+
+// RequestFinished counts the ended work under a request (#564): reports,
+// directive mail that ended, left items that ended.
+type RequestFinished struct {
+	Reports int `json:"reports"`
+	Mail    int `json:"mail"`
+	Left    int `json:"left"`
 }

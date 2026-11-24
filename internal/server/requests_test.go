@@ -296,7 +296,7 @@ func TestRequestCLI(t *testing.T) {
 	if r := l.Requests[0]; r.Status != wire.RequestWaiting || r.Notes != 1 || r.Mail != 1 || r.Reports != 1 || r.Questions != 1 {
 		t.Fatalf("listed %+v", r)
 	}
-	if list := h.mustRun(nil, "request", "list"); !strings.HasPrefix(list, "1 waiting ") || !strings.Contains(list, " 배포 정리 — ") || !strings.Contains(list, " question ") {
+	if list := h.mustRun(nil, "request", "list"); !strings.HasPrefix(list, "1 waiting ") || !strings.Contains(list, " 배포 정리 — ") || !strings.Contains(list, " question ") || !strings.HasSuffix(list, " [left 2]") {
 		t.Fatalf("list:\n%s", list)
 	}
 	if r := h.run(nil, "request", "done", "1"); r.code == 0 || !strings.Contains(r.stderr, "--result") {
@@ -304,7 +304,7 @@ func TestRequestCLI(t *testing.T) {
 	}
 	h.mustRun(nil, "request", "done", "1", "--result", "남은 곳 0")
 	show := h.mustRun(nil, "request", "show", "1")
-	for _, want := range []string{"1 waiting ", "배포 정리해줘\n범위는 알아서", "\nnote ", "문서도", "questions\n", "reports\n  R1 ", "mail\n  #1 a → b "} {
+	for _, want := range []string{"1 waiting ", "배포 정리해줘\n범위는 알아서", "\nnote ", "문서도", "questions\n", "reports\n  R1 ", "mail\n  #1 a → b ", "\nleft\n  mail #1 → b ", "\n  question ", "\nended: reports 1 · mail 0 · left 0\n"} {
 		if !strings.Contains(show, want) {
 			t.Fatalf("show lacks %q:\n%s", want, show)
 		}

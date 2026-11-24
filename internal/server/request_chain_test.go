@@ -3,7 +3,10 @@ package server
 import (
 	"encoding/json"
 	"slices"
+	"strings"
 	"testing"
+
+	"github.com/sandcorporation/switchboard/internal/wire"
 )
 
 const (
@@ -86,5 +89,84 @@ func TestRequestChainFollowsMailDown(t *testing.T) {
 	}
 	if d := bossRequest(t, s, rq.ID); d.Mail != 4 {
 		t.Fatalf("mail count %d", d.Mail)
+	}
+}
+
+func requestRemaining(t *testing.T, s *Server, id int64) map[int64]int {
+	t.Helper()
+	w := callAs(s, "GET", "/api/requests", reportBossToken, reportBossRole, nil)
+	var l wire.RequestList
+	if err := json.Unmarshal(w.Body.Bytes(), &l); err != nil {
+		t.Fatal(err)
+	}
+	out := map[int64]int{}
+	for _, r := range l.Requests {
+		out[r.ID] = r.Remaining
+	}
+	return out
+}
+
+func openKinds(d wire.RequestDetail) []string {
+	var out []string
+	for _, o := range d.RemainingList {
+		out = append(out, o.Kind+":"+o.ID)
+	}
+	return out
+}
+
+// TestRequestRemainingWork: the request's detail lists its unanswered
+// directive mail, open panel questions and open left items as one list,
+// counts what ended, and the list shows how many are left (#564).
+func TestRequestRemainingWork(t *testing.T) {
+	t.Parallel()
+	s := chainServer(t)
+	rq := addRequest(t, s, "이름 바꾸기", "옛 이름 다 바꿔")
+
+	toCoord := chainSend(t, s, reportBossToken, reportBossRole, map[string]any{"recipient": chainCoordRole, "subject": "이름", "body": "x", "task_id": "t-1", "request_id": rq.ID})
+	toWorker := chainSend(t, s, chainCoordToken, chainCoordRole, map[string]any{"recipient": reportWorkerRole, "subject": "착수", "body": "x", "task_id": "t-1"})
+	chainReply(t, s, reportWorkerToken, reportWorkerRole, toWorker, map[string]any{"body": "끝", "done": true, "left": []string{"문서 고치기"}})
+	mustReport(t, s, map[string]any{"title": "절반 바꿈", "body": "b", "request_id": rq.ID})
+	w := callAs(s, "POST", "/api/questions", reportBossToken, reportBossRole, map[string]any{"questions": sampleQuestions(), "request_id": rq.ID})
+	if w.Code != 201 {
+		t.Fatalf("ask: %d %s", w.Code, w.Body)
+	}
+	q := decodeQuestion(t, w.Body.Bytes())
+
+	var leftID int64
+	if err := s.db.QueryRow(`SELECT id FROM left_items WHERE directive_id=? AND kind='item'`, toWorker).Scan(&leftID); err != nil {
+		t.Fatal(err)
+	}
+	d := bossRequest(t, s, rq.ID)
+	want := []string{"mail:" + itoa(toCoord), "left:" + itoa(leftID), "question:" + q.ID}
+	if got := openKinds(d); !slices.Equal(got, want) {
+		t.Fatalf("remaining %v, want %v", got, want)
+	}
+	if d.Remaining != 3 || d.Finished != (wire.RequestFinished{Reports: 1, Mail: 1, Left: 0}) {
+		t.Fatalf("remaining %d finished %+v", d.Remaining, d.Finished)
+	}
+	if o := d.RemainingList[0]; o.Who != chainCoordRole || o.Title != "이름" || !strings.Contains(o.Close, "close "+itoa(toCoord)) {
+		t.Fatalf("mail item %+v", o)
+	}
+	if o := d.RemainingList[1]; o.Title != "문서 고치기" || o.Who != reportWorkerRole || !strings.Contains(o.Close, "left done "+itoa(leftID)) {
+		t.Fatalf("left item %+v", o)
+	}
+	if n := requestRemaining(t, s, rq.ID)[rq.ID]; n != 3 {
+		t.Fatalf("list remaining %d", n)
+	}
+
+	// Ending each takes it off the list and counts it.
+	if w := callAs(s, "POST", "/api/left/"+itoa(leftID)+"/done", chainCoordToken, chainCoordRole, map[string]any{}); w.Code != 200 {
+		t.Fatalf("left done: %d %s", w.Code, w.Body)
+	}
+	if aw := adminWrite(s, "POST", "/api/admin/questions/"+q.ID+"/answer", adminAnswerBody(t)); aw.Code != 200 {
+		t.Fatalf("answer: %d %s", aw.Code, aw.Body)
+	}
+	chainReply(t, s, chainCoordToken, chainCoordRole, toCoord, map[string]any{"body": "끝", "done": true, "left_none": true})
+	d = adminRequestDetail(t, s, rq.ID)
+	if len(d.RemainingList) != 0 || d.Remaining != 0 || d.Finished != (wire.RequestFinished{Reports: 1, Mail: 2, Left: 1}) {
+		t.Fatalf("after ending: %+v %+v", d.RemainingList, d.Finished)
+	}
+	if n := requestRemaining(t, s, rq.ID)[rq.ID]; n != 0 {
+		t.Fatalf("list remaining after %d", n)
 	}
 }
