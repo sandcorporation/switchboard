@@ -1,7 +1,7 @@
 const sessionLabel={idle:'유휴',busy:'바쁨',compacting:'compact 중',unknown:'모름',offline:'오프라인'};
 function sessionStatus(st){
-  const m=/^(error|blocked):(.*)$/.exec(st||'');
-  if(m)return [(m[1]==='error'?'오류: ':'막힘: ')+m[2],'st-'+m[1]];
+  const m=/^(error|blocked|stalled):(.*)$/.exec(st||'');
+  if(m)return [({error:'오류: ',blocked:'막힘: ',stalled:'멈춤: '})[m[1]]+m[2],'st-'+m[1]];
   return [sessionLabel[st]||st,'st-'+st];
 }
 // subagentNote is the text next to a session's state while background sub-agents run.

@@ -66,7 +66,8 @@ test('긴급: 이벤트에 본문이 없으면 그 메일만 받아 온다', asy
   mail.setOmitBody(true)
   const id = mail.send('urgent', '따로 받은 본문')
   await flush()
-  expect(host.http.requests.some(r => r.url.endsWith(`/api/messages/${id}`))).toBe(true)
+  // 본문만 받는다(peek): read 는 그 턴이 시작될 때(#590).
+  expect(host.http.requests.some(r => r.url.endsWith(`/api/messages/${id}?peek=1`))).toBe(true)
   expect(host.turns[0]).toContain('따로 받은 본문')
   expect(mail.status(id)).toBe('read')
 })
@@ -81,10 +82,11 @@ test('긴급: 끼워 넣기 기능이 없으면 새 턴으로(바쁘면 그 턴 
   // 바쁜 중에 넣어 둔다(어댑터가 턴 뒤 새 턴으로 보낸다). 일반은 아직이다.
   expect(host.turns.length).toBe(1)
   expect(host.turns[0]).toContain('먼저')
-  expect(mail.status(u)).toBe('read')
+  expect(mail.status(u)).toBe('pending') // 앞 턴이 끝나야 그 턴이 시작된다(#590).
   host.emit({ type: 'turn.complete' })
   await flush()
-  expect(host.turns.length).toBe(1) // 긴급 턴이 시작되기 전에는 일반을 넣지 않는다.
+  expect(mail.status(u)).toBe('read')
+  expect(host.turns.length).toBe(1) // 긴급 턴이 끝나기 전에는 일반을 넣지 않는다.
   await runTurn(host)
   expect(host.turns[1]).toBe(inlined([n]))
 })

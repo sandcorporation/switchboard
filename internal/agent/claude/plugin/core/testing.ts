@@ -179,6 +179,10 @@ export type FakeHost = AgentHost & {
   setCompactBehavior: (b: CompactBehavior) => void
   /** 듣는 쪽 수. */
   listeners: () => number
+  /** 넣었지만 엔진이 아직 시작하지 않은 글(턴이 돌고 있어 기다리는 것). */
+  waiting: () => string[]
+  /** 본 세션 턴이 돈다(turn.start 뒤 turn.complete 전). */
+  running: () => boolean
 }
 
 export type CompactBehavior = 'complete' | 'silent' | 'hang'
@@ -195,6 +199,11 @@ export const fakeHost = (
     sse?: boolean
     /** moveShellToBackground 를 둔다(기본 true). false 는 넘기기 길이 없는 에이전트·환경. */
     background?: boolean
+    /**
+     * submitTurn 으로 넣은 글의 턴을 엔진처럼 시작한다(기본 true, #590): 쉬면 곧 그 글로 turn.start, 턴이 돌면 그 턴이
+     * 끝난 뒤. 턴 끝(turn.complete)은 시험이 보낸다. false 면 턴 시작도 시험이 보낸다.
+     */
+    engine?: boolean
   } = {},
 ): FakeHost => {
   const features: Features = { midTurnInject: true, compact: true, ...opts.features }
@@ -211,6 +220,23 @@ export const fakeHost = (
   let compactResult: CompactResult = { done: true }
   let compactBehavior: CompactBehavior = 'complete'
   let running = false
+  /** 넣었지만 아직 시작되지 않은 글(엔진의 대기열). */
+  let waiting: string[] = []
+  const engine = opts.engine ?? true
+  let starting = false
+  const startNext = () => {
+    if (!engine || running || starting || waiting.length === 0) return
+    starting = true
+    // 엔진처럼 submit 이 풀린 뒤에 시작한다(시계를 돌리지 않아도 flush 로 돈다).
+    void Promise.resolve().then(() => {
+      starting = false
+      if (running || waiting.length === 0) return
+      const text = waiting.shift() ?? ''
+      // 실제 엔진처럼 prompt.submit(origin plugin) 뒤에 그 글로 턴이 시작된다.
+      emit({ type: 'input.submit', text, origin: 'plugin' })
+      emit({ type: 'turn.start', text })
+    })
+  }
   /** 앞에서 도는 본 세션 도구(시작 시각). */
   const tools = new Map<number, { kind: 'shell' | 'other'; at: number }>()
   let toolSeq = 0
@@ -232,6 +258,7 @@ export const fakeHost = (
       drain(false)
     }
     for (const l of [...listeners]) l(e)
+    if (e.type === 'turn.complete') startNext()
   }
 
   const host: FakeHost = {
@@ -267,6 +294,8 @@ export const fakeHost = (
     setCompactResult: r => void (compactResult = r),
     setCompactBehavior: b => void (compactBehavior = b),
     listeners: () => listeners.size,
+    waiting: () => [...waiting],
+    running: () => running,
     submitTurn: async text => {
       if (failSubmit !== undefined) {
         const reason = failSubmit
@@ -274,6 +303,8 @@ export const fakeHost = (
         throw new Error(reason)
       }
       turns.push(text)
+      waiting.push(text)
+      startNext()
     },
     usage: async () => usage,
     on: l => {

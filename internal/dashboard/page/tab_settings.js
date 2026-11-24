@@ -110,8 +110,8 @@ const permName={view:'보기',type:'입력',files:'파일',sessions:'세션',dis
 // is the session of that role and of its slots (team/coordinator-1,
 // team/worker-1-2 under team/coordinator, team/worker), the busiest one
 // when several run (setBusy order) — the same row the session list shows.
-const setBusy=['busy','compacting','blocked','error','idle','unknown','offline'];
-function setBusyRank(st){const k=/^(error|blocked):/.exec(st||'');const i=setBusy.indexOf(k?k[1]:st);return i<0?setBusy.length:i}
+const setBusy=['busy','compacting','blocked','stalled','error','idle','unknown','offline'];
+function setBusyRank(st){const k=/^(error|blocked|stalled):/.exec(st||'');const i=setBusy.indexOf(k?k[1]:st);return i<0?setBusy.length:i}
 function setLive(){
   const rows=typeof frameData!=='undefined'&&frameData?frameRows(frameData):[];
   const names=new Set(typeof setData!=='undefined'&&setData&&Array.isArray(setData.roles)?setData.roles.map(v=>v.role):[]);

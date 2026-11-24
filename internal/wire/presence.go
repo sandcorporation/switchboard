@@ -9,8 +9,9 @@ import (
 var presenceStates = map[string]bool{"idle": true, "busy": true, "compacting": true}
 
 // presenceKindPrefixes are the states that carry a kind: error:<kind> (the
-// turn failed) and blocked:<kind> (the session waits on a person).
-var presenceKindPrefixes = []string{"error:", "blocked:"}
+// turn failed), blocked:<kind> (the session waits on a person) and
+// stalled:<kind> (queued mail did not start a turn, or a turn stopped moving).
+var presenceKindPrefixes = []string{"error:", "blocked:", "stalled:"}
 
 const maxPresenceKind = 64
 
@@ -28,7 +29,7 @@ func (q SlotRequest) SubagentCount() int64 {
 }
 
 // validPresenceState reports whether state is idle, busy, compacting, or
-// error:<kind> / blocked:<kind> with a kind of 1-64 characters from
+// error:<kind> / blocked:<kind> / stalled:<kind> with a kind of 1-64 characters from
 // A-Z a-z 0-9 . _ -.
 func validPresenceState(state string) bool {
 	if presenceStates[state] {
@@ -65,7 +66,7 @@ func (e presenceError) Error() string { return string(e) }
 // time when last_turn_at was not given.
 func (q SlotRequest) Presence() (last time.Time, err error) {
 	if q.State != "" && !validPresenceState(q.State) {
-		return last, presenceError(fmt.Sprintf("state must be idle, busy, compacting, error:<kind> or blocked:<kind> (kind: 1-64 of A-Z a-z 0-9 . _ -), not %q", q.State))
+		return last, presenceError(fmt.Sprintf("state must be idle, busy, compacting, error:<kind>, blocked:<kind> or stalled:<kind> (kind: 1-64 of A-Z a-z 0-9 . _ -), not %q", q.State))
 	}
 	if q.ContextTokens != nil && *q.ContextTokens < 0 {
 		return last, presenceError("context_tokens must be a whole number of at least 0")

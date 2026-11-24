@@ -19,7 +19,7 @@ import type { PresenceReport, TakeoverResult } from './slot'
 import type { QuestionPanelQuestion } from '../types'
 import { createRuleHints, createUnclassifiedHold } from './rules'
 import type { RuleHintsBox, StopVerdict, ToolCall, UnclassifiedHold } from './rules'
-import { createStall } from './stall'
+import { createStall, QUEUED_STALL_MS, TURN_STALL_MS } from './stall'
 import type { Stall, StallNotice, StallOptions } from './stall'
 
 export type Activity = 'idle' | 'busy' | 'compacting'
@@ -99,7 +99,8 @@ export type SwitchboardOptions = {
    */
   typingLimitMs?: number
   /** 멈춤 감지(D8) 재시도 간격·횟수. 없으면 기본(30초부터 두 배, 10분 상한, 8번). */
-  stall?: Pick<StallOptions, 'retry'>
+  /** 재시도 간격과 진행 없는 멈춤 문턱(#590, 시험에서 줄인다). */
+  stall?: Pick<StallOptions, 'retry'> & { progress?: Omit<NonNullable<StallOptions['progress']>, 'unstarted'> }
   /** 원격 권한 답(D8). waitMs 0 이면 끈다. bosses 는 오류 통지도 받는다. */
   permissions?: Pick<PermissionOptions, 'waitMs' | 'pollMs' | 'bosses'>
   /**
@@ -123,6 +124,22 @@ export type SwitchboardOptions = {
 export const stallNotice = (n: StallNotice, who: { role: string; label?: string; machine: string; directory: string }) => {
   const label = who.label === undefined || who.label === '' ? '' : ` (라벨 ${who.label})`
   const where = [`주소: ${who.role}${label}`, `기계: ${who.machine}`, `폴더: ${who.directory}`]
+  if (n.kind === 'stalled') {
+    const why =
+      n.what === 'queued'
+        ? `넣은 메일의 턴이 ${Math.round(QUEUED_STALL_MS / 60_000)}분 넘게 시작되지 않는다(앞 턴이 끝나지 않았다).`
+        : `턴이 도는데 ${Math.round(TURN_STALL_MS / 60_000)}분 넘게 도구·출력·훅 움직임이 없다.`
+
+    return {
+      subject: `${SYSTEM_SUBJECT_PREFIX}멈춤 ${n.what} ${who.role}${label}`,
+      body: [
+        `switchboard: 아래 세션이 멈췄다(stalled:${n.what}). ${why} 그 세션 화면에서 살펴야 한다(Esc 로 턴을 끊으면 쌓인 메일이 돈다).`,
+        `넣고 안 돈 메일: ${n.queued}통`,
+        `마지막 움직임: ${new Date(n.lastMoveAt).toISOString()}`,
+        ...where,
+      ].join('\n'),
+    }
+  }
   if (n.kind === 'error') {
     const why =
       n.tries === undefined
@@ -209,14 +226,15 @@ export const createSwitchboard = (host: AgentHost, opts: SwitchboardOptions = {}
     st.condition = next
     mailbox?.report()
   }
-  /** 멈춤 통지: 오류는 부모와 대장, 기다림은 부모. 받을 쪽이 없거나 메일함이 꺼져 있으면 기록만. */
+  /** 멈춤 통지: 오류·진행 없음은 부모와 대장, 기다림은 부모. 받을 쪽이 없거나 메일함이 꺼져 있으면 기록만. */
   const notifyStall = (n: StallNotice) => {
     const m = mailbox
     const role = m?.state().role ?? null
     const parent = m?.parent()
-    const to = [...new Set([...(parent === undefined ? [] : [parent]), ...(n.kind === 'error' ? (opts.permissions?.bosses ?? []) : [])])]
+    const to = [...new Set([...(parent === undefined ? [] : [parent]), ...(n.kind === 'blocked' ? [] : (opts.permissions?.bosses ?? []))])]
     if (m === undefined || role === null || to.length === 0) {
-      log(`switchboard: ${n.kind === 'error' ? `API 오류(${n.what})로 멈췄다` : `사람을 기다린다(${n.what})`}, 알릴 곳 없음`)
+      const what = n.kind === 'error' ? `API 오류(${n.what})로 멈췄다` : n.kind === 'stalled' ? `진행 없이 멈췄다(stalled:${n.what})` : `사람을 기다린다(${n.what})`
+      log(`switchboard: ${what}, 알릴 곳 없음`)
 
       return
     }
@@ -351,6 +369,7 @@ export const createSwitchboard = (host: AgentHost, opts: SwitchboardOptions = {}
     meSet(me)
     stall = createStall(host, {
       ...(opts.stall?.retry === undefined ? {} : { retry: opts.stall.retry }),
+      progress: { ...opts.stall?.progress, unstarted: () => mailbox?.unstarted() ?? { count: 0, since: null } },
       setCondition: c => {
         stallCondition = c
         syncCondition()

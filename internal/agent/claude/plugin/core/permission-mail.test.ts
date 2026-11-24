@@ -72,12 +72,13 @@ const fakeServer = (o: { strictState?: boolean; bosses?: string[] } = {}) => {
 
         return { status: 201, text: JSON.stringify({ id: m.id }) }
       }
-      const m = /\/api\/messages\/(\d+)(\/read)?$/.exec(url)
+      const m = /\/api\/messages\/(\d+)(\/read)?(\?peek=1)?$/.exec(url)
       const mail = m === null ? undefined : mails.find(x => x.id === Number(m[1]) && x.to === me)
       if (mail === undefined) return { status: 404 }
-      mail.status = 'read'
+      // 실제 서버처럼 peek(본문만 받기, #590)은 read 로 바꾸지 않는다.
+      if (m?.[3] === undefined) mail.status = 'read'
 
-      return { text: JSON.stringify({ id: mail.id, body: mail.body, status: 'read' }) }
+      return { text: JSON.stringify({ id: mail.id, body: mail.body, status: mail.status }) }
     })
     host.http.route(`${EP}/api/events/poll`, async ({ url, init }: { url: string; init: HttpInit }) => {
       const me = box(init.headers?.['X-Switchboard-Role'] ?? '')

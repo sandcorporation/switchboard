@@ -1,10 +1,10 @@
 // ---- 세션 ----
-const stTone={'st-idle':'success','st-busy':'info','st-compacting':'info','st-error':'danger','st-blocked':'warning'};
+const stTone={'st-idle':'success','st-busy':'info','st-compacting':'info','st-error':'danger','st-blocked':'warning','st-stalled':'danger'};
 const sessionCols=['역할','상태','컨텍스트','마지막 턴','기계','판','라벨'];
 // cliText is a session's CLI version (#308): '-' before it reported one,
 // 판 모름 for no header or a development build.
 function cliText(v){return !v.cli_version?'-':v.cli==='unknown'?'판 모름':v.cli_version}
-const sessionChips=[['all','전체',()=>true],['busy','바쁨',v=>v.online&&/^(busy|compacting)$/.test(v.status)],['problem','오류·막힘',v=>/^(error|blocked):/.test(v.status||'')],['offline','오프라인',v=>!v.online]];
+const sessionChips=[['all','전체',()=>true],['busy','바쁨',v=>v.online&&/^(busy|compacting)$/.test(v.status)],['problem','오류·막힘·멈춤',v=>/^(error|blocked|stalled):/.test(v.status||'')],['offline','오프라인',v=>!v.online]];
 // sessionsSeq drops an answer that a later load (live update, hosting flag
 // arriving from /api/admin/me) has overtaken.
 let sessionsData=null,sessionsFilter='all',sessionsSeq=0;
@@ -37,7 +37,7 @@ function drawSessions(){
     body.replaceChildren();
     for(const v of shown){
       const [stText,stClass]=sessionStatus(v.status);
-      const tr=node('tr','',!v.online?'offline':/^st-(error|blocked)$/.test(stClass)?'row'+stClass.slice(2):'');
+      const tr=node('tr','',!v.online?'offline':/^st-(error|blocked|stalled)$/.test(stClass)?'row'+stClass.slice(2):'');
       const cells=[v.role,stText,kTokens(v.context_tokens),ago(p.now,v.last_turn_at),v.machine,cliText(v),v.label||'-'];
       cells.forEach((text,i)=>{const td=node('td',text,i===1?stClass:i===2?'num nowrap':i===3?'nowrap':'');if(i>0)td.dataset.label=sessionCols[i];tr.append(td)});
       tr.children[3].title=when(v.last_turn_at);
