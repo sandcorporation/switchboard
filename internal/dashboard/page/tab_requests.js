@@ -64,11 +64,12 @@ const openKind={mail:'메일',question:'질문',left:'남긴 것'};
 function requestOpen(d,now){
   return (d.remaining_list||[]).map(o=>{
     const age=ago(now,o.at).replace(/ 전$/,'');
-    const kind=(openKind[o.kind]||o.kind)+(o.kind==='question'?'':' #'+o.id);
+    const kind=(openKind[o.kind]||o.kind)+(o.kind==='mail'?' #'+o.id:'');
+    const title=(o.kind==='left'?'#'+o.id+' ':'')+(o.title||'(적지 않음)');
     const href=o.kind==='mail'?detailHash('mail',o.id,'body'):o.kind==='question'?detailHash('questions',o.id,'answer'):'#progress';
     const who=o.kind==='mail'?'→ '+o.who:o.who;
-    const state=o.kind==='mail'?'답 없음 '+age:o.kind==='question'?'답 기다림 '+age:'열림 '+age;
-    return {at:o.at,kind:kind,who:who,title:o.title||'(적지 않음)',state:state,stateCls:'w',href:href,hover:kind+' '+(o.title||'')+' — 닫기: '+o.close};
+    const state=o.kind==='mail'?'답 없음':o.kind==='question'?'답 기다림':'열림';
+    return {at:o.at,kind:kind,who:who,title:title,state:state,stateCls:'w',href:href,hover:kind+' '+title+' — '+state+' '+age+' · 닫기: '+o.close};
   });
 }
 function requestFinished(d){
