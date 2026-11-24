@@ -230,7 +230,8 @@ func keeperOpts(t *testing.T, version string) conpty.RunOptions {
 		cctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 		defer cancel()
 		trackKeeper(cctx, o.Instance, c)
-		_ = c.Shutdown(cctx, time.Second)
+		t.Logf("cleanup: keepers %v, shutting the running one down", keeperPIDs[o.Instance])
+		t.Logf("cleanup: shutdown answered: %v", c.Shutdown(cctx, time.Second))
 		for _, pid := range keeperPIDs[o.Instance] {
 			if !processGone(t, pid, keeperExitWait) {
 				t.Errorf("keeper %d still runs %s after shutdown", pid, keeperExitWait)
@@ -253,10 +254,13 @@ func setVersion(t *testing.T, o conpty.RunOptions, version string) {
 
 func connect(t *testing.T, o conpty.RunOptions, version string) (*conpty.Client, conpty.Adoption) {
 	t.Helper()
+	began := time.Now()
+	t.Logf("connect %s: begin", version)
 	c, how, err := conpty.Connect(ctx(t), conpty.ConnectOptions{
 		Dial: conpty.DialFor(o.Instance), Version: version, Grace: 2 * time.Second,
 		Start: func() error { return conpty.Start(os.Args[0], o) },
 	})
+	t.Logf("connect %s: %s after %s, err %v", version, how, time.Since(began).Round(time.Millisecond), err)
 	if err != nil {
 		t.Fatal(err)
 	}
