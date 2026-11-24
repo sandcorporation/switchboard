@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/sandcorporation/switchboard/internal/identity"
+	"github.com/sandcorporation/switchboard/internal/mail"
 	"github.com/sandcorporation/switchboard/internal/wire"
 )
 
@@ -205,5 +206,170 @@ func TestCLILeftDoneDrop(t *testing.T) {
 	}
 	if got := openLeft(t, h.s); len(got) != 0 {
 		t.Fatalf("open after done and drop: %+v", got)
+	}
+}
+
+// remindOf sweeps once d later and answers the newest [남긴 것] reminder's ID
+// and body.
+func remindOf(t *testing.T, s *Server, clock *fakeClock, d time.Duration) (int64, string) {
+	t.Helper()
+	if n := leftSweep(t, s, clock, d); n != 1 {
+		t.Fatalf("sent %d reminders, want 1", n)
+	}
+	var id int64
+	var body string
+	if err := s.db.QueryRow(`SELECT id,body FROM messages WHERE sender=? AND idem LIKE 'left-remind:%' ORDER BY id DESC LIMIT 1`, identity.SystemSender).Scan(&id, &body); err != nil {
+		t.Fatal(err)
+	}
+	return id, body
+}
+
+// leftState is item id's state and value.
+func leftState(t *testing.T, s *Server, id int64) (state, value string) {
+	t.Helper()
+	if err := s.db.QueryRow(`SELECT state,value FROM left_items WHERE id=?`, id).Scan(&state, &value); err != nil {
+		t.Fatal(err)
+	}
+	return state, value
+}
+
+// #565: a [남긴 것] reminder completes only with a verdict for each open
+// item it lists, by complete, reply --complete or send --complete. The
+// verdicts end the items as said; keep leaves one open, and it comes again
+// in the next reminder. An item ended since needs none.
+func TestLeftRemindVerdicts(t *testing.T) {
+	t.Parallel()
+	s, clock := slotsWithRoles(t)
+	if n := leftSweep(t, s, clock, 0); n != 0 {
+		t.Fatalf("first use sent %d", n)
+	}
+	_, ids := leftWithItems(t, s, clock, "build", "a", "b", "c", "d", "e")
+	rid, body := remindOf(t, s, clock, 25*time.Hour)
+	a, b, c, d, e := ids["a"], ids["b"], ids["c"], ids["d"], ids["e"]
+	if want := fmt.Sprintf("끝내기: complete %d --verdict %d=판정 --verdict %d=판정", rid, a, b); !strings.Contains(body, want) {
+		t.Fatalf("body lacks %q:\n%s", want, body)
+	}
+	// Ended since the reminder: needs no verdict.
+	if w := callNew(s, "POST", fmt.Sprintf("/api/left/%d/done", e), "hq/boss", wire.LeftEnd{}); w.Code != 200 {
+		t.Fatalf("left done: %d %s", w.Code, w.Body)
+	}
+	complete := fmt.Sprintf("/api/messages/%d/complete", rid)
+	v := func(item int64, verdict, value string) wire.LeftVerdict {
+		return wire.LeftVerdict{Item: item, Verdict: verdict, Value: value}
+	}
+	refused := []struct {
+		name, path string
+		body       any
+		want       string
+	}{
+		{"complete without verdicts", complete, nil, fmt.Sprintf("without a verdict: #%d #%d #%d #%d;", a, b, c, d)},
+		{"complete with some", complete, wire.LeftNote{Verdicts: []wire.LeftVerdict{v(a, "done", ""), v(b, "keep", "")}}, fmt.Sprintf("without a verdict: #%d #%d;", c, d)},
+		{"reply --complete without verdicts", fmt.Sprintf("/api/messages/%d/reply", rid), map[string]any{"body": "ok", "done": true}, "without a verdict"},
+		{"send --complete without verdicts", "/api/messages", map[string]any{"recipient": "team/worker", "subject": "x", "body": "x", "complete": []int64{rid}}, "without a verdict"},
+		{"drop without why", complete, wire.LeftNote{Verdicts: []wire.LeftVerdict{v(a, "drop", " ")}}, "why it is dropped"},
+		{"issue without a URL", complete, wire.LeftNote{Verdicts: []wire.LeftVerdict{v(a, "issue", "later")}}, "issue URL"},
+		{"unknown verdict", complete, wire.LeftNote{Verdicts: []wire.LeftVerdict{v(a, "maybe", "")}}, "the verdict is done, keep"},
+		{"twice", complete, wire.LeftNote{Verdicts: []wire.LeftVerdict{v(a, "done", ""), v(a, "keep", "")}}, "one verdict per item"},
+		{"not listed", complete, wire.LeftNote{Verdicts: []wire.LeftVerdict{v(a, "done", ""), v(b, "done", ""), v(c, "done", ""), v(d, "done", ""), v(d+100, "done", "")}}, "not in the reminder"},
+	}
+	refused = append(refused, struct {
+		name, path string
+		body       any
+		want       string
+	}{"report --mail", "/api/reports", map[string]any{"title": "t", "body": "b", "mail": []int64{rid}}, "items to judge"})
+	for _, r := range refused {
+		if w := callNew(s, "POST", r.path, "hq/boss", r.body); w.Code != 400 || !strings.Contains(w.Body.String(), r.want) {
+			t.Fatalf("%s: %d %s", r.name, w.Code, w.Body)
+		}
+	}
+	if done, _ := mail.Completed(s.db, rid); done {
+		t.Fatal("a refused complete completed the reminder")
+	}
+	if got := openLeft(t, s); len(got) != 4 {
+		t.Fatalf("a refused complete ended items: %+v", got)
+	}
+
+	all := wire.LeftNote{Verdicts: []wire.LeftVerdict{v(a, "done", ""), v(b, "keep", ""), v(c, "drop", "not needed"), v(d, "issue", "https://git.example/team/repo/issues/9")}}
+	if w := callNew(s, "POST", complete, "hq/boss", all); w.Code != 200 {
+		t.Fatalf("complete with every verdict: %d %s", w.Code, w.Body)
+	}
+	if done, _ := mail.Completed(s.db, rid); !done {
+		t.Fatal("the reminder is not complete")
+	}
+	for _, x := range []struct {
+		id           int64
+		state, value string
+	}{{a, wire.LeftDone, ""}, {b, wire.LeftOpen, ""}, {c, wire.LeftDropped, "not needed"}, {d, wire.LeftIssue, "https://git.example/team/repo/issues/9"}, {e, wire.LeftDone, ""}} {
+		if st, val := leftState(t, s, x.id); st != x.state || val != x.value {
+			t.Fatalf("item %d: %s %q, want %s %q", x.id, st, val, x.state, x.value)
+		}
+	}
+	// Completing it again asks nothing; a verdict on other mail is refused.
+	if w := callNew(s, "POST", complete, "hq/boss", nil); w.Code != 200 {
+		t.Fatalf("complete again: %d %s", w.Code, w.Body)
+	}
+	other := directiveTo(t, s, clock, "plain")
+	if w := callNew(s, "POST", fmt.Sprintf("/api/messages/%d/complete", other.ID), "team/worker", wire.LeftNote{LeftNone: true, Verdicts: []wire.LeftVerdict{v(b, "done", "")}}); w.Code != 400 || !strings.Contains(w.Body.String(), "goes with completing a [남긴 것] reminder") {
+		t.Fatalf("verdict on a directive: %d %s", w.Code, w.Body)
+	}
+
+	// keep: the next reminder lists it again; reply --complete takes verdicts.
+	rid2, body2 := remindOf(t, s, clock, 24*time.Hour)
+	if !strings.Contains(body2, fmt.Sprintf("#%d b —", b)) || strings.Contains(body2, fmt.Sprintf("#%d a —", a)) {
+		t.Fatalf("second reminder:\n%s", body2)
+	}
+	if w := callNew(s, "POST", fmt.Sprintf("/api/messages/%d/reply", rid2), "hq/boss", map[string]any{"body": "ok", "verdicts": []wire.LeftVerdict{v(b, "done", "")}}); w.Code != 400 || !strings.Contains(w.Body.String(), "goes with reply --complete") {
+		t.Fatalf("verdict on a reply that does not complete: %d %s", w.Code, w.Body)
+	}
+	if w := callNew(s, "POST", "/api/messages", "hq/boss", map[string]any{"recipient": "team/worker", "subject": "x", "body": "x", "complete": []int64{rid2}, "verdicts": []wire.LeftVerdict{v(b, "done", "")}}); w.Code != 201 {
+		t.Fatalf("send --complete with the verdict: %d %s", w.Code, w.Body)
+	}
+	if st, _ := leftState(t, s, b); st != wire.LeftDone {
+		t.Fatalf("kept item after send --complete: %s", st)
+	}
+}
+
+// complete ID --verdict ITEM=VERDICT (#565) from the CLI; a refusal names
+// the items and the command.
+func TestCLILeftVerdict(t *testing.T) {
+	t.Parallel()
+	h := newCLIHarness(t)
+	h.configure([]string{"--profile", "a"}, "a")
+	h.configure(nil, "b")
+	h.mustRun(nil, "--profile", "a", "send", "--to", "b", "--subject", "build", "--body", "x")
+	h.mustRun(nil, "reply", "1", "--complete", "--left", "docs", "--left", "tests", "--body", "built")
+	items := openLeft(t, h.s)
+	if len(items) != 2 {
+		t.Fatalf("open %+v", items)
+	}
+	// Due a day ago, against the real clock.
+	past := time.Now().UTC().Add(-48 * time.Hour)
+	if _, err := h.s.db.Exec(`UPDATE left_items SET recorded_at=?`, past.Format(time.RFC3339Nano)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.s.db.Exec(`INSERT OR REPLACE INTO left_remind(id,after_s,since) VALUES(1,86400,?)`, past.UnixMilli()); err != nil {
+		t.Fatal(err)
+	}
+	if got := sweepOnce(t, h.s).LeftRemind; got != 1 {
+		t.Fatalf("sent %d reminders", got)
+	}
+	var rid int64
+	if err := h.s.db.QueryRow(`SELECT id FROM messages WHERE idem LIKE 'left-remind:%'`).Scan(&rid); err != nil {
+		t.Fatal(err)
+	}
+	id := func(i int) string { return fmt.Sprint(items[i].ID) }
+	r := h.run(nil, "--profile", "a", "complete", fmt.Sprint(rid), "--verdict", id(0)+"=done")
+	if r.code == 0 || !strings.Contains(r.stderr+r.stdout, "#"+id(1)) || !strings.Contains(r.stderr+r.stdout, "--verdict "+id(1)+"=keep") {
+		t.Fatalf("complete with a verdict missing: %+v", r)
+	}
+	if r := h.run(nil, "--profile", "a", "complete", fmt.Sprint(rid), "--verdict", "x=done"); r.code == 0 {
+		t.Fatalf("a verdict without an item ID: %+v", r)
+	}
+	h.mustRun(nil, "--profile", "a", "complete", fmt.Sprint(rid), "--verdict", id(0)+"=issue:https://git.example/team/repo/issues/3", "--verdict", id(1)+"=keep")
+	if st, val := leftState(t, h.s, items[0].ID); st != wire.LeftIssue || val != "https://git.example/team/repo/issues/3" {
+		t.Fatalf("issue verdict: %s %q", st, val)
+	}
+	if got := openLeft(t, h.s); len(got) != 1 || got[0].ID != items[1].ID {
+		t.Fatalf("open after the verdicts: %+v", got)
 	}
 }

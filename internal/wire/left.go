@@ -17,7 +17,21 @@ const (
 	LeftDone    = "done"    // done (#553): Value is empty
 	LeftDropped = "dropped" // dropped by an admin or the directive's sender: Value is why
 	LeftNoneSet = "none"    // the state of a none row
+
+	// LeftKeep is the verdict that leaves an item open (#565): it comes
+	// again in the next reminder. The other verdicts are done, drop and
+	// issue.
+	LeftKeep = "keep"
 )
+
+// LeftVerdict is one item's verdict on completing a [남긴 것] reminder
+// (#565): Verdict is done, keep, drop (Value is why) or issue (Value is the
+// issue URL). Request only, in LeftNote and Message.
+type LeftVerdict struct {
+	Item    int64  `json:"item"`
+	Verdict string `json:"verdict"`
+	Value   string `json:"value,omitempty"`
+}
 
 // LeftNote is the optional body of POST /api/messages/{id}/complete and
 // /close (#470): what the answer ending a directive left undone. Reply and
@@ -25,6 +39,9 @@ const (
 type LeftNote struct {
 	Left     []string `json:"left,omitempty"`
 	LeftNone bool     `json:"left_none,omitempty"`
+	// Verdicts: completing a [남긴 것] reminder judges each open item it
+	// lists (#565).
+	Verdicts []LeftVerdict `json:"verdicts,omitempty"`
 }
 
 // LeftAdd is the body of POST /api/left (left add N TEXT): items found after
