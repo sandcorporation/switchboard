@@ -496,6 +496,23 @@ func TestHostAutoCLI(t *testing.T) {
 	if code, out, _ = hostCLI(t, dbPath, "stop", id); code != 0 || out != id+" stopped" {
 		t.Fatalf("host stop = %d %q", code, out)
 	}
+	// edit (#516) keeps the ID and replaces only what it names.
+	code, out, stderr = hostCLI(t, dbPath, "auto", "add", id, "--cron", "*/5 * * * *", "--prompt", "check the queue", "--label", "queue", "--resume", "--json")
+	if code != 0 || json.Unmarshal([]byte(out), &a) != nil {
+		t.Fatalf("auto add again = %d %q %s", code, out, stderr)
+	}
+	aid = fmt.Sprint(a.ID)
+	code, out, stderr = hostCLI(t, dbPath, "auto", "edit", aid, "--cron", "0 7 * * *", "--prompt", "check the inbox", "--json")
+	var edited wire.HostAuto
+	if code != 0 || json.Unmarshal([]byte(out), &edited) != nil || edited.ID != a.ID || edited.Cron != "0 7 * * *" || edited.Prompt != "check the inbox" || edited.Label != "queue" || !edited.Resume {
+		t.Fatalf("auto edit = %d %q %s", code, out, stderr)
+	}
+	if code, _, stderr = hostCLI(t, dbPath, "auto", "edit", aid); code != 2 || !strings.Contains(stderr, "needs --cron, --prompt or --label") {
+		t.Fatalf("auto edit without a change = %d %s", code, stderr)
+	}
+	if code, _, stderr = hostCLI(t, dbPath, "auto", "edit", aid, "--label", "q2", "--resume"); code != 2 || !strings.Contains(stderr, "not one of its options") {
+		t.Fatalf("auto edit --resume = %d %s", code, stderr)
+	}
 }
 
 // A `host auto run` written by the CLI is fired by the host's next sweep,

@@ -156,3 +156,46 @@ func (q *ScheduleCreate) Check() error {
 	}
 	return nil
 }
+
+// ScheduleEdit is the body of PUT /api/schedules/ID and
+// /api/admin/schedules/ID (switchboard schedule edit, #516). Kind, with
+// Cron or At and TZ as in ScheduleCreate, replaces the time; Prompt and
+// Label, when given, replace those. The ID, the fire record (last fire,
+// missed count) and the expiry stay.
+type ScheduleEdit struct {
+	Kind   string     `json:"kind,omitempty"` // "": the time stays
+	Cron   string     `json:"cron,omitempty"`
+	At     *time.Time `json:"at,omitempty"`
+	TZ     string     `json:"tz,omitempty"` // "": the schedule's zone stays
+	Prompt *string    `json:"prompt,omitempty"`
+	Label  *string    `json:"label,omitempty"` // "": 예약 #ID
+}
+
+// Check refuses an edit that changes nothing, a kind without its time and
+// a missing or over-long prompt or label.
+func (q *ScheduleEdit) Check() error {
+	q.Cron, q.TZ = strings.TrimSpace(q.Cron), strings.TrimSpace(q.TZ)
+	if q.Label != nil {
+		l := oneLine(*q.Label)
+		q.Label = &l
+	}
+	switch {
+	case q.Kind == "" && q.Prompt == nil && q.Label == nil:
+		return errors.New("nothing to change: give a time, prompt or label")
+	case q.Kind == "" && (q.Cron != "" || q.At != nil):
+		return errors.New("a new time needs its kind")
+	case q.Kind == ScheduleCron && q.Cron == "":
+		return errors.New("cron schedule needs cron")
+	case q.Kind == ScheduleOnce && (q.At == nil || q.At.IsZero()):
+		return errors.New("once schedule needs at")
+	case q.Kind != "" && q.Kind != ScheduleCron && q.Kind != ScheduleOnce:
+		return errors.New("kind must be cron or once")
+	case q.Prompt != nil && strings.TrimSpace(*q.Prompt) == "":
+		return errors.New("prompt required")
+	case q.Prompt != nil && len(*q.Prompt) > MaxSchedulePrompt:
+		return errors.New("prompt over 16 KB")
+	case q.Label != nil && len(*q.Label) > MaxJobLabel:
+		return errors.New("label over 200 bytes")
+	}
+	return nil
+}

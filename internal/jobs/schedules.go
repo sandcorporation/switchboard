@@ -37,6 +37,7 @@ const maxCatchUp = 100000
 //	            role's prompt left out: OwnSchedules)
 //	GET    "ID" show: the owner, or a boss role over it (recorded)
 //	DELETE "ID" remove (owner only)
+//	PUT    "ID" edit the time, prompt or label (owner only, #516)
 //	POST   "ID/pause"  pause: the owner, or a boss role over it (#404)
 //	POST   "ID/resume" resume: the same
 func (s *Service) ScheduleAPI(w http.ResponseWriter, r *http.Request, p identity.Principal, rest string) {
@@ -95,6 +96,8 @@ func (s *Service) ScheduleAPI(w http.ResponseWriter, r *http.Request, p identity
 	switch r.Method {
 	case http.MethodDelete:
 		s.removeSchedule(w, sc.ID)
+	case http.MethodPut:
+		s.editAPI(w, r, s.ViewOf(p), sc.ID)
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
@@ -108,6 +111,7 @@ func (s *Service) ScheduleAPI(w http.ResponseWriter, r *http.Request, p identity
 //	            (ListSchedules)
 //	GET    "ID" one schedule with its prompt (recorded: ShowSchedule)
 //	DELETE "ID" remove
+//	PUT    "ID" edit (EditSchedule, #516)
 //	POST   "ID/pause", "ID/resume" (PauseSchedule, ResumeSchedule)
 func (s *Service) ScheduleAdminAPI(w http.ResponseWriter, r *http.Request, v View, rest string) {
 	if rest == "" {
@@ -136,6 +140,10 @@ func (s *Service) ScheduleAdminAPI(w http.ResponseWriter, r *http.Request, v Vie
 	if r.Method == http.MethodGet {
 		sc, err := s.ShowSchedule(v, id)
 		writeShown(w, "schedule", sc, err)
+		return
+	}
+	if r.Method == http.MethodPut {
+		s.editAPI(w, r, v, id)
 		return
 	}
 	if r.Method != http.MethodDelete {
@@ -178,41 +186,12 @@ func (s *Service) createSchedule(w http.ResponseWriter, r *http.Request, p ident
 	if q.ExpiresIn > 0 {
 		expires = time.Duration(q.ExpiresIn) * time.Second
 	}
-	var next time.Time
-	switch q.Kind {
-	case wire.ScheduleCron:
-		spec, err := cron.Parse(q.Cron)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-		loc, err := cron.Zone(q.TZ)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-		if next = spec.Next(now, loc); next.IsZero() {
-			http.Error(w, "cron never fires", http.StatusBadRequest)
-			return
-		}
-	case wire.ScheduleOnce:
-		if q.TZ == "" {
-			q.TZ = "UTC"
-		}
-		if _, err := cron.Zone(q.TZ); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-		next = q.At.UTC()
-		switch {
-		case next.Before(now.Add(-time.Minute)):
-			http.Error(w, "at is in the past", http.StatusBadRequest)
-			return
-		case next.After(now.Add(expires)):
-			http.Error(w, "at is after the expiry; give a longer expires_in", http.StatusBadRequest)
-			return
-		}
+	next, tz, err := firstFire(q.Kind, q.Cron, q.At, q.TZ, now, now.Add(expires))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
 	}
+	q.TZ = tz
 	res, err := s.db.Exec(`INSERT INTO schedules(role,machine,kind,label,prompt,cron,tz,state,created_at,expires_at,duration_s,no_extend,next_fire_at,idem) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		p.Role, q.Machine, q.Kind, q.Label, q.Prompt, q.Cron, q.TZ, wire.ScheduleActive, stamp(now), stamp(now.Add(expires)), int64(expires/time.Second), q.NoExtend, stamp(next.UTC()), nullable(key))
 	if err != nil {
@@ -235,6 +214,44 @@ func (s *Service) createSchedule(w http.ResponseWriter, r *http.Request, p ident
 		return
 	}
 	writeJSON(w, http.StatusCreated, sc)
+}
+
+// firstFire is a new time's first fire after now and its zone, as create
+// and edit (#516) take it: a cron expression in tz, or a once time at
+// (zone UTC when tz is empty) not in the past and not after expires.
+func firstFire(kind, expr string, at *time.Time, tz string, now, expires time.Time) (time.Time, string, error) {
+	switch kind {
+	case wire.ScheduleCron:
+		spec, err := cron.Parse(expr)
+		if err != nil {
+			return time.Time{}, "", err
+		}
+		loc, err := cron.Zone(tz)
+		if err != nil {
+			return time.Time{}, "", err
+		}
+		next := spec.Next(now, loc)
+		if next.IsZero() {
+			return time.Time{}, "", errors.New("cron never fires")
+		}
+		return next.UTC(), tz, nil
+	case wire.ScheduleOnce:
+		if tz == "" {
+			tz = "UTC"
+		}
+		if _, err := cron.Zone(tz); err != nil {
+			return time.Time{}, "", err
+		}
+		next := at.UTC()
+		switch {
+		case next.Before(now.Add(-time.Minute)):
+			return time.Time{}, "", errors.New("at is in the past")
+		case next.After(expires):
+			return time.Time{}, "", errors.New("at is after the expiry; give a longer expires_in")
+		}
+		return next, tz, nil
+	}
+	return time.Time{}, "", errors.New("kind must be cron or once")
 }
 
 func (s *Service) removeSchedule(w http.ResponseWriter, id int64) {

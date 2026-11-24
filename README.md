@@ -185,6 +185,7 @@ switchboard schedule add --in 20m --prompt 'Look at the deploy again'     # once
 switchboard schedule add --at '2026-12-01 09:00' --prompt 'Release day'    # once, local time
 switchboard schedule list [--state active] [--owner team/worker] [--json]
 switchboard schedule show ID | schedule rm ID
+switchboard schedule edit ID [--cron EXPR | --at TIME | --in DURATION] [--prompt TEXT] [--label TEXT]
 switchboard schedule pause ID [--reason 'deploy freeze']
 switchboard schedule resume ID [--fire | --drop]
 ```
@@ -193,6 +194,7 @@ switchboard schedule resume ID [--fire | --drop]
 - The server sweep fires schedules. A fire while a session of the role is attached is one normal mail, `[주기] <label>` with the prompt as the body. A fire with no session attached is recorded as missed; the next sweep that finds a session attached sends one mail with the prompt and `밀린 N회, 마지막 <time>`. While a schedule's previous mail is unread, its next fires are counted the same way, so a schedule never has more than one unread mail. Each mail's idempotency key names the schedule and the fire, so a server restart sends no fire twice.
 - A `once` schedule ends (`ended`) after its fire is delivered. Expiry defaults to 7 days and moves forward while a session of the role is attached, as for watches. At expiry the state becomes `expired` and the role gets one mail, `[주기 만료] <label>`, with any missed fires.
 - `schedule rm ID` deletes it; only the owner role removes a schedule. `schedule list` shows a boss role the schedules of the roles in its scope, with the prompt only on its own; `schedule show ID` prints one schedule with its prompt for the owner, the admin and a boss role over it, and records the read as `jobs show` does. The dashboard's 작업 tab lists schedules with the jobs (without the prompt), opens one with its condition and prompt, and removes one after a confirm.
+- `schedule edit ID` changes a schedule in place (`PUT /api/schedules/ID`, the owner; the admin and a boss role over it at `/api/admin/schedules/ID` and through `/api/boss/`, and the owner is told): one of `--cron`, `--at` or `--in` replaces the time as `add` reads it, `--prompt` and `--label` replace those (an empty `--label` goes back to `예약 #<ID>`). The ID, the fire record (last fire, missed count) and the expiry stay; the next fire moves to the new time's first time after now, and a paused schedule stays paused. An ended or expired schedule is not edited (409). The dashboard's 작업 tab opens the same edit as 고치기, a form filled with the current values.
 - `schedule pause ID [--reason TEXT]` pauses an active schedule (`POST /api/schedules/ID/pause`); the owner, the admin and a boss role over it may (the same rule as removing one, also at `/api/admin/schedules/ID/pause` and through `/api/boss/`). While paused the schedule sends nothing: the fire times that pass are dropped, not counted as missed, and its expiry clock stops — `schedule resume ID` (`POST …/resume`) moves `expires_at` on by the paused time and a cron schedule fires next at its first time after the resume. A once schedule whose time passed while paused shows `(time passed)` (지나감 on the dashboard) and resumes only with `--fire` (send the prompt now) or `--drop` (drop it; the schedule ends); without either the command exits 2 and the server answers 409. `schedule list`, `show` and the dashboard show who paused it (관리자 <name> or 역할 <address>), when and why; every pause and resume is kept in `schedule_pauses`. When anyone but the owner pauses or resumes, the owner gets one normal system mail, `[예약 멈춤] <label>` or `[예약 켬] <label>`, which needs no answer. The dashboard's opened schedule has 멈춤 and 다시 buttons.
 
 ## Incoming webhooks
@@ -457,6 +459,7 @@ switchboard host auto list
 switchboard host auto run <auto-id>      # once, now
 switchboard host auto show <auto-id>     # settings and newest runs (--runs N, --json)
 switchboard host auto pause|resume|rm <auto-id>
+switchboard host auto edit <auto-id> [--cron EXPR] [--prompt TEXT] [--label TEXT]
 ```
 
 `--check` is a precheck the session's node runs through the shell in the session's folder before each run (`--check-timeout`, default 60 s, at most 10 m). Its exit code decides:

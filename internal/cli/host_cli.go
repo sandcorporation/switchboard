@@ -172,7 +172,7 @@ var autoOnly = []string{"--cron", "--prompt", "--resume", "--notify", "--max-run
 // binary's host auto command.
 func cliHostAuto(p parsedArgs, stdout io.Writer) (int, error) {
 	if len(p.pos) < 2 {
-		return 0, usagef("host auto requires ACTION (add, list, show, run, pause, resume, rm)")
+		return 0, usagef("host auto requires ACTION (add, list, show, edit, run, pause, resume, rm)")
 	}
 	action, ref := p.pos[1], ""
 	if len(p.pos) > 2 {
@@ -202,13 +202,25 @@ func cliHostAuto(p parsedArgs, stdout io.Writer) (int, error) {
 		if ref != "" {
 			return 0, usagef("host auto list: unexpected argument %q", ref)
 		}
+	case "edit":
+		if ref == "" {
+			return 0, usagef("host auto edit requires AUTO-ID")
+		}
+		given := false
+		for _, o := range []string{"--cron", "--prompt", "--label"} {
+			_, ok := p.values[o]
+			allowed[o], given = true, given || ok
+		}
+		if !given {
+			return 0, usagef("host auto edit needs --cron, --prompt or --label")
+		}
 	case "show", "run", "pause", "resume", "rm":
 		if ref == "" {
 			return 0, usagef("host auto %s requires AUTO-ID", action)
 		}
 		allowed["--runs"] = action == "show"
 	default:
-		return 0, usagef("host auto: unknown action %q (add, list, show, run, pause, resume, rm)", action)
+		return 0, usagef("host auto: unknown action %q (add, list, show, edit, run, pause, resume, rm)", action)
 	}
 	for _, o := range append([]string{"--label"}, autoOnly...) {
 		if _, ok := p.values[o]; ok && !allowed[o] {
