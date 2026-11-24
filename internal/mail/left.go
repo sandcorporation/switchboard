@@ -180,13 +180,71 @@ func (s *Service) LeftAPI(w http.ResponseWriter, r *http.Request, p identity.Pri
 		return
 	}
 	sender := identity.BaseOf(s.db, d.Sender)
-	if sender != p.Base && !s.bossOver(p, d) {
-		http.Error(w, "only the role that sent the directive or a boss role over it may end what it left", http.StatusForbidden)
+	base := sender
+	switch {
+	case sender == p.Base, s.bossOver(p, d):
+		// A boss passes the item on, as the dashboard admin does, in a
+		// directive the item's own sender sent (#570).
+	case s.recorderOver(p, item, d):
+		// The role that wrote the item on a report passes it on in a
+		// directive it sent.
+		base = p.Base
+	default:
+		http.Error(w, "only the role that sent the directive, the role that wrote the item on a report it got, or a boss role over it may end what it left", http.StatusForbidden)
 		return
 	}
-	// A boss passes the item on, as the dashboard admin does, in a
-	// directive the item's own sender sent (#570).
-	s.endBy(w, item, action, in, sender, p.Role)
+	s.endBy(w, item, action, in, base, p.Role)
+}
+
+// recorderOver reports whether p, the role (base) that wrote item, may end
+// it though d was not sent by p (#570): d is new mail (a report, not a
+// reply) that p got and ended, and p had sent the first directive between
+// the two roles on the same work — the same task, or the same request
+// chain (#564) — before d. Judged on each read, so items written before
+// this rule are covered too. The worker that sent d keeps ending them as
+// its sender; it never gains another role's items this way, since the
+// first directive between them on that work is not its own.
+func (s *Service) recorderOver(p identity.Principal, item wire.LeftItem, d wire.Message) bool {
+	if identity.BaseOf(s.db, item.RecordedBy) != p.Base {
+		return false
+	}
+	other := identity.BaseOf(s.db, d.Sender)
+	if other == "" || other == p.Base {
+		return false
+	}
+	var rid int64
+	_ = s.db.QueryRow(requests.ChainSQL+`SELECT rid FROM chain WHERE id=?`, d.ID).Scan(&rid)
+	if d.TaskID == "" && rid == 0 {
+		return false
+	}
+	rows, err := s.db.Query(requests.ChainSQL+`SELECT p.sender,p.recipient FROM messages p LEFT JOIN chain cp ON cp.id=p.id
+		WHERE p.id<? AND p.reply_to IS NULL AND ((?<>'' AND COALESCE(p.task_id,'')=?) OR (?<>0 AND cp.rid=?)) ORDER BY p.id`,
+		d.ID, d.TaskID, d.TaskID, rid, rid)
+	if err != nil {
+		return false
+	}
+	// Read every row before resolving names: the store has one connection.
+	var pairs [][2]string
+	for rows.Next() {
+		var sender, recipient string
+		if rows.Scan(&sender, &recipient) != nil {
+			rows.Close()
+			return false
+		}
+		pairs = append(pairs, [2]string{sender, recipient})
+	}
+	rows.Close()
+	for _, m := range pairs {
+		// New mail (no reply_to) from a role is a directive (isDirectiveMail).
+		from, to := identity.BaseOf(s.db, m[0]), identity.BaseOf(s.db, m[1])
+		if from == p.Base && to == other {
+			return true
+		}
+		if from == other && to == p.Base {
+			return false
+		}
+	}
+	return false
 }
 
 // bossOver reports whether p may end what directive d left though it did
