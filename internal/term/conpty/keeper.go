@@ -160,6 +160,7 @@ func (k *Keeper) Serve(l net.Listener) error {
 			continue
 		}
 		failed = 0
+		k.o.Logf("keeper: accepted a connection")
 		go k.serveConn(c)
 	}
 }
@@ -193,6 +194,9 @@ func (k *Keeper) serveConn(c net.Conn) {
 		if req.Op == OpStream {
 			k.serveStream(c, r, req)
 			return
+		}
+		if req.Op == OpVersion || req.Op == OpShutdown {
+			k.o.Logf("keeper: request %s", req.Op)
 		}
 		resp := k.handle(req)
 		resp.ID = req.ID
