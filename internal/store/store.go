@@ -819,7 +819,7 @@ CREATE INDEX IF NOT EXISTS idx_mailbox_views_at ON mailbox_views(viewed_at)`)
 // left undone (#470, additive). kind is item (one thing left), none (the
 // answerer said nothing is left; one per directive) or unrecorded (an older
 // CLI ended the directive without saying; one per directive). state is open,
-// issue, passed or dropped for item and unrecorded rows and none for a none
+// issue, passed, done or dropped for item and unrecorded rows and none for a none
 // row. ended_by, ended_at and value (the issue URL, the directive passed to,
 // or why it was dropped) are set once the row leaves open.
 func migrateLeftItems(db *sql.DB) error {
@@ -827,6 +827,28 @@ func migrateLeftItems(db *sql.DB) error {
 CREATE INDEX IF NOT EXISTS idx_left_items_state ON left_items(state);
 CREATE INDEX IF NOT EXISTS idx_left_items_directive ON left_items(directive_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_left_items_once ON left_items(directive_id,kind) WHERE kind IN ('none','unrecorded')`)
+	if err != nil {
+		return err
+	}
+	return migrateLeftRemind(db)
+}
+
+// migrateLeftRemind adds the reminder of open left items (#553, additive):
+// left_items.reminded_at (RFC 3339, ” before the first reminder) and
+// left_remind, whose one row holds the reminder time in seconds (0 is off)
+// and since (ms), when that value was set. The row is written by
+// mail.Service on first use, never here.
+func migrateLeftRemind(db *sql.DB) error {
+	has, err := HasColumn(db, "left_items", "reminded_at")
+	if err != nil {
+		return err
+	}
+	if !has {
+		if _, err = db.Exec(`ALTER TABLE left_items ADD COLUMN reminded_at TEXT NOT NULL DEFAULT ''`); err != nil {
+			return err
+		}
+	}
+	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS left_remind(id INTEGER PRIMARY KEY CHECK(id=1), after_s INTEGER NOT NULL, since INTEGER NOT NULL)`)
 	return err
 }
 

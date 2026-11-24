@@ -160,7 +160,7 @@ function setCatRows(v){
     qsettings:[d.qs,v=>setRow('qs:'+v.target,[v.target,v.can_ask?['가능','success']:'불가',v.discord?'켬':'끔',String(v.watchers.length)])],
     watches:[d.watches,watchRow],
     hooks:[d.hooks,hookRow],
-    reminders:[d.srv&&!d.srv.err?[d.srv]:d.srv,s=>setRow('server:now',['서버',s.reminders.on?['켬','success']:'끔',s.version])],
+    reminders:[d.srv&&!d.srv.err?[d.srv,{left:d.srv}]:d.srv,s=>s.left?setRow('server:left',['남긴 것',leftRemindText(s.left.left_remind),'']):setRow('server:now',['서버',s.reminders.on?['켬','success']:'끔',s.version])],
   }[v];
   if(!each||each[0]===null)return null;
   if(!Array.isArray(each[0]))return each[0];
@@ -540,9 +540,39 @@ function drawWorkGroup(g,box){
 // 다시 알림 (#223): the reminder settings and the server version, as the
 // start-up line reports them.
 function drawServer(s,box){
+  if(s.key==='left'){drawLeftRemind(s.left_remind,box);return}
   const r=s.reminders,st=document.createElement('span');
   st.append(badge(r.on?'켬':'끔',r.on?'success':'neutral'));
   box.append(dl([['다시 알림',st],['첫 알림',r.after],['최대 횟수',String(r.max)],['멈춤 문턱',r.idle==='off'?'끔':r.idle],['멈춤 알림',r.idle==='off'?'-':String(r.idle_max||1)+'번'],['켠 때',r.since?when(r.since):r.on?'첫 점검 전':'-'],['서버 판',s.version],['터미널 호스팅',s.hosting?'켬':'끔'],['답 규칙 판',String(s.answered_rule.version)],['마지막 이주',ruleLast(s.answered_rule.last)]]));
+}
+// 남긴 것 (#553): the reminder time of open left items, in hours; empty
+// is off. A new value counts from when it is saved.
+function leftRemindText(r){return r.on?leftRemindHours(r)+'시간':'끔'}
+function leftRemindHours(r){return String(Math.round(r.after_seconds/36)/100)}
+function drawLeftRemind(r,box){
+  drawSetNote(box,'server:left');
+  box.append(dl([['리마인드',leftRemindText(r)],['기준 시각',r.since?when(r.since):'-']]));
+  const key='server:left',stamp=String(r.after_seconds)+(r.since||''),kept=setForms.get(key);
+  if(kept&&kept.stamp===stamp){box.append(kept.form);return}
+  const f=node('form','','settings-form termform');
+  const l=node('label','리마인드 (시간) '),h=document.createElement('input');
+  h.type='number';h.min='1';h.max='8760';h.step='1';h.inputMode='numeric';h.placeholder='끔';h.value=r.on?leftRemindHours(r):'';
+  h.title='남긴 것이 이 시간 넘게 처리되지 않으면 지시한 역할에게 묶어 알림 — 비우면 끔';h.setAttribute('aria-label','리마인드 (시간)');
+  l.append(h);
+  const save=node('button','저장');save.type='submit';save.title='저장';
+  const row=node('div','','row');row.append(save);
+  f.append(l,row);
+  f.onsubmit=async e=>{
+    e.preventDefault();
+    const v=h.value.trim();
+    try{
+      await apiSend('PUT','settings/left-remind',{after:v?v+'h':''});
+      setForms.delete(key);setNote(key,v?'리마인드를 '+v+'시간으로 저장했습니다.':'리마인드를 껐습니다.','ok');
+    }catch(err){setNote(key,err.message,'err')}
+    loadSettingsView();drawDetail();
+  };
+  setForms.set(key,{stamp:stamp,form:f});
+  box.append(f);
 }
 // 웹훅 (#527): incoming webhooks, as hook:<id> (hook:+ a new one). The
 // address shows once, after adding or making it again, until the detail is
@@ -664,7 +694,7 @@ async function findSetting(kind,key){
   if(kind==='group'&&hostingOn)return key==='+'?{name:'',fresh:true}:(await api('terminals/work-groups')).find(x=>x.name===key);
   if(kind==='watch')return findWatch(key);
   if(kind==='hook')return key==='+'?{fresh:true,name:'',role:'',mode:'mail',urgent:false,window_min:10,dest:'none'}:api('hooks/'+encodeURIComponent(key)).catch(()=>undefined);
-  if(kind==='server')return api('settings');
+  if(kind==='server')return api('settings').then(v=>Object.assign(v,{key:key}));
   if(kind==='view'&&key==='nodes'&&ws&&ws.nodes)return {};
   return undefined;
 }
@@ -676,7 +706,7 @@ const setHeads={
   node:v=>({title:v.name,badge:v.revoked_at?['끊김','danger']:null}),
   group:v=>({title:v.fresh?'새 묶음':v.name,badge:null}),
   hook:v=>({title:v.fresh?'새 웹훅':v.name,badge:v.fresh?null:v.dest==='unreadable'?['다시 등록 필요','danger']:[hookModeName[v.mode]||v.mode,'neutral']}),
-  server:v=>({title:'다시 알림 · 서버',badge:v.reminders.on?['켬','success']:['끔','neutral']}),
+  server:v=>v.key==='left'?{title:'다시 알림 · 남긴 것',badge:v.left_remind.on?['켬','success']:['끔','neutral']}:{title:'다시 알림 · 서버',badge:v.reminders.on?['켬','success']:['끔','neutral']},
   view:()=>({title:'노드',badge:null}),
 };
 const setDraws={qs:drawQS,refusals:drawRefusals,role:drawRole,login:drawLogin,node:drawNode,group:drawWorkGroup,hook:drawHook,server:drawServer,view:(v,box)=>{const n=ws.nodes();box.append(n.el);n.show()}};
@@ -689,6 +719,6 @@ registerDetail('settings',{
   },
   // The line beside the name: a role's address, else the item's tab.
   head:x=>{const h=setHeads[x.k](x.v);if(h.sub===undefined){const c=setCatOf(setKindView[x.k]);h.sub=c?c.name:''}return h},
-  subs:x=>x.k==='qs'||(x.k==='role'&&x.v.fresh)||x.k==='group'||x.k==='watch'||x.k==='hook'?[['edit','설정']]:[['info','정보']],
+  subs:x=>x.k==='qs'||(x.k==='role'&&x.v.fresh)||x.k==='group'||x.k==='watch'||x.k==='hook'||(x.k==='server'&&x.v.key==='left')?[['edit','설정']]:[['info','정보']],
   draw:async(x,sub,box)=>{await setDraws[x.k](x.v,box);if(x.k!=='view')setFoot(box)}
 });

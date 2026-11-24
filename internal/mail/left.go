@@ -18,8 +18,8 @@ import (
 
 // The ledger of what is left (#470). An answer that ends a directive says
 // what it left undone; each thing is an open row of left_items until the
-// directive's sender raises it as an issue or passes it on in a new
-// directive, or an admin drops it.
+// directive's sender raises it as an issue, passes it on in a new
+// directive, marks it done or drops it (#553), or an admin does.
 //
 // The answers that end a directive:
 //   - reply N --complete (and send --complete N) by N's recipient,
@@ -131,9 +131,11 @@ func leftNote(w http.ResponseWriter, r *http.Request) (wire.LeftNote, bool) {
 //	POST /api/left/{id}/issue    LeftEnd.URL: raised as an issue
 //	POST /api/left/{id}/pass     LeftEnd.Directive: passed on in that
 //	                             directive, which the caller sent
+//	POST /api/left/{id}/done     done (#553)
+//	POST /api/left/{id}/drop     LeftEnd.Reason: dropped, and why (#553)
 //
-// Only the role (base) that sent the item's directive may raise or pass it.
-// Dropping is the dashboard admin's (AdminLeftAPI).
+// Only the role (base) that sent the item's directive may end it. The
+// dashboard admin ends items with AdminLeftAPI.
 func (s *Service) LeftAPI(w http.ResponseWriter, r *http.Request, p identity.Principal, rest string) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -147,24 +149,23 @@ func (s *Service) LeftAPI(w http.ResponseWriter, r *http.Request, p identity.Pri
 	if !ok {
 		return
 	}
-	if action != "issue" && action != "pass" {
+	if action != "issue" && action != "pass" && action != "done" && action != "drop" {
 		http.NotFound(w, r)
 		return
 	}
 	d, err := s.Get(item.Directive)
 	if err != nil || identity.BaseOf(s.db, d.Sender) != p.Base {
-		http.Error(w, "only the role that sent the directive may raise or pass what it left", http.StatusForbidden)
+		http.Error(w, "only the role that sent the directive may end what it left", http.StatusForbidden)
 		return
 	}
 	s.endBy(w, item, action, in, p.Base, p.Role)
 }
 
-// AdminLeftAPI serves POST /api/admin/left/{id}/{issue,pass,drop} for a
-// signed-in dashboard admin (#470): issue and pass as the directive's
-// sender would, drop with LeftEnd.Reason (required). The admin routes also
-// take a boss role's token (boss write, #399): admin is false then and all
-// three are refused; a role raises and passes with its CLI, and only a
-// person drops what is left.
+// AdminLeftAPI serves POST /api/admin/left/{id}/{issue,pass,done,drop} for
+// a signed-in dashboard admin (#470, #553): issue, pass and done as the
+// directive's sender would, drop with LeftEnd.Reason (required). The admin
+// routes also take a boss role's token (boss write, #399): admin is false
+// then and all are refused; a role ends items with its CLI.
 func (s *Service) AdminLeftAPI(w http.ResponseWriter, r *http.Request, admin bool, user, rest string) {
 	if !admin {
 		http.Error(w, "the ledger's dashboard actions are for a signed-in admin", http.StatusForbidden)
@@ -180,13 +181,8 @@ func (s *Service) AdminLeftAPI(w http.ResponseWriter, r *http.Request, admin boo
 	}
 	by := "admin:" + user
 	switch action {
-	case "drop":
-		reason := strings.TrimSpace(in.Reason)
-		if reason == "" {
-			http.Error(w, "reason: why it is dropped", http.StatusBadRequest)
-			return
-		}
-		s.endLeft(w, item.ID, wire.LeftDropped, by, reason)
+	case "drop", "done":
+		s.endBy(w, item, action, in, "", by)
 	case "issue", "pass":
 		d, err := s.Get(item.Directive)
 		if err != nil {
@@ -219,10 +215,24 @@ func (s *Service) leftTarget(w http.ResponseWriter, r *http.Request, rest string
 	return item, action, in, true
 }
 
-// endBy raises item as an issue (in.URL) or passes it on (in.Directive, a
-// directive sent by base, not the item's own), for by.
+// endBy raises item as an issue (in.URL), passes it on (in.Directive, a
+// directive sent by base, not the item's own), marks it done or drops it
+// (in.Reason, required), for by.
 func (s *Service) endBy(w http.ResponseWriter, item wire.LeftItem, action string, in wire.LeftEnd, base, by string) {
 	switch action {
+	case "done":
+		s.endLeft(w, item.ID, wire.LeftDone, by, "")
+	case "drop":
+		reason := strings.TrimSpace(in.Reason)
+		if reason == "" {
+			http.Error(w, "reason: why it is dropped", http.StatusBadRequest)
+			return
+		}
+		if len([]rune(reason)) > leftItemMax {
+			http.Error(w, fmt.Sprintf("reason: at most %d characters", leftItemMax), http.StatusBadRequest)
+			return
+		}
+		s.endLeft(w, item.ID, wire.LeftDropped, by, reason)
 	case "issue":
 		u, e := url.Parse(strings.TrimSpace(in.URL))
 		if e != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {

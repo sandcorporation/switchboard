@@ -616,7 +616,7 @@ func (s *Server) adminRoutes(w http.ResponseWriter, r *http.Request, path string
 		return
 	}
 	if rest, ok := strings.CutPrefix(path, "left/"); ok {
-		// POST /api/admin/left/{id}/{issue,pass,drop}: only a signed-in admin (#470);
+		// POST /api/admin/left/{id}/{issue,pass,done,drop}: only a signed-in admin (#470, #553);
 		// drop only a login allowed to discard (#476).
 		if _, action, _ := strings.Cut(rest, "/"); boss == nil && action == "drop" && !who.Can(wire.PermDiscard) {
 			refusePerm(w, wire.PermDiscard)
@@ -634,6 +634,15 @@ func (s *Server) adminRoutes(w http.ResponseWriter, r *http.Request, path string
 			return
 		}
 		s.mail().Close(w, r, "", mail.CurrentID(s.db, id))
+		return
+	}
+	if path == "settings/left-remind" {
+		// The reminder of open left items (#553): a signed-in admin's.
+		if boss != nil || r.Method != http.MethodPut {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		s.leftRemindAPI(w, r)
 		return
 	}
 	if r.Method != http.MethodGet {

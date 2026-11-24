@@ -181,10 +181,11 @@ var commands = []command{
 	{name: "ack", args: "ID", nargs: 1, summary: "Acknowledge a message", options: []option{optJSON, optProfile}},
 	{name: "complete", args: "ID", nargs: 1, summary: "Mark a message complete; completing a directive sent to you ends it, so say what is left (--left or --left-none)", options: []option{optLeft, optLeftNone, optJSON, optProfile}},
 	{name: "close", args: "ID", nargs: 1, summary: "Close a directive you sent: it needs no answer (no longer open, never reminded); given an answer's ID, close the directive it answers and complete the answer. Closing a directive that has not ended ends it: say what is left (--left or --left-none)", options: []option{optLeft, optLeftNone, optJSON, optProfile}},
-	{name: "left", args: "add N TEXT | issue ID URL | pass ID", nargs: 3, optArgs: true,
-		summary: "What an answer that ended a directive left undone (진행 대기 남긴 것): add TEXT to directive N you ended; the directive's sender raises item ID as an issue (URL) or passes it on in a directive it sent (--directive M). Only a signed-in admin drops an item, on the dashboard",
+	{name: "left", args: "add N TEXT | issue ID URL | pass ID | done ID | drop ID", nargs: 3, optArgs: true,
+		summary: "What an answer that ended a directive left undone (진행 대기 남긴 것): add TEXT to directive N you ended; the directive's sender raises item ID as an issue (URL), passes it on in a directive it sent (--directive M), marks it done, or drops it (--reason). An item left open gets the sender a reminder each reminder time (설정 · 다시 알림)",
 		options: []option{
 			{"--directive", "M", "pass: the directive you sent that takes the item over"},
+			{"--reason", "TEXT", "drop: why the item is dropped, one line"},
 			optJSON, optProfile,
 		}},
 	{name: "withdraw", args: "ID", nargs: 1, summary: "Take back mail you sent that its recipient has not read (409 once read: close it or send new mail)", options: []option{optJSON, optProfile}},

@@ -186,16 +186,7 @@ func (st RemindStatus) StartLine() string {
 
 // shortDuration drops the zero minutes and seconds of a duration: 2h, 1h30m,
 // 45s.
-func shortDuration(d time.Duration) string {
-	t := d.String()
-	if strings.HasSuffix(t, "m0s") {
-		t = strings.TrimSuffix(t, "0s")
-	}
-	if strings.HasSuffix(t, "h0m") {
-		t = strings.TrimSuffix(t, "0m")
-	}
-	return t
-}
+func shortDuration(d time.Duration) string { return mail.ShortDuration(d) }
 
 // RemindSubject and RemindBody are a reminder's text.
 func RemindSubject(id int64, subject string) string {

@@ -46,7 +46,7 @@ func liveKinds(path string, admin bool) []string {
 	head, _, _ := strings.Cut(path, "/")
 	if admin {
 		switch head {
-		case "question-settings", "watches", "hooks":
+		case "question-settings", "watches", "hooks", "settings":
 			return []string{"settings"}
 		case "questions":
 			return []string{"questions", "mail", "progress", "requests"}
