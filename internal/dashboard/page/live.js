@@ -80,8 +80,8 @@ function loadTab(name){
 }
 // tabShown: the current tab, or (workspace) any section on screen.
 function tabShown(k){return k===curTab||!!(ws&&ws.shown(k))}
-// Routes: #progress #sessions #metrics #mail #permissions #questions #settings, #settings-roles
-// #settings-nodes #settings-reminders (설정 tab views), #decisions (질문 tab,
+// Routes: #progress #sessions #metrics #mail #permissions #questions #settings (the last tab),
+// #settings-<tab> such as #settings-roles or #settings-qsettings (설정 tabs), #decisions (질문 tab,
 // 결정 view), #q=<id> (rewritten to #questions/<id>/answer), #terminal=<id> (an older link: it becomes
 // #terminals/<id>/screen), and #<tab>/<id>/<sub> for a tab with a detail panel
 // (registerDetail). No hash or an unknown one shows 지시 (#501).
@@ -172,7 +172,6 @@ $('reloadJobs').onclick=()=>loadJobs();
 $('jobRole').onchange=()=>loadJobs();
 $('jobFind').oninput=()=>{if(jobsLast)drawJobs(...jobsLast)};
 $('reloadQuestions').onclick=()=>{setMsg($('questionsMsg'),'');loadQuestions()};
-$('reloadSettings').onclick=()=>{setMsg($('settingsMsg'),'');loadSettingsView()};
 $('reset').onclick=()=>{$('thread').value='';$('task').value='';mailID='';$('search').value='';$('status').value='';$('role').value='';$('box').value='all';load()};
 $('search').addEventListener('keydown',e=>{if(e.key==='Enter')load()});
 $('thread').addEventListener('keydown',e=>{if(e.key==='Enter')load()});

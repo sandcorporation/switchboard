@@ -1,4 +1,4 @@
-// Unit tests for page/tab_settings.js (#538): node --test internal/dashboard/settings.test.cjs
+// Unit tests for page/tab_settings.js (#538, #544): node --test internal/dashboard/settings.test.cjs
 // (tabs_test.go runs them under go test when node is installed).
 'use strict';
 const test = require('node:test');
@@ -8,7 +8,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 
 // load runs tabs.js and tab_settings.js in a fresh context with stand-ins
-// for the page; hosting and ws decide the menu's 기계·묶음·터미널·노드.
+// for the page; hosting and ws decide the tabs 기계·묶음 and 화면's 터미널·노드.
 function load(o) {
   o = o || {};
   const el = () => ({ addEventListener() {}, classList: { toggle() {}, add() {} }, setAttribute() {}, append() {}, replaceChildren() {}, focus() {}, value: '', textContent: '' });
@@ -23,20 +23,20 @@ function load(o) {
   ctx.can = p => ctx.perms.includes(p);
   vm.createContext(ctx);
   const src = ['tabs.js', 'tab_settings.js'].map(f => fs.readFileSync(path.join(__dirname, 'page', f), 'utf8')).join('\n');
-  vm.runInContext(src + '\n;Object.assign(this,{setPathOf,setModeHash,setSel,setScreens,setCats,setCatOn,setAddOk,setPaneNow:()=>setPane});', ctx);
+  vm.runInContext(src + '\n;Object.assign(this,{setTabNow,setScrNow,setScreens,setCats,setCatOn,setAddOk,setTabHref,settingsViewOfHash,showSettingsView,setCols});', ctx);
   return ctx;
 }
 const plain = v => JSON.parse(JSON.stringify(v));
-const texts = segs => segs.map(s => s[0]).join(' › ');
 
-test('the menu groups are 일반 · 연결 · 역할 with the categories in order', () => {
+test('the tabs: 역할 · 기계 · 묶음 · 로그인 · 질문 설정 · 지켜보기 · 웹훅 · 화면 · 다시 알림', () => {
   const ctx = load({ hosting: true });
-  const by = {};
-  for (const c of ctx.setCats) (by[c.grp] = by[c.grp] || []).push(c.name);
-  assert.deepEqual(JSON.parse(JSON.stringify(by)), { 일반: ['로그인', '질문 설정', '다시 알림'], 연결: ['기계', '묶음', '웹훅', '지켜보기'], 역할: ['역할'] });
+  assert.deepEqual(plain(ctx.setCats.map(c => c.name)), ['역할', '기계', '묶음', '로그인', '질문 설정', '지켜보기', '웹훅', '화면', '다시 알림']);
+  assert.deepEqual(plain(ctx.setCols.roles.map(c => c[0])), ['이름', '주소', '기계', '상태', '컨텍스트']);
+  // Every tab but 화면 has a table.
+  assert.deepEqual(plain(ctx.setCats.filter(c => !ctx.setCols[c.v]).map(c => c.v)), ['screens']);
 });
 
-test('기계·묶음·터미널 only with hosting on, 노드 only with the workspace', () => {
+test('기계·묶음 only with hosting on; 화면 has 터미널 with hosting, 노드 with the workspace', () => {
   const off = load();
   assert.deepEqual(plain(off.setCats.filter(c => !off.setCatOn(c)).map(c => c.v)), ['nodes', 'groups']);
   assert.deepEqual(plain(off.setScreens().map(s => s[1])), ['진행', '세션 표']);
@@ -45,43 +45,46 @@ test('기계·묶음·터미널 only with hosting on, 노드 only with the works
   assert.deepEqual(plain(on.setScreens().map(s => s[1])), ['진행', '세션 표', '터미널', '노드']);
 });
 
-test('+ opens a blank form for 질문 설정 · 묶음 · 웹훅 · 지켜보기; 지켜보기 needs sessions; no + for 역할 (#140)', () => {
+test('+ opens a blank form for 역할 (an invite) · 묶음 · 질문 설정 · 지켜보기 · 웹훅; 역할 and 지켜보기 need sessions', () => {
   const ctx = load({ hosting: true });
-  assert.deepEqual(plain(ctx.setCats.filter(c => ctx.setAddOk(c)).map(c => c.add)), ['qs:+', 'group:+', 'hook:+', 'watch:+']);
+  assert.deepEqual(plain(ctx.setCats.filter(c => ctx.setAddOk(c)).map(c => c.add)), ['role:+', 'group:+', 'qs:+', 'watch:+', 'hook:+']);
   const ro = load({ hosting: true, perms: ['view'] });
-  assert.deepEqual(plain(ro.setCats.filter(c => ro.setAddOk(c)).map(c => c.add)), ['qs:+', 'group:+', 'hook:+']);
+  assert.deepEqual(plain(ro.setCats.filter(c => ro.setAddOk(c)).map(c => c.add)), ['group:+', 'qs:+', 'hook:+']);
 });
 
-test('the path row: 설정 › 분류 › 항목, the category a link to its list', () => {
+test('tab addresses: #settings-<tab>, #settings the last tab, 화면 its first screen', () => {
   const ctx = load({ hosting: true });
-  assert.deepEqual(JSON.parse(JSON.stringify(ctx.setPathOf({ tab: 'settings', id: 'hook:3' }, 'settings', 'hooks', 'build-alert'))), [['설정', ''], ['웹훅', '#settings-hooks'], ['build-alert', '']]);
-  assert.equal(texts(ctx.setPathOf({ tab: 'settings', id: 'role:team/boss' }, 'settings', 'roles', 'team/boss')), '설정 › 역할 › team/boss');
-  assert.equal(texts(ctx.setPathOf({ tab: 'settings', id: 'qs:+' }, 'settings', 'qsettings', '새 질문 설정')), '설정 › 질문 설정 › 새 질문 설정');
-  assert.equal(texts(ctx.setPathOf({ tab: 'settings', id: 'server:now' }, 'settings', 'reminders', '다시 알림 · 서버')), '설정 › 다시 알림');
-  assert.equal(texts(ctx.setPathOf(null, 'settings', 'nodes', '')), '설정 › 기계');
-  assert.equal(texts(ctx.setPathOf(null, 'progress', 'qsettings', '')), '설정 › 진행');
-  assert.equal(texts(ctx.setPathOf({ tab: 'terminals', id: 'hs_1' }, 'terminals', 'qsettings', 'team/worker')), '설정 › 터미널 › team/worker');
+  assert.equal(ctx.setTabHref('roles'), '#settings-roles');
+  assert.equal(ctx.setTabHref('qsettings'), '#settings-qsettings');
+  assert.equal(ctx.setTabHref('screens'), '#progress');
+  assert.equal(ctx.settingsViewOfHash('settings-hooks'), 'hooks');
+  assert.equal(ctx.settingsViewOfHash('settings'), 'roles');
+  ctx.showSettingsView('hooks');
+  assert.equal(ctx.settingsViewOfHash('settings'), 'hooks');
+  assert.equal(ctx.settingsViewOfHash('settings-nope'), '');
+  // 기계 without hosting falls back to 역할.
+  const off = load();
+  off.showSettingsView('nodes');
+  assert.equal(off.settingsViewOfHash('settings'), 'roles');
 });
 
-test('the menu marks the category of the open item, a role itself, a 화면 row', () => {
-  const ctx = load({ hosting: true });
+test('the tab on screen: the open item\'s category, 화면 for its screens, else the picked tab', () => {
+  const ctx = load({ hosting: true, ws: { nodes() {} } });
   ctx.curTab = 'settings';
-  vm.runInContext("setView='hooks'", ctx);
-  assert.equal(ctx.setSel(), 'cat:hooks');
+  ctx.showSettingsView('hooks');
+  assert.equal(ctx.setTabNow(), 'hooks');
   ctx.detailCur = { tab: 'settings', id: 'watch:4' };
-  assert.equal(ctx.setSel(), 'cat:watches');
-  ctx.detailCur = { tab: 'settings', id: 'role:team/boss' };
-  assert.equal(ctx.setSel(), 'role:team/boss');
+  assert.equal(ctx.setTabNow(), 'watches');
+  ctx.detailCur = { tab: 'settings', id: 'role:+' };
+  assert.equal(ctx.setTabNow(), 'roles');
+  ctx.detailCur = { tab: 'settings', id: 'refusals:24h' };
+  assert.equal(ctx.setTabNow(), 'qsettings');
   ctx.detailCur = { tab: 'settings', id: 'view:nodes' };
-  assert.equal(ctx.setSel(), 'scr:view:nodes');
+  assert.equal(ctx.setTabNow(), 'screens');
+  assert.equal(ctx.setScrNow(), 'view:nodes');
   ctx.detailCur = null; ctx.curTab = 'sessions';
-  assert.equal(ctx.setSel(), 'scr:sessions');
-});
-
-test('설정 addresses: #settings… and 진행·세션 표·터미널; the menu first on #settings', () => {
-  const ctx = load();
-  for (const h of ['#settings', '#settings-roles', '#settings/hook%3A1/edit', '#progress', '#sessions', '#terminals/hs_1/screen']) assert.equal(ctx.setModeHash(h), true, h);
-  for (const h of ['', '#requests', '#mail', '#session=team/boss', '#metrics']) assert.equal(ctx.setModeHash(h), false, h);
-  assert.equal(load({ hash: '#settings' }).setPaneNow(), 'menu');
-  assert.equal(load({ hash: '#settings-hooks' }).setPaneNow(), 'body');
+  assert.equal(ctx.setTabNow(), 'screens');
+  assert.equal(ctx.setScrNow(), 'sessions');
+  ctx.detailCur = { tab: 'terminals', id: 'hs_1' }; ctx.curTab = 'terminals';
+  assert.equal(ctx.setTabNow(), 'screens');
 });

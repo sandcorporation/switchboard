@@ -1,57 +1,55 @@
-// ---- 설정 (#515, #538) ----
-// 설정 takes the whole screen (html.fr-set): the left pane becomes the
-// settings menu (#setNav: 돌아가기, 설정 찾기, the groups 일반 · 연결 · 화면
-// and the roles one per line under 역할), the centre the picked thing under
-// the path row (#setHead: 설정 › 분류 › 항목, ✕). A category with several
-// items (기계 …) lists them in the body (#panel-settings); a row opens its
-// item there, #settings/<kind>:<id>/<sub>. The old view links
-// (#settings-roles …) open that category. ← 돌아가기, ✕ and Esc go back to
-// the screen before 설정; below 720px the menu and the body take turns
-// (‹ and Esc go back to the menu).
-const setViewHash={qsettings:'settings',roles:'settings-roles',nodes:'settings-nodes',groups:'settings-groups',logins:'settings-logins',watches:'settings-watches',hooks:'settings-hooks',reminders:'settings-reminders'};
+// ---- 설정 (#515, #538, #544) ----
+// 설정 is a full screen (html.fr-set) beside the session list. The top
+// (#setTop) holds 설정, 설정 전체에서 찾기 and the picked tab's add button
+// (+ 역할 …), then the tab row, each tab with its count. Under it the picked
+// category's table takes the width (#setItems); a row opens its item in the
+// panel on the right (#detail, 380px; the whole screen below 720px) and the
+// table stays beside it, its scroll and marked row kept. 화면 picks
+// 진행 · 세션 표 · 터미널 · 노드 with small buttons (#setScr), the picked one
+// under the tab row. Addresses: #settings-<tab> picks a tab (#settings the
+// last one), #settings/<kind>:<id>/<sub> an item, #progress #sessions
+// #terminals and #settings/view:nodes the 화면.
+const setViewHash={roles:'settings-roles',nodes:'settings-nodes',groups:'settings-groups',logins:'settings-logins',qsettings:'settings-qsettings',watches:'settings-watches',hooks:'settings-hooks',reminders:'settings-reminders'};
 const setKindView={qs:'qsettings',refusals:'qsettings',role:'roles',node:'nodes',group:'groups',login:'logins',watch:'watches',hook:'hooks',server:'reminders'};
-let setView='qsettings',setData=null;
+let setView='roles',setData=null;
 const setNotes=new Map(),setForms=new Map();
-// setCats are the menu's categories, in its order: grp its group, add the
-// new item's id (+ opens its blank form), host only with hosting on, one
-// the single item a menu click opens at once.
+// setCats are the tabs, in order: add the new item's id (+ opens its blank
+// form in the panel; 역할's makes an invite code), host only with hosting
+// on. 화면 (screens) has buttons instead of a table.
 const setCats=[
-  {v:'logins',name:'로그인',grp:'일반'},
-  {v:'qsettings',name:'질문 설정',grp:'일반',add:'qs:+'},
-  {v:'reminders',name:'다시 알림',grp:'일반',one:'server:now'},
-  {v:'nodes',name:'기계',grp:'연결',host:true},
-  {v:'groups',name:'묶음',grp:'연결',host:true,add:'group:+'},
-  {v:'hooks',name:'웹훅',grp:'연결',add:'hook:+'},
-  {v:'watches',name:'지켜보기',grp:'연결',add:'watch:+',addPerm:'sessions'},
-  {v:'roles',name:'역할',grp:'역할'},
+  {v:'roles',name:'역할',add:'role:+',addPerm:'sessions'},
+  {v:'nodes',name:'기계',host:true},
+  {v:'groups',name:'묶음',host:true,add:'group:+'},
+  {v:'logins',name:'로그인'},
+  {v:'qsettings',name:'질문 설정',add:'qs:+'},
+  {v:'watches',name:'지켜보기',add:'watch:+',addPerm:'sessions'},
+  {v:'hooks',name:'웹훅',add:'hook:+'},
+  {v:'screens',name:'화면'},
+  {v:'reminders',name:'다시 알림'},
 ];
-const setIcons={
-  logins:'M8 8a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5zM3 14c.5-2.8 2.4-4 5-4s4.5 1.2 5 4',
-  qsettings:'M8 14.5a6.5 6.5 0 1 0 0-13 6.5 6.5 0 0 0 0 13zM6.3 6a1.8 1.8 0 1 1 2.4 1.7c-.5.2-.7.6-.7 1.1v.5M8 11.2v.1',
-  reminders:'M4 11V7a4 4 0 0 1 8 0v4l1.5 1.5h-11zM6.5 14h3',
-  nodes:'M2.5 3h11v6.5h-11zM6 13h4M8 9.5V13',
-  groups:'M2.5 3.5h4.5v4.5h-4.5zM9 3.5h4.5v4.5H9zM2.5 10h4.5v3.5h-4.5zM9 10h4.5v3.5H9z',
-  hooks:'M6 3.5a2.5 2.5 0 1 1 3.5 2.3L8 9M4.5 9.5a2.5 2.5 0 1 0 2.4 3.2H11M11.5 9.5a2.5 2.5 0 1 1-1.6 4.4',
-  watches:'M1.5 8s2.5-4.5 6.5-4.5S14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8zM8 10a2 2 0 1 0 0-4 2 2 0 0 0 0 4z',
-  progress:'M2 8h3l2-5 2 10 2-5h3',
-  sessions:'M2.5 3.5h11v7h-11zM6 13.5h4',
-  terminals:'M2 3h12v10H2zM4.5 6l2 2-2 2M8 10h3.5',
-  'view:nodes':'M8 2v4M8 6l-4.5 4M8 6l4.5 4M2 10.5h3v3H2zM6.5 10.5h3v3h-3zM11 10.5h3v3h-3z',
+// setCols are each table's columns, [head, narrow, class]: a narrow
+// column hides below 720px.
+const setCols={
+  roles:[['이름'],['주소',0,'mono st-dim'],['기계',1],['상태'],['컨텍스트',1,'num st-dim']],
+  nodes:[['이름'],['기계'],['OS',1],['판',1,'st-dim'],['상태']],
+  groups:[['이름'],['문턱'],['세션',0,'num']],
+  logins:[['이름'],['종류'],['권한',1],['상태']],
+  qsettings:[['대상',0,'mono'],['질문'],['디스코드',1],['지켜봄',1,'num']],
+  watches:[['이름'],['받는 역할',0,'mono st-dim'],['주기',1],['최근',1,'st-dim'],['상태']],
+  hooks:[['이름'],['방식'],['받는 역할',1,'mono st-dim'],['최근',1,'st-dim'],['상태']],
+  reminders:[['이름'],['다시 알림'],['판',1,'st-dim']],
 };
-function setIcon(k){
-  const s=document.createElementNS('http://www.w3.org/2000/svg','svg');s.setAttribute('width','14');s.setAttribute('height','14');s.setAttribute('viewBox','0 0 16 16');s.setAttribute('aria-hidden','true');
-  const p=document.createElementNS('http://www.w3.org/2000/svg','path');p.setAttribute('d',setIcons[k]||'');p.setAttribute('fill','none');p.setAttribute('stroke','currentColor');p.setAttribute('stroke-width','1.3');p.setAttribute('stroke-linecap','round');p.setAttribute('stroke-linejoin','round');
-  s.append(p);return s;
-}
 function setCatOn(c){return !c.host||hostingOn}
 function setAddOk(c){return !!c.add&&setCatOn(c)&&(!c.addPerm||can(c.addPerm))}
 function setCatOf(v){return setCats.find(c=>c.v===v)}
-// showSettingsView(v) opens category v in the body.
+// showSettingsView(v) picks tab v.
 function showSettingsView(v){
-  if(!setViewHash[v]||((v==='nodes'||v==='groups')&&!hostingOn))v='qsettings';
+  if(!setViewHash[v]||((v==='nodes'||v==='groups')&&!hostingOn))v='roles';
   setView=v;
 }
-function settingsViewOfHash(h){for(const [v,x] of Object.entries(setViewHash))if(x===h)return v;return ''}
+function settingsViewOfHash(h){if(h==='settings')return setView;for(const [v,x] of Object.entries(setViewHash))if(x===h)return v;return ''}
+// setTabHref is the address tab v opens: 화면 opens its first screen.
+function setTabHref(v){return v==='screens'?setScreens()[0][2]:'#'+setViewHash[v]}
 // loadSettingsView reads every category at once; a category whose read
 // fails shows its error, the others still draw.
 async function loadSettingsView(){
@@ -60,211 +58,188 @@ async function loadSettingsView(){
   const [qs,ref,roles,logins,nodes,groups,srv,watches,hooks]=await Promise.all([get(api('question-settings')),get(api('question-refusals')),get(api('roles')),get(api('logins')),host?get(api('nodes')):null,host?get(api('terminals/work-groups')):null,get(api('settings')),can('view')?get(api('watches')):[],get(api('hooks'))]);
   if(host!==hostingOn)return loadSettingsView();
   setData={qs:qs,ref:ref,roles:roles,logins:logins,nodes:nodes,groups:groups,srv:srv,watches:watches,hooks:hooks};
+  $('settingsNote').textContent='';
   drawSettings();
 }
 tabLoaders.settings=loadSettingsView;
-$('setFind').oninput=()=>{if(setData)drawSettings()};
-// setRow is one body row on one line: the name, its facts (top) and an
-// optional [text,tone] at the right.
-function setRow(id,top,title,st){
-  const r=node('div','','sr');r.setAttribute('role','button');
-  const t=node('span',st?st[0]:'','sr-t');if(st&&st[1])t.classList.add('tone-'+st[1]);
-  const m=node('span',top.filter(Boolean).join(' · '),'sr-m');
-  r.append(node('b',title||'(이름 없음)','sr-n'),m,t);r.title=[title].concat(top.filter(Boolean)).join(' · ');
-  detailRow(r,'settings',id);
-  return r;
+// 설정 전체에서 찾기 counts the matches of every tab and opens the first tab
+// that has one.
+$('setFind').oninput=()=>{
+  if(!setData)return;
+  const q=$('setFind').value;
+  if(q.trim()){
+    const c=setCats.find(c=>{const n=setCount(c,q);return typeof n==='number'&&n>0});
+    if(c&&c.v!==setTabNow()){location.hash=setTabHref(c.v);return}
+  }
+  drawSettings();
+};
+// setRow is one table row: cells are text or [text,tone], the first the
+// item's name. A click opens the item in the panel (setOpen).
+function setRow(id,cells){
+  const tr=document.createElement('tr');
+  cells.forEach((c,i)=>{
+    const [t,tone]=Array.isArray(c)?c:[c,''];
+    const td=node('td',t===undefined||t===null?'':String(t),i?'':'st-nm');
+    if(tone)td.classList.add('tone-'+tone);
+    tr.append(td);
+  });
+  tr.title=cells.map(c=>Array.isArray(c)?c[0]:c).filter(Boolean).join(' · ');
+  tr.dataset.detailId=id;tr.tabIndex=0;
+  tr.addEventListener('click',e=>{if(!e.target.closest('a,button,input'))setOpen(id)});
+  tr.addEventListener('keydown',e=>{if(e.target===tr&&(e.key==='Enter'||e.key===' ')){e.preventDefault();setOpen(id)}});
+  return tr;
 }
+// setDirty is the id of the open item whose form has values not saved;
+// opening another item asks first whether to drop them.
+let setDirty='';
+function setOpen(id){
+  const c=detailCur;
+  if(c&&c.tab==='settings'&&setDirty===c.id&&c.id!==id){
+    if(!confirm('저장하지 않은 값이 있습니다. 버리고 옮길까요?'))return;
+    setForms.clear();
+  }
+  setDirty='';openDetail('settings',id);
+}
+for(const ev of ['input','change'])$('detailBody').addEventListener(ev,e=>{if(detailCur&&detailCur.tab==='settings'&&e.target.closest('form'))setDirty=detailCur.id});
+$('detailBody').addEventListener('submit',()=>{setDirty=''},true);
 const permName={view:'보기',type:'입력',files:'파일',sessions:'세션',discard:'버리기'};
-// setCatRows is category v's body rows: a list, {err} or null (not shown).
+// setLive is the session list's rows by role (frameData): a role's name
+// (its label), state, machine and context.
+function setLive(){const m=new Map();if(typeof frameData!=='undefined'&&frameData)for(const r of frameRows(frameData))m.set(r.role,r);return m}
+const setStTone={'st-busy':'success','st-compacting':'success','st-blocked':'warning','st-error':'danger'};
+function setRoleName(v,s){return s&&s.label?s.label:v.role.slice(v.role.indexOf('/')+1)}
+function setRoleRow(v,live){
+  const s=live.get(v.role);
+  let st=['꺼짐',''];
+  if(v.revoked_at||v.retired_at)st=roleBadge(v);
+  else if(s&&s.st!=='offline'){const [t,c]=sessionStatus(s.st);st=[t,setStTone[c]||'']}
+  return setRow('role:'+v.role,[setRoleName(v,s),v.role,(s&&s.machine)||v.last_machine||'',st,s&&s.ctx!==null&&s.ctx!==undefined?kTokens(s.ctx):'-']);
+}
+// setCatRows is category v's table rows: a list, {err} or null (not shown).
 function setCatRows(v){
   const d=setData;if(!d)return [];
+  const live=v==='roles'?setLive():null;
   const each={
-    roles:[d.roles,v=>setRow('role:'+v.role,[v.last_machine,v.last_used_at?'최근 '+shortWhen(v.last_used_at):''],v.role,v.revoked_at||v.retired_at?roleBadge(v):null)],
-    nodes:[d.nodes,v=>setRow('node:'+v.name,[v.machine,v.os,v.version],v.name,v.revoked_at?['끊김','danger']:null)],
-    groups:[d.groups,g=>setRow('group:'+g.name,[g.threshold===null||g.threshold===undefined?'문턱 없음':'문턱 '+g.threshold+'%','세션 '+g.sessions],g.name)],
-    logins:[d.logins,v=>setRow('login:'+v.name,[v.kind==='builtin'?'내장':'외부',v.perms.length?v.perms.map(p=>permName[p]||p).join(' · '):'권한 없음'],v.name,v.disabled?['꺼짐','danger']:null)],
-    qsettings:[d.qs,v=>setRow('qs:'+v.target,[v.can_ask?'질문 가능':'질문 불가',v.discord?'디스코드':'',v.watchers.length?'지켜봄 '+v.watchers.length:''],v.target)],
+    roles:[d.roles,v=>setRoleRow(v,live)],
+    nodes:[d.nodes,v=>setRow('node:'+v.name,[v.name,v.machine||'',v.os||'',v.version||'',v.revoked_at?['끊김','danger']:['사용 중','success']])],
+    groups:[d.groups,g=>setRow('group:'+g.name,[g.name,g.threshold===null||g.threshold===undefined?'없음':g.threshold+'%',String(g.sessions)])],
+    logins:[d.logins,v=>setRow('login:'+v.name,[v.name,v.kind==='builtin'?'내장':'외부',v.perms.length?v.perms.map(p=>permName[p]||p).join(' · '):'권한 없음',v.disabled?['꺼짐','danger']:['켬','success']])],
+    qsettings:[d.qs,v=>setRow('qs:'+v.target,[v.target,v.can_ask?['가능','success']:'불가',v.discord?'켬':'끔',String(v.watchers.length)])],
     watches:[d.watches,watchRow],
     hooks:[d.hooks,hookRow],
-    reminders:[d.srv&&!d.srv.err?[d.srv]:d.srv,s=>setRow('server:now',[s.reminders.on?'켬':'끔','판 '+s.version],'다시 알림 · 서버')],
+    reminders:[d.srv&&!d.srv.err?[d.srv]:d.srv,s=>setRow('server:now',['서버',s.reminders.on?['켬','success']:'끔',s.version])],
   }[v];
   if(!each||each[0]===null)return null;
   if(!Array.isArray(each[0]))return each[0];
   const rows=each[0].map(each[1]);
-  if(v==='qsettings'&&Array.isArray(d.ref))rows.push(setRow('refusals:24h',['24시간'],'최근 거절',d.ref.length?[d.ref.length+'건','warning']:null));
+  if(v==='qsettings'&&Array.isArray(d.ref))rows.push(setRow('refusals:24h',['최근 거절',d.ref.length?[d.ref.length+'건','warning']:'0건','24시간','']));
   return rows;
 }
-// setScreens are the menu's 화면 rows: 진행·세션 표·터미널 open their own
-// page (the address stays #progress …), 노드 the workspace's node index.
+// setCount is tab c's count under 찾기 q: a number, '!' (its read
+// failed) or null (the tab is not shown).
+function setCount(c,q){
+  if(!setCatOn(c))return null;
+  if(c.v==='screens')return setScreens().filter(s=>listMatch(q,s[1])).length;
+  const rows=setCatRows(c.v);
+  if(rows===null)return null;
+  if(!Array.isArray(rows))return '!';
+  return rows.filter(r=>!r.dataset.detailId.startsWith('refusals:')&&listMatch(q,r.textContent)).length;
+}
+// setScreens are 화면's buttons: 진행·세션 표·터미널 open their own page
+// (the address stays #progress …), 노드 the workspace's node index.
 function setScreens(){
   const s=[['progress','진행','#progress'],['sessions','세션 표','#sessions']];
   if(hostingOn)s.push(['terminals','터미널','#terminals']);
   if(ws&&ws.nodes)s.push(['view:nodes','노드',detailHash('settings','view:nodes','')]);
   return s;
 }
-// setSel is the menu key of what the body shows: cat:<v>, scr:<tab>,
-// role:<name>.
-function setSel(){
+// setTabNow is the tab on screen: the open item's category, 화면 for
+// 진행·세션 표·터미널 and 노드, else the picked tab.
+function setTabNow(){
   const c=detailCur;
-  if(c&&c.tab==='settings'){
-    const k=c.id.slice(0,c.id.indexOf(':'));
-    if(k==='role')return c.id;
-    if(k==='view')return 'scr:'+c.id;
-    return 'cat:'+(setKindView[k]||'');
-  }
-  if(c&&setTabs.includes(c.tab))return 'scr:'+c.tab;
-  if(curTab==='settings')return 'cat:'+setView;
-  return setTabs.includes(curTab)?'scr:'+curTab:'';
+  if(c&&c.tab==='settings'){const k=c.id.slice(0,c.id.indexOf(':'));return k==='view'?'screens':setKindView[k]||setView}
+  if(setTabs.includes(curTab)||(c&&setTabs.includes(c.tab)))return 'screens';
+  return setView;
 }
-// setPick: a menu click shows the body (below 720px the body takes the
-// screen in the menu's place).
-function setPick(){setPane='body';setChrome()}
-function setMenuRow(key,name,href,icon,right,tone,hover){
-  const a=node('a','','sn-i');a.href=href;a.dataset.setKey=key;a.title=hover||name;
-  if(icon)a.append(setIcon(icon));
-  a.append(node('span',name,'sn-nm'));
-  if(right!==undefined&&right!==''){const t=node('span',String(right),'sn-rt');if(tone)t.classList.add('tone-'+tone);a.append(t)}
-  a.addEventListener('click',()=>{setPick();if(location.hash===a.getAttribute('href'))route()});
-  return a;
-}
-function setAddButton(title,id){
-  const b=node('button','+','fr-ib sn-add');b.type='button';b.title=title;b.setAttribute('aria-label',title);
-  b.onclick=()=>{setPick();openDetail('settings',id,'edit')};
-  return b;
-}
-function setMenuHead(name,add){
-  const h=node('div','','sn-h');h.append(node('span',name,'sn-hn'));if(add)h.append(add);return h;
-}
-// drawSetMenu draws the menu, 설정 찾기 keeping the categories whose name or
-// an item's text holds it and the matching roles. A redraw keeps the
-// menu's scroll and its marked row (#536).
-function drawSetMenu(){
-  const box=$('setMenu'),top=box.scrollTop,q=$('setFind').value,out=[];
-  let grp='',head=null,n=0;
-  const put=(g,row)=>{if(g!==grp){grp=g;head=setMenuHead(g);out.push(head)}out.push(row);n++};
-  for(const c of setCats){
-    if(c.v==='roles'||!setCatOn(c))continue;
-    const rows=setCatRows(c.v);
-    if(rows===null)continue;
-    const items=Array.isArray(rows)?rows:[];
-    if(!listMatch(q,c.name,c.grp)&&!items.some(r=>listMatch(q,r.textContent)))continue;
-    const bad=Array.isArray(rows)?'':'!';
-    const href=c.one?detailHash('settings',c.one,''):'#'+setViewHash[c.v];
-    const right=bad||(c.one?(setData&&setData.srv&&!setData.srv.err?(setData.srv.reminders.on?'켬':'끔'):''):items.filter(r=>!r.dataset.detailId.startsWith('refusals:')).length);
-    const row=setMenuRow('cat:'+c.v,c.name,href,c.v,right,bad?'danger':'',c.name+(bad?' — '+rows.err:''));
-    if(setAddOk(c)){const w=node('div','','sn-row');w.append(row,setAddButton(c.name+' 추가',c.add));put(c.grp,w)}
-    else put(c.grp,row);
-  }
-  for(const [k,name,href] of setScreens()){
-    if(!listMatch(q,name,'화면'))continue;
-    put('화면',setMenuRow('scr:'+k,name,href,k,''));
-  }
-  const rc=setCatOf('roles'),roles=setData?setData.roles:null;
-  const rh=setMenuHead('역할',setAddOk(rc)?setAddButton('역할 초대',rc.add):null);
-  const rs=[];
-  if(roles&&!Array.isArray(roles))rs.push(node('p',roles.err,'msg err sn-empty'));
-  else for(const v of roles||[]){
-    if(!listMatch(q,v.role,v.last_machine))continue;
-    const st=v.revoked_at||v.retired_at?roleBadge(v):null;
-    rs.push(setMenuRow('role:'+v.role,v.role,detailHash('settings','role:'+v.role,''),'',st?st[0]:v.last_machine||'',st?st[1]:'',v.role+(v.last_machine?' · '+v.last_machine:'')+(st?' · '+st[0]:'')));
-  }
-  if(rs.length||!q){out.push(rh,...rs);n+=rs.length}
-  if(!n&&q)out.push(node('p','찾은 것 없음','empty sn-empty'));
-  const a=document.activeElement,key=a&&box.contains(a)?a.dataset.setKey:undefined;
-  box.replaceChildren(...out);
-  if(key)for(const r of box.querySelectorAll('[data-set-key]'))if(r.dataset.setKey===key){r.focus({preventScroll:true});break}
-  box.scrollTop=top;
-  setMark();
-}
-// setMark marks the menu row of what the body shows; a row out of sight
-// (an address opened anew) comes into view, nothing else moves (#536).
-function setMark(){
-  const sel=setSel();
-  for(const r of $('setMenu').querySelectorAll('[data-set-key]')){
-    const on=r.dataset.setKey===sel;
-    if(on)r.setAttribute('aria-current','page');else r.removeAttribute('aria-current');
-    r.classList.toggle('on',on);
-    if(on&&setJump&&r.scrollIntoView){setJump=false;r.scrollIntoView({block:'nearest'})}
-  }
-}
-let setJump=true;
-// drawSettings redraws the menu and the open category's body.
+// setScrNow is the 화면 button on: progress, sessions, terminals or view:nodes.
+function setScrNow(){const c=detailCur;if(c&&c.tab==='settings'&&c.id.startsWith('view:'))return c.id;return setTabs.includes(curTab)?curTab:''}
+// drawSettings draws the top (tabs with their counts, + 추가, 화면's
+// buttons) and the picked tab's table. A redraw keeps the table's scroll,
+// its marked row and the focused row; another tab starts at the top.
+let setDrawn='';
 function drawSettings(){
   if(!setData)return;
-  drawSetMenu();
-  const c=setCatOf(setView)||setCatOf('qsettings'),rows=setCatRows(setView),q=$('setFind').value,box=$('setItems');
-  $('setTitle').textContent=c.name;
-  const add=$('setAddBtn');add.hidden=!setAddOk(c);
-  if(c.add){add.title=c.v==='roles'?'역할 초대':c.name+' 추가';add.setAttribute('aria-label',add.title);add.onclick=()=>openDetail('settings',c.add,'edit')}
-  if(rows===null){$('settingsNote').textContent='';box.replaceChildren(node('p','없음','empty'));return}
-  if(!Array.isArray(rows)){$('settingsNote').textContent='';box.replaceChildren(node('p',rows.err,'msg err'));return}
-  // 설정 찾기 keeps every row of a category it named, else the matching ones.
-  const shown=listMatch(q,c.name,c.grp)?rows:rows.filter(r=>listMatch(q,r.textContent));
-  const n=rows.filter(r=>!r.dataset.detailId.startsWith('refusals:')).length;
-  $('settingsNote').textContent=n+'개'+(shown.length<rows.length?' · 찾은 것 '+shown.length:'');
-  listFill(box,shown,q?'찾은 것 없음':c.name+' 없음');
+  const q=$('setFind').value,now=setTabNow(),tabs=[],bar=$('setTabsRow');
+  const focus=document.activeElement&&bar.contains(document.activeElement)?document.activeElement.dataset.setTab:'';
+  for(const c of setCats){
+    const n=setCount(c,q);
+    if(n===null)continue;
+    const a=node('a','','st-tab');a.href=setTabHref(c.v);a.dataset.setTab=c.v;
+    a.title=c.name+(n==='!'?' — 불러오지 못함':'');
+    a.append(node('span',c.name),node('span',String(n),'st-c'+(n==='!'?' tone-danger':'')));
+    if(c.v===now){a.classList.add('on');a.setAttribute('aria-current','page')}
+    a.addEventListener('click',()=>{if(location.hash===a.getAttribute('href'))route()});
+    tabs.push(a);
+  }
+  bar.replaceChildren(...tabs);
+  for(const a of tabs){
+    if(a.dataset.setTab===focus)a.focus({preventScroll:true});
+    if(a.dataset.setTab===now&&setDrawn!==now&&a.scrollIntoView)a.scrollIntoView({block:'nearest',inline:'nearest'});
+  }
+  const cat=setCatOf(now),add=$('setAddBtn');
+  add.hidden=!cat||!setAddOk(cat);
+  if(!add.hidden){add.textContent='+ '+cat.name;add.title=cat.v==='roles'?'초대 코드를 만들어 역할을 더한다':cat.name+'을(를) 더한다';add.onclick=()=>setOpen(cat.add)}
+  const scr=$('setScr');scr.hidden=now!=='screens';
+  if(now==='screens'){
+    const on=setScrNow();
+    scr.replaceChildren(...setScreens().filter(s=>listMatch(q,s[1])).map(([k,name,href])=>{
+      const a=node('a',name,'st-sb');a.href=href;a.title=name+' 화면을 연다';
+      if(k===on){a.classList.add('on');a.setAttribute('aria-current','page')}
+      return a;
+    }));
+  }
+  const same=setDrawn===now;setDrawn=now;
+  if(now==='screens')return;
+  const rows=setCatRows(now),box=$('setItems'),page=document.querySelector('.sc-app-page'),top=page?page.scrollTop:0;
+  if(rows===null){box.replaceChildren(node('p','없음','empty'));return}
+  if(!Array.isArray(rows)){box.replaceChildren(node('p',rows.err,'msg err'));return}
+  const cols=setCols[now]||[],shown=rows.filter(r=>listMatch(q,r.textContent));
+  const t=node('table','','st-tbl'),th=document.createElement('thead'),hr=document.createElement('tr'),body=document.createElement('tbody');
+  const cls=i=>[cols[i]&&cols[i][1]?'st-n':'',cols[i]&&cols[i][2]||''].filter(Boolean).join(' ');
+  cols.forEach(([h],i)=>hr.append(node('th',h,cls(i))));
+  for(const r of shown)[...r.children].forEach((td,i)=>{const k=cls(i);if(k)td.className=(td.className+' '+k).trim()});
+  th.append(hr);t.append(th,body);
+  keepRowFocus(box,()=>{body.append(...shown);box.replaceChildren(t);if(!shown.length)box.append(node('p',q.trim()?'찾은 것 없음':cat.name+' 없음','empty'))});
+  if(page)page.scrollTop=same?top:0;
+  markDetailRows();
 }
-// setPane is which of the menu and the body is on screen below 720px.
-let setPane='body',setReturn='';
-function setModeHash(h){const p=h.replace(/^#/,'').split('/')[0];return p==='settings'||p.startsWith('settings-')||setTabs.includes(p)}
-if(setModeHash(location.hash))setPane=location.hash==='#settings'?'menu':'body';
-// Entering 설정 keeps the address it came from for 돌아가기.
-addEventListener('hashchange',e=>{
-  const old=new URL(e.oldURL).hash;
-  if(setModeHash(location.hash)&&!setModeHash(old)){setReturn=old;setJump=true;setPane=location.hash==='#settings'?'menu':'body'}
-  else if(setModeHash(location.hash)&&location.hash!=='#settings')setPane='body';
-});
-// setExit leaves 설정 for the screen before it (지시 when there was none).
-function setExit(){
-  const r=setReturn;setReturn='';
-  $('setFind').value='';
-  location.hash=r&&r!=='#'&&!setModeHash(r)?r.slice(1):'requests';
-}
-// setPathOf is the path row's parts, [text, href or ''], for the open item
-// c (detailCur), the tab on screen and the open category: 설정 › 분류 ›
-// 항목, the category a link back to its list.
-function setPathOf(c,tab,view,title){
-  const segs=[['설정','']];
-  if(c&&c.tab==='settings'){
-    const k=c.id.slice(0,c.id.indexOf(':')),v=setKindView[k],cat=setCatOf(v);
-    if(k==='view')segs.push([title,'']);
-    else if(cat&&cat.one)segs.push([cat.name,'']);
-    else{if(cat)segs.push([cat.name,'#'+setViewHash[v]]);segs.push([title,''])}
-  }else if(c&&setTabs.includes(c.tab)){
-    const s=setScreens().find(x=>x[0]===c.tab);
-    segs.push([s?s[1]:c.tab,'#'+c.tab],[title,'']);
-  }else if(tab==='settings'){const cat=setCatOf(view);segs.push([cat?cat.name:'',''])}
-  else{const s=setScreens().find(x=>x[0]===tab);segs.push([s?s[1]:tab,''])}
-  return segs;
-}
-// setChrome fits the menu and the path row to what is on screen.
+// setChrome fits the screen to what is open: an item of 설정 in the panel
+// beside the table, 노드 and the items of 진행·세션 표·터미널 over the
+// whole width.
 function setChrome(){
-  const html=document.documentElement,on=html.classList.contains('fr-set');
-  html.classList.toggle('fr-setm',on&&setPane==='menu');
-  if(!on)return;
-  const c=detailCur,path=$('setPath');
-  const segs=setPathOf(c,curTab,setView,$('detailTitle').textContent).map(([t,h])=>{if(!h)return node('span',t);const a=node('a',t);a.href=h;a.title=t;return a});
-  const out=[];
-  segs.forEach((s,i)=>{if(i)out.push(node('span','›','sh-sep'));s.classList.add('sh-seg');out.push(s)});
-  segs[segs.length-1].setAttribute('aria-current','page');
-  path.replaceChildren(...out);path.title=segs.map(s=>s.textContent).join(' › ');
-  $('detail').classList.toggle('sd-form',!!c&&c.tab==='settings'&&!c.id.startsWith('view:'));
-  if(setData)drawSettings();
+  const on=document.documentElement.classList.contains('fr-set'),c=detailCur;
+  $('appMain').classList.toggle('st-wide',on&&!!c&&(c.tab!=='settings'||c.id.startsWith('view:')));
+  $('detail').classList.toggle('sd-form',on&&!!c&&c.tab==='settings'&&!c.id.startsWith('view:'));
+  if(on&&setData)drawSettings();
 }
-$('setBack').onclick=setExit;
-$('setClose').onclick=setExit;
-$('setMenuBack').onclick=()=>{setPane='menu';setChrome();$('setFind').focus({preventScroll:true})};
-// Esc (before the detail's own Esc): a field's own Esc first (a filled
-// 찾기, an open dialog, a terminal); below 720px the body goes back to the
-// menu; else 설정 closes.
-document.addEventListener('keydown',e=>{
-  if(e.key!=='Escape'||e.defaultPrevented||!document.documentElement.classList.contains('fr-set'))return;
-  const t=e.target;
-  if(document.querySelector('dialog[open]')||(t&&t.closest&&t.closest('.terminal,#termPane'))||(t&&t.type==='search'&&t.value))return;
-  e.preventDefault();
-  if(matchMedia('(max-width:720px)').matches&&setPane==='body'){setPane='menu';setChrome();$('setFind').focus({preventScroll:true})}
-  else setExit();
-},true);
+// setFoot gathers the item's actions into the panel's foot: the risky ones (끊기,
+// 은퇴, 삭제 …) left, the form's 저장 right. Section heads go over the
+// facts (정보) and the form (설정).
+let setFormSeq=0;
+function setFoot(box){
+  const l=node('div','','sd-fl'),r=node('div','','sd-fr');
+  for(const a of box.querySelectorAll(':scope>.detail-acts'))if([...a.children].every(b=>b.tagName==='BUTTON')){l.append(...a.childNodes);a.remove()}
+  const f=box.querySelector(':scope>form');
+  if(f){
+    if(!f.sdFoot)f.sdFoot=[...f.querySelectorAll('button[type=submit]')];
+    if(!f.id)f.id='sdForm'+(++setFormSeq);
+    for(const b of f.sdFoot){b.setAttribute('form',f.id);r.append(b)}
+    for(const row of f.querySelectorAll(':scope>.row'))if(!row.children.length)row.remove();
+    f.before(node('h3','설정','dsec'));
+  }
+  const d=box.querySelector(':scope>dl');if(d)d.before(node('h3','정보','dsec'));
+  if(l.children.length||r.children.length){const foot=node('div','','sd-foot');foot.append(l,r);box.append(foot)}
+}
 // setNote keeps a result line for an item's detail across the redraws of
 // the next few seconds (a save also triggers a live redraw).
 function setNote(id,text,kind){setNotes.set(id,{text:text,kind:kind,at:Date.now()})}
@@ -362,7 +337,41 @@ function drawRoleToken(box,t){
   });
   row.append(field,copy);box.append(row);
 }
+// drawRoleInvite is 역할's +: a role comes in through a one-time invite
+// (POST invites {prefix, role?, ttl}); its code is shown here once, until
+// the screen is left.
+let roleInvite=null;
+addEventListener('hashchange',()=>{if(roleInvite&&!location.hash.includes('role%3A%2B')&&!location.hash.includes('role:+'))roleInvite=null});
+function drawRoleInvite(box){
+  const id='role:+';
+  drawSetNote(box,id);
+  if(roleInvite){
+    box.append(dl([['접두사',roleInvite.prefix],['역할',roleInvite.role||'접두사 아래 아무 역할'],['기한',when(roleInvite.expires_at)]]));
+    drawRoleToken(box,{token:roleInvite.code});
+    box.lastChild.querySelector('input').title='초대 코드 — 이 화면을 떠나면 다시 볼 수 없음';
+    box.append(setButton('하나 더','',()=>{roleInvite=null;drawDetail()},'다른 초대 코드를 만든다'));
+    return;
+  }
+  const f=node('form','','settings-form termform');
+  const field=(text,ph,tip)=>{const l=node('label',text+' '),i=document.createElement('input');i.autocomplete='off';i.spellcheck=false;i.setAttribute('autocapitalize','off');i.placeholder=ph;i.title=tip;l.append(i);f.append(l);return i};
+  const prefix=field('접두사','team','역할 묶음의 접두사 — 초대받은 쪽이 <접두사>/… 역할을 만든다');prefix.required=true;
+  const role=field('역할','team/worker','비우면 접두사 아래 아무 역할, 쓰면 그 역할 하나');
+  const tl=node('label','기한 '),ttl=document.createElement('select');ttl.title='코드를 쓸 수 있는 기간';
+  for(const [k,t] of [['24h','1일'],['72h','3일'],['7d','7일'],['30d','30일']])ttl.append(new Option(t,k));
+  ttl.value='72h';tl.append(ttl);f.append(tl);
+  const save=node('button','초대 코드 만들기');save.type='submit';save.title='한 번 쓰는 초대 코드를 만든다';
+  const row=node('div','','row');row.append(save);f.append(row);
+  f.onsubmit=async e=>{
+    e.preventDefault();
+    const body={prefix:prefix.value.trim(),ttl:ttl.value};if(role.value.trim())body.role=role.value.trim();
+    try{roleInvite=await apiSend('POST','invites',body);setNote(id,(roleInvite.role||roleInvite.prefix+'/…')+' 초대 코드를 만들었습니다.','ok')}
+    catch(err){setNote(id,err.message,'err')}
+    drawDetail();
+  };
+  box.append(f);
+}
 function drawRole(v,box){
+  if(v.fresh){drawRoleInvite(box);return}
   const id='role:'+v.role,revoke=!v.revoked_at,acts=node('div','','detail-acts');
   if(!v.retired_at){
     acts.append(setButton(revoke?'끊기':'되살리기','',async()=>{
@@ -512,7 +521,7 @@ addEventListener('hashchange',()=>{if(hookAddr&&!decodeURIComponent(location.has
 function hookDestText(v){return v.dest==='set'?'있음':v.dest==='unreadable'?'다시 등록 필요':'없음'}
 function hookRow(v){
   const st=v.dest==='unreadable'?['다시 등록 필요','danger']:v.urgent?['긴급','warning']:null;
-  return setRow('hook:'+v.id,[hookModeName[v.mode]||v.mode,v.role,v.last_at?'최근 '+shortWhen(v.last_at):''],v.name,st);
+  return setRow('hook:'+v.id,[v.name,hookModeName[v.mode]||v.mode,v.role,v.last_at?shortWhen(v.last_at):'-',st||'']);
 }
 function hookForm(v){
   const key='hook:'+(v.fresh?'+':v.id),kept=setForms.get(key);
@@ -616,7 +625,7 @@ function drawHook(v,box){
 async function findSetting(kind,key){
   if(kind==='qs')return key==='+'?{fresh:true,target:'',can_ask:false,discord:false,watchers:[],updated_at:''}:(await api('question-settings')).find(x=>x.target===key);
   if(kind==='refusals')return {rows:await api('question-refusals')};
-  if(kind==='role')return (await api('roles')).find(x=>x.role===key);
+  if(kind==='role')return key==='+'?{fresh:true,role:''}:(await api('roles')).find(x=>x.role===key);
   if(kind==='login')return (await api('logins')).find(x=>x.name===key);
   if(kind==='node'&&hostingOn)return (await api('nodes')).find(x=>x.name===key);
   if(kind==='group'&&hostingOn)return key==='+'?{name:'',fresh:true}:(await api('terminals/work-groups')).find(x=>x.name===key);
@@ -629,7 +638,7 @@ async function findSetting(kind,key){
 const setHeads={
   qs:v=>v.fresh?{title:'새 질문 설정',badge:null}:({title:v.target,badge:v.can_ask?['질문 가능','success']:['질문 불가','neutral']}),
   refusals:v=>({title:'최근 거절',badge:[v.rows.length+'건',v.rows.length?'warning':'neutral']}),
-  role:v=>({title:v.role,badge:roleBadge(v)}),
+  role:v=>v.fresh?{title:'역할 초대',badge:null}:({title:setRoleName(v,setLive().get(v.role)),sub:v.role,badge:roleBadge(v)}),
   login:v=>({title:v.name,badge:v.disabled?['꺼짐','danger']:[v.kind==='builtin'?'내장':'외부','neutral']}),
   node:v=>({title:v.name,badge:v.revoked_at?['끊김','danger']:null}),
   group:v=>({title:v.fresh?'새 묶음':v.name,badge:null}),
@@ -645,7 +654,8 @@ registerDetail('settings',{
     const i=id.indexOf(':'),k=id.slice(0,i),v=i>0&&setHeads[k]?await findSetting(k,id.slice(i+1)):undefined;
     return v?{k:k,v:v}:null;
   },
-  head:x=>setHeads[x.k](x.v),
-  subs:x=>x.k==='qs'||x.k==='group'||x.k==='watch'||x.k==='hook'?[['edit','설정']]:[['info','정보']],
-  draw:(x,sub,box)=>setDraws[x.k](x.v,box)
+  // The line beside the name: a role's address, else the item's tab.
+  head:x=>{const h=setHeads[x.k](x.v);if(h.sub===undefined){const c=setCatOf(setKindView[x.k]);h.sub=c?c.name:''}return h},
+  subs:x=>x.k==='qs'||(x.k==='role'&&x.v.fresh)||x.k==='group'||x.k==='watch'||x.k==='hook'?[['edit','설정']]:[['info','정보']],
+  draw:async(x,sub,box)=>{await setDraws[x.k](x.v,box);if(x.k!=='view')setFoot(box)}
 });

@@ -101,6 +101,7 @@ var CLIPairs = []CLIPair{
 	{Method: "GET", Path: "host-grants", CLI: "host grant list"},
 	{Method: "POST", Path: "host-grants", CLI: "host grant"},
 	{Method: "DELETE", Path: "host-grants", CLI: "host revoke-grant"},
+	{Method: "POST", Path: "invites", CLI: "invite"},
 	{Method: "POST", Path: "node-invites", CLI: "node invite"},
 	{Method: "GET", Path: "admin-actions", Why: "the admin's own action record (#446), read where the actions are taken: the 노드 index and a session's 기록"},
 	{Method: "GET", Path: "settings", CLI: "settings"},
