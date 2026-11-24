@@ -111,14 +111,21 @@ const setBusy=['busy','compacting','blocked','error','idle','unknown','offline']
 function setBusyRank(st){const k=/^(error|blocked):/.exec(st||'');const i=setBusy.indexOf(k?k[1]:st);return i<0?setBusy.length:i}
 function setLive(){
   const rows=typeof frameData!=='undefined'&&frameData?frameRows(frameData):[];
-  return {get(role){
-    let best=null;
-    for(const r of rows){
-      if(r.role!==role&&!(r.role.startsWith(role+'-')&&/^(-\d+)+$/.test(r.role.slice(role.length))))continue;
-      if(!best||setBusyRank(r.st)<setBusyRank(best.st))best=r;
-    }
+  const names=new Set(typeof setData!=='undefined'&&setData&&Array.isArray(setData.roles)?setData.roles.map(v=>v.role):[]);
+  // setOwner is the one registered role a session address belongs to: the
+  // address itself, else its longest registered base with a -N tail.
+  const owner=addr=>{
+    if(names.has(addr))return addr;
+    let best='';
+    for(const n of names)if(n.length>best.length&&addr.startsWith(n+'-')&&/^(-\d+)+$/.test(addr.slice(n.length)))best=n;
     return best;
-  }};
+  };
+  const by=new Map();
+  for(const r of rows){
+    const o=owner(r.role)||r.role,cur=by.get(o);
+    if(!cur||setBusyRank(r.st)<setBusyRank(cur.st))by.set(o,r);
+  }
+  return {get:role=>by.get(role)||null};
 }
 const setStTone={'st-busy':'success','st-compacting':'success','st-blocked':'warning','st-error':'danger'};
 function setRoleName(v,s){return s&&s.label?s.label:v.role.slice(v.role.indexOf('/')+1)}
