@@ -60,11 +60,11 @@ func TestReplyDoneClosesDirectiveOnce(t *testing.T) {
 }
 
 // A plain reply leaves the directive open, and the reminders go on: the next
-// is due SWITCHBOARD_REMIND_AFTER after the reply (#269).
+// is due the mail reminder time after the reply (#269).
 func TestPlainReplyKeepsReminding(t *testing.T) {
 	t.Parallel()
 	s, clock := slotsWithRoles(t)
-	remindOn(s)
+	remindOn(t, s)
 	sweepOnce(t, s)
 	d := apiMail(t, s, clock, "hq/boss", "/api/messages", map[string]any{"recipient": "team/worker", "subject": "build"})
 	readAs(t, s, "team/worker", d.ID)

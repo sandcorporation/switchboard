@@ -388,7 +388,7 @@ func TestCLILeftVerdict(t *testing.T) {
 	if _, err := h.s.db.Exec(`UPDATE left_items SET recorded_at=?`, past.Format(time.RFC3339Nano)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := h.s.db.Exec(`INSERT OR REPLACE INTO left_remind(id,after_s,since) VALUES(1,86400,?)`, past.UnixMilli()); err != nil {
+	if _, err := h.s.db.Exec(`INSERT OR REPLACE INTO remind_settings(kind,after_s,since) VALUES('left',86400,?)`, past.UnixMilli()); err != nil {
 		t.Fatal(err)
 	}
 	if got := sweepOnce(t, h.s).LeftRemind; got != 1 {

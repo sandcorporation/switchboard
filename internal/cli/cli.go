@@ -352,8 +352,8 @@ var commands = []command{
 			{"--request-id", "N", "ask: the owner's request the questions belong to (see `request list`)"},
 			optJSON, optProfile,
 		}},
-	{name: "request", args: "ACTION [ID]", nargs: 2, optArgs: true, synopsis: "(ACTION: add | note ID | done ID | list | show ID)",
-		summary: "The owner's requests (#501, 「지시」 on the dashboard; boss roles only): add registers one with the owner's words as given and a short title and prints its number; note ID adds the owner's later words; done ID marks it done with a one-line result; list shows the open ones (not checked on the dashboard); show ID one request with its notes and the reports, panel questions and mail linked by --request-id. The dashboard checks a done request; the CLI cannot",
+	{name: "request", args: "ACTION [ID]", nargs: 2, optArgs: true, synopsis: "(ACTION: add | note ID | wait ID | done ID | list | show ID)",
+		summary: "The owner's requests (#501, 「지시」 on the dashboard; boss roles only): add registers one with the owner's words as given and a short title and prints its number; note ID adds the owner's later words; wait ID marks it waiting on the owner (대표 확인 대기: no reminder mail, --off clears it); done ID marks it done with a one-line result; list shows the open ones (not checked on the dashboard); show ID one request with its notes and the reports, panel questions and mail linked by --request-id. The dashboard checks a done request; the CLI cannot",
 		options: []option{
 			{"--title", "TEXT", "add: a short name (one line)"},
 			{"--text", "TEXT", "add, note: the owner's words as given"},
@@ -361,6 +361,7 @@ var commands = []command{
 			{"--result", "TEXT", "done: the result (one line)"},
 			{"--status", "STATUS", "list: only open (the default), waiting, done, progress or checked"},
 			{"--all", "", "list: every request, checked ones too"},
+			{"--off", "", "wait: clear the 대표 확인 대기 mark"},
 			{"--idem", "KEY", "add: retry-safe key; adding again with the same key returns the first request"},
 			optJSON, optProfile,
 		}},

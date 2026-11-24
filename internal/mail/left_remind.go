@@ -3,13 +3,13 @@ package mail
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/sandcorporation/switchboard/internal/identity"
+	"github.com/sandcorporation/switchboard/internal/remind"
 	"github.com/sandcorporation/switchboard/internal/store"
 	"github.com/sandcorporation/switchboard/internal/wire"
 )
@@ -21,86 +21,50 @@ import (
 // The mail completes only with a verdict on each open item it lists
 // (left_verdict.go, #565).
 //
-// The time is counted from the later of the item's recorded_at, the last
-// reminder (reminded_at) and since, when the reminder time was last set: the
-// server's first use writes the default (24h) with that time, and every
-// change writes the new value with the time of the change, so neither a
-// deploy nor a change sends the items left before at once. 0 is off.
+// The time is the left kind of package remind (#586): counted from the
+// later of the item's recorded_at, the last reminder (reminded_at) and
+// since, when the reminder time was last set, so neither a deploy nor a
+// change sends the items left before at once. 0 is off.
 //
 // A sweep marks each item it reminds of with a conditional update in the
 // transaction that stores the mail, so repeated or concurrent sweeps remind
 // of an item once per reminder time.
 
 const (
-	// DefaultLeftRemind is the reminder time the server starts with.
-	DefaultLeftRemind = 24 * time.Hour
 	// leftRemindLines is the most items one reminder lists; the rest are
 	// counted on one line.
 	leftRemindLines = 20
 	// leftRemindText is the most characters of an item's text one line
 	// shows.
 	leftRemindText = 200
-	// LeftRemindMin and LeftRemindMax bound a reminder time that is on.
-	LeftRemindMin = time.Minute
-	LeftRemindMax = 365 * 24 * time.Hour
 )
-
-// leftRemindRow reads the setting, writing the default with now first when
-// there is none.
-func (s *Service) leftRemindRow(ctx context.Context, now time.Time) (after time.Duration, since time.Time, err error) {
-	if _, err = s.db.ExecContext(ctx, `INSERT OR IGNORE INTO left_remind(id,after_s,since) VALUES(1,?,?)`, int64(DefaultLeftRemind/time.Second), now.UnixMilli()); err != nil {
-		return 0, since, err
-	}
-	var afterS, sinceMS int64
-	if err = s.db.QueryRowContext(ctx, `SELECT after_s,since FROM left_remind WHERE id=1`).Scan(&afterS, &sinceMS); err != nil {
-		return 0, since, err
-	}
-	return time.Duration(afterS) * time.Second, time.UnixMilli(sinceMS).UTC(), nil
-}
 
 // LeftRemind is the reminder setting in force.
 func (s *Service) LeftRemind(ctx context.Context) (wire.LeftRemind, error) {
-	after, since, err := s.leftRemindRow(ctx, s.now().UTC())
+	st, err := remind.Load(ctx, s.db, remind.Left, s.now().UTC())
 	if err != nil {
 		return wire.LeftRemind{}, err
 	}
-	return leftRemindView(after, since), nil
+	return leftRemindView(st), nil
 }
 
-func leftRemindView(after time.Duration, since time.Time) wire.LeftRemind {
-	v := wire.LeftRemind{On: after > 0, AfterSeconds: int64(after / time.Second), Since: &since}
-	if after > 0 {
-		v.After = ShortDuration(after)
+func leftRemindView(st remind.Setting) wire.LeftRemind {
+	since := st.Since
+	v := wire.LeftRemind{On: st.On(), AfterSeconds: int64(st.After / time.Second), Since: &since}
+	if st.On() {
+		v.After = ShortDuration(st.After)
 	}
 	return v
-}
-
-// ParseLeftRemind reads a reminder time: "" or "0" is off, else a duration
-// such as 24h or 90m between LeftRemindMin and LeftRemindMax.
-func ParseLeftRemind(v string) (time.Duration, error) {
-	v = strings.TrimSpace(v)
-	if v == "" || v == "0" {
-		return 0, nil
-	}
-	d, err := time.ParseDuration(v)
-	if err != nil || d < LeftRemindMin || d > LeftRemindMax {
-		return 0, errors.New("after: empty (off) or a duration from 1m to 8760h such as 24h")
-	}
-	return d.Truncate(time.Second), nil
 }
 
 // SetLeftRemind sets the reminder time (0 off). A new value counts from now;
 // the same value keeps its time.
 func (s *Service) SetLeftRemind(ctx context.Context, after time.Duration) (wire.LeftRemind, error) {
-	now := s.now().UTC()
-	if _, _, err := s.leftRemindRow(ctx, now); err != nil {
+	st, err := remind.Save(ctx, s.db, remind.Left, after, s.now().UTC())
+	if err != nil {
 		return wire.LeftRemind{}, err
 	}
-	afterS := int64(after / time.Second)
-	if _, err := s.db.ExecContext(ctx, `UPDATE left_remind SET after_s=?,since=? WHERE id=1 AND after_s<>?`, afterS, now.UnixMilli(), afterS); err != nil {
-		return wire.LeftRemind{}, err
-	}
-	return s.LeftRemind(ctx)
+	return leftRemindView(st), nil
 }
 
 // ShortDuration drops the zero minutes and seconds of a duration: 24h,
@@ -127,11 +91,12 @@ type dueLeft struct {
 // and returns how many it sent.
 func (s *Service) SweepLeftRemind(ctx context.Context) (int, error) {
 	now := s.now().UTC()
-	after, since, err := s.leftRemindRow(ctx, now)
-	if err != nil || after <= 0 || now.Before(since.Add(after)) {
+	st, err := remind.Load(ctx, s.db, remind.Left, now)
+	if err != nil || !st.Due(now) {
 		return 0, err
 	}
-	due, err := s.dueLeft(ctx, now, after, since)
+	after := st.After
+	due, err := s.dueLeft(ctx, now, st, false)
 	if err != nil {
 		return 0, err
 	}
@@ -200,8 +165,10 @@ func (s *Service) SweepLeftRemind(ctx context.Context) (int, error) {
 	return sent, nil
 }
 
-// dueLeft reads the open items due a reminder at now, oldest first.
-func (s *Service) dueLeft(ctx context.Context, now time.Time, after time.Duration, since time.Time) ([]dueLeft, error) {
+// dueLeft reads the open items due a reminder at now, oldest first. With
+// quiet it counts from the item and since only, not its last reminder: the
+// items gone quiet for the time (the settings' 넘긴 것).
+func (s *Service) dueLeft(ctx context.Context, now time.Time, st remind.Setting, quiet bool) ([]dueLeft, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT l.id,l.directive_id,l.text,l.recorded_at,l.reminded_at,COALESCE(m.sender,''),COALESCE(m.subject,'')
 FROM left_items l LEFT JOIN messages m ON m.id=l.directive_id WHERE l.state=? AND l.kind=? ORDER BY l.id`, wire.LeftOpen, wire.LeftKindItem)
 	if err != nil {
@@ -218,17 +185,32 @@ FROM left_items l LEFT JOIN messages m ON m.id=l.directive_id WHERE l.state=? AN
 		if it.sender == "" {
 			continue
 		}
-		from := since
-		for _, v := range []string{recorded, it.reminded} {
-			if t, err := time.Parse(time.RFC3339Nano, v); err == nil && t.After(from) {
-				from = t
-			}
+		from := []time.Time{parse(recorded)}
+		if !quiet {
+			from = append(from, parse(it.reminded))
 		}
-		if !now.Before(from.Add(after)) {
+		if st.Due(now, from...) {
 			out = append(out, it)
 		}
 	}
 	return out, rows.Err()
+}
+
+// LeftOverdue is how many open left items have been quiet for the reminder
+// time (0 when it is off).
+func (s *Service) LeftOverdue(ctx context.Context) (int, error) {
+	now := s.now().UTC()
+	st, err := remind.Load(ctx, s.db, remind.Left, now)
+	if err != nil || !st.On() {
+		return 0, err
+	}
+	due, err := s.dueLeft(ctx, now, st, true)
+	return len(due), err
+}
+
+func parse(v string) time.Time {
+	t, _ := time.Parse(time.RFC3339Nano, v)
+	return t
 }
 
 // leftRemindMail is reminder id's subject and body: a line per item (its

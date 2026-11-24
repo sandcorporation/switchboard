@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -8,16 +9,23 @@ import (
 	"time"
 
 	"github.com/sandcorporation/switchboard/internal/identity"
-	"github.com/sandcorporation/switchboard/internal/presence"
+	"github.com/sandcorporation/switchboard/internal/remind"
 	"github.com/sandcorporation/switchboard/internal/wire"
 )
 
-// remindGap is SWITCHBOARD_REMIND_AFTER in these tests (T).
+// remindGap is the mail reminder time in these tests (T).
 const remindGap = time.Hour
 
-func remindOn(s *Server) {
-	s.presenceCfg.Remind = presence.RemindConfig{On: true, After: remindGap, Max: 3}
+// setRemind sets kind k's reminder time as of the server's clock, as the
+// settings screen does.
+func setRemind(t *testing.T, s *Server, k remind.Kind, after time.Duration) {
+	t.Helper()
+	if _, err := remind.Save(context.Background(), s.db, k, after, s.now().UTC()); err != nil {
+		t.Fatal(err)
+	}
 }
+
+func remindOn(t *testing.T, s *Server) { t.Helper(); setRemind(t, s, remind.Mail, remindGap) }
 
 // remindKeys lists the idempotency keys of the reminder mail stored so far,
 // in send order, as "<recipient> <key>".
@@ -63,9 +71,9 @@ func countRows(t *testing.T, s *Server, query string) int {
 	return n
 }
 
-// Off (the default): no reminder mail, no remind_state row, however old the
-// read directive.
-func TestRemindOffSendsAndWritesNothing(t *testing.T) {
+// Off (the start value, #586): no reminder mail, however old the read
+// directive.
+func TestRemindOffSendsNothing(t *testing.T) {
 	t.Parallel()
 	s, clock := slotsWithRoles(t)
 	d := apiMail(t, s, clock, "hq/boss", "/api/messages", map[string]any{"recipient": "team/worker", "subject": "do X"})
@@ -79,22 +87,18 @@ func TestRemindOffSendsAndWritesNothing(t *testing.T) {
 	if got := countRows(t, s, `SELECT COUNT(*) FROM messages`); got != before {
 		t.Fatalf("off: messages %d -> %d", before, got)
 	}
-	if got := countRows(t, s, `SELECT COUNT(*) FROM remind_state`); got != 0 {
-		t.Fatalf("off: remind_state has %d rows", got)
-	}
 	if got := openIDs(t, s); !sameIDs(got, []int64{d.ID}) {
 		t.Fatalf("off: open %v", got)
 	}
 }
 
-// On: reminders at T, 3T and 7T, the sender notice at 15T, each exactly once
-// across repeated sweeps and a server restart. Unread and --no-reply
-// directives are never reminded.
+// On: a reminder every T at a fixed gap (#586: no doubling, no limit, no
+// sender notice), each exactly once across repeated sweeps and a server
+// restart. Unread and --no-reply directives are never reminded.
 func TestRemindScheduleOnceEach(t *testing.T) {
 	t.Parallel()
 	s, clock := slotsWithRoles(t)
-	remindOn(s)
-	sweepOnce(t, s) // records the enable time
+	remindOn(t, s)
 	d := apiMail(t, s, clock, "hq/boss", "/api/messages", map[string]any{"recipient": "team/worker", "subject": "do X", "task_id": "T-1"})
 	unread := apiMail(t, s, clock, "hq/boss", "/api/messages", map[string]any{"recipient": "team/worker", "subject": "later"})
 	fyi := apiMail(t, s, clock, "hq/boss", "/api/messages", map[string]any{"recipient": "team/worker", "subject": "fyi", "no_reply": true})
@@ -117,12 +121,12 @@ func TestRemindScheduleOnceEach(t *testing.T) {
 		{remindGap - time.Second, 0, nil},
 		{remindGap, 1, []string{fmt.Sprintf("%s%d:1", worker, d.ID)}},
 		{remindGap, 0, nil},
-		{3*remindGap - time.Second, 0, nil},
-		{3 * remindGap, 1, []string{fmt.Sprintf("%s%d:2", worker, d.ID)}},
-		{7 * remindGap, 1, []string{fmt.Sprintf("%s%d:3", worker, d.ID)}},
-		{15*remindGap - time.Second, 0, nil},
-		{15 * remindGap, 1, []string{fmt.Sprintf("hq/boss remind-sender:%d", d.ID)}},
-		{100 * remindGap, 0, nil},
+		{2*remindGap - time.Second, 0, nil},
+		{2 * remindGap, 1, []string{fmt.Sprintf("%s%d:2", worker, d.ID)}},
+		{3 * remindGap, 1, []string{fmt.Sprintf("%s%d:3", worker, d.ID)}},
+		{4*remindGap - time.Second, 0, nil},
+		{4 * remindGap, 1, []string{fmt.Sprintf("%s%d:4", worker, d.ID)}},
+		{20 * remindGap, 1, []string{fmt.Sprintf("%s%d:5", worker, d.ID)}},
 	}
 	var want []string
 	for i, st := range steps {
@@ -164,8 +168,7 @@ func TestRemindScheduleOnceEach(t *testing.T) {
 func TestRemindStopsOnReplyOrComplete(t *testing.T) {
 	t.Parallel()
 	s, clock := slotsWithRoles(t)
-	remindOn(s)
-	sweepOnce(t, s)
+	remindOn(t, s)
 	replied := apiMail(t, s, clock, "hq/boss", "/api/messages", map[string]any{"recipient": "team/worker", "subject": "a"})
 	done := apiMail(t, s, clock, "hq/boss", "/api/messages", map[string]any{"recipient": "team/worker", "subject": "b"})
 	mentioned := apiMail(t, s, clock, "hq/boss", "/api/messages", map[string]any{"recipient": "team/worker", "subject": "c", "task_id": "T-9"})
@@ -176,18 +179,18 @@ func TestRemindStopsOnReplyOrComplete(t *testing.T) {
 	if n := sweepAt(t, s, clock, start.Add(remindGap)); n != 3 {
 		t.Fatalf("first round sent %d, want 3", n)
 	}
+	clock.add(30 * time.Minute)
 	apiMail(t, s, clock, "team/worker", fmt.Sprintf("/api/messages/%d/reply", replied.ID), map[string]any{"subject": "re", "body": "working on it"})
 	apiMail(t, s, clock, "team/worker", fmt.Sprintf("/api/messages/%d/complete", done.ID), map[string]any{"left_none": true})
 	apiMail(t, s, clock, "team/worker", "/api/messages", map[string]any{"recipient": "hq/boss", "subject": fmt.Sprintf("status, see #%d", mentioned.ID), "task_id": "T-9"})
 	if got := openIDs(t, s); !sameIDs(got, []int64{replied.ID, mentioned.ID}) {
 		t.Fatalf("open %v, want %d and %d (a reply does not close)", got, replied.ID, mentioned.ID)
 	}
-	if got := unrepliedIDs(t, s); !sameIDs(got, []int64{mentioned.ID}) {
-		t.Fatalf("unreplied %v, want only %d (a mention is no answer)", got, mentioned.ID)
+	// At 2T only the mentioned one: the reply moved #replied to reply + T.
+	if n := sweepAt(t, s, clock, start.Add(2*remindGap)); n != 1 {
+		t.Fatalf("at 2T sent %d, want 1 (%v)", n, remindKeys(t, s))
 	}
-	for _, h := range []time.Duration{3, 7, 15, 40} {
-		sweepAt(t, s, clock, start.Add(h*remindGap))
-	}
+	sweepAt(t, s, clock, start.Add(3*remindGap))
 	want := []string{
 		fmt.Sprintf("team/worker remind:%d:1", replied.ID),
 		fmt.Sprintf("team/worker remind:%d:1", done.ID),
@@ -195,20 +198,16 @@ func TestRemindStopsOnReplyOrComplete(t *testing.T) {
 		fmt.Sprintf("team/worker remind:%d:2", mentioned.ID),
 		fmt.Sprintf("team/worker remind:%d:2", replied.ID),
 		fmt.Sprintf("team/worker remind:%d:3", mentioned.ID),
-		fmt.Sprintf("team/worker remind:%d:3", replied.ID),
-		fmt.Sprintf("hq/boss remind-sender:%d", mentioned.ID),
-		fmt.Sprintf("hq/boss remind-sender:%d", replied.ID),
 	}
 	if got := remindKeys(t, s); strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Fatalf("reminders %v, want %v", got, want)
 	}
 }
 
-// A directive older than the first sweep with reminders on counts from that
-// time (#268): switching on sends nothing at once, the first reminder is due
-// at enabled_at + T and none before; switching off and on keeps the first
-// enable time.
-func TestRemindOlderDirectivesCountFromEnable(t *testing.T) {
+// Directives quiet long before the time was set count from when it was set
+// (#268, #586): switching on sends nothing at once and the first reminders
+// come one time later; a new value counts from its change again.
+func TestRemindOlderDirectivesCountFromSet(t *testing.T) {
 	t.Parallel()
 	s, clock := slotsWithRoles(t)
 	old := apiMail(t, s, clock, "hq/boss", "/api/messages", map[string]any{"recipient": "team/worker", "subject": "old"})
@@ -216,42 +215,26 @@ func TestRemindOlderDirectivesCountFromEnable(t *testing.T) {
 	readAs(t, s, "team/worker", old.ID)
 	readAs(t, s, "team/worker", older.ID)
 	clock.add(5 * remindGap) // both are long past T before reminders exist
-	remindOn(s)
+	remindOn(t, s)
+	set := clock.now()
 	if n := sweepOnce(t, s).Remind; n != 0 {
 		t.Fatalf("switch-on sent %d, want no burst", n)
 	}
-	var enabledMS int64
-	if err := s.db.QueryRow(`SELECT enabled_at FROM remind_state`).Scan(&enabledMS); err != nil {
-		t.Fatal(err)
+	if n := sweepAt(t, s, clock, set.Add(remindGap-time.Second)); n != 0 {
+		t.Fatalf("sent %d before set + T", n)
 	}
-	enabled := time.UnixMilli(enabledMS).UTC()
-	if n := sweepAt(t, s, clock, enabled.Add(remindGap-time.Second)); n != 0 {
-		t.Fatalf("sent %d before enabled_at + T", n)
+	if n := sweepAt(t, s, clock, set.Add(remindGap)); n != 2 {
+		t.Fatalf("at set + T sent %d, want 2", n)
 	}
-	s.presenceCfg.Remind.On = false
-	newer := apiMail(t, s, clock, "hq/boss", "/api/messages", map[string]any{"recipient": "team/worker", "subject": "new"})
-	readAs(t, s, "team/worker", newer.ID)
-	remindOn(s)
-	if n := sweepAt(t, s, clock, enabled.Add(remindGap)); n != 2 {
-		t.Fatalf("at enabled_at + T sent %d, want 2", n)
+	// Changing to 3T at set + 1.5T: nothing until 3T after the change.
+	clock.add(remindGap / 2)
+	setRemind(t, s, remind.Mail, 3*remindGap)
+	changed := clock.now()
+	if n := sweepAt(t, s, clock, changed.Add(3*remindGap-time.Second)); n != 0 {
+		t.Fatalf("sent %d before the change + 3T", n)
 	}
-	var again int64
-	if err := s.db.QueryRow(`SELECT enabled_at FROM remind_state`).Scan(&again); err != nil || again != enabledMS {
-		t.Fatalf("enable time %d -> %d (%v)", enabledMS, again, err)
-	}
-	sweepAt(t, s, clock, newer.CreatedAt.Add(remindGap))
-	// The existing gaps follow: the second reminder 2T after the first.
-	sweepAt(t, s, clock, enabled.Add(3*remindGap-time.Second))
-	want := []string{
-		fmt.Sprintf("team/worker remind:%d:1", old.ID),
-		fmt.Sprintf("team/worker remind:%d:1", older.ID),
-		fmt.Sprintf("team/worker remind:%d:1", newer.ID),
-	}
-	if got := remindKeys(t, s); strings.Join(got, ",") != strings.Join(want, ",") {
-		t.Fatalf("reminders %v, want %v", got, want)
-	}
-	if n := sweepAt(t, s, clock, enabled.Add(3*remindGap)); n != 2 {
-		t.Fatalf("at enabled_at + 3T sent %d, want the second reminder of #%d and #%d", n, old.ID, older.ID)
+	if n := sweepAt(t, s, clock, changed.Add(3*remindGap)); n != 2 {
+		t.Fatalf("at the change + 3T sent %d, want 2", n)
 	}
 }
 
@@ -264,35 +247,11 @@ func TestRemindSkipsBossRecipients(t *testing.T) {
 	if _, err := seedRoles(s.db, `INSERT INTO roles(role,token,created_at) VALUES('ops/lead','secret-ops/lead','now')`); err != nil {
 		t.Fatal(err)
 	}
-	remindOn(s)
-	sweepOnce(t, s)
+	remindOn(t, s)
 	d := apiMail(t, s, clock, "hq/boss", "/api/messages", map[string]any{"recipient": "ops/lead", "subject": "peer"})
 	readAs(t, s, "ops/lead", d.ID)
 	if n := sweepAt(t, s, clock, d.CreatedAt.Add(20*remindGap)); n != 0 {
 		t.Fatalf("boss recipient reminded: %v", remindKeys(t, s))
-	}
-}
-
-func TestRemindSettings(t *testing.T) {
-	t.Parallel()
-	env := func(m map[string]string) func(string) string { return func(k string) string { return m[k] } }
-	var c presence.Config
-	if err := presence.Configure(&c, env(nil)); err != nil || c.Remind.On {
-		t.Fatalf("default: %+v %v", c.Remind, err)
-	}
-	if err := presence.Configure(&c, env(map[string]string{"SWITCHBOARD_REMIND": "on", "SWITCHBOARD_REMIND_AFTER": "30m", "SWITCHBOARD_REMIND_MAX": "2"})); err != nil || !c.Remind.On || c.Remind.After != 30*time.Minute || c.Remind.Max != 2 {
-		t.Fatalf("on: %+v %v", c.Remind, err)
-	}
-	for v, want := range map[string]time.Duration{"45m": 45 * time.Minute, "0": -1} {
-		var c presence.Config
-		if err := presence.Configure(&c, env(map[string]string{"SWITCHBOARD_REMIND_IDLE": v})); err != nil || c.Remind.Idle != want {
-			t.Fatalf("idle %s: %+v %v", v, c.Remind, err)
-		}
-	}
-	for k, v := range map[string]string{"SWITCHBOARD_REMIND": "yes", "SWITCHBOARD_REMIND_AFTER": "0s", "SWITCHBOARD_REMIND_MAX": "0", "SWITCHBOARD_REMIND_IDLE": "500ms"} {
-		if err := presence.Configure(&presence.Config{}, env(map[string]string{k: v})); err == nil {
-			t.Errorf("%s=%s accepted", k, v)
-		}
 	}
 }
 

@@ -67,17 +67,17 @@ func requestText(p parsedArgs, action string) (string, error) {
 	return "", usagef("request %s: provide --text, --text-file or stdin", action)
 }
 
-// cliRequest is `request add|note|done|list|show` over /api/requests (boss
+// cliRequest is `request add|note|wait|done|list|show` over /api/requests (boss
 // roles only). Writes print the request number, list one line per request
 // and show the request with its linked items; --json prints the server's
 // JSON unchanged.
 func cliRequest(c Config, p parsedArgs, out io.Writer) (int, error) {
-	const actions = "add, note, done, list, show"
+	const actions = "add, note, wait, done, list, show"
 	if len(p.pos) == 0 {
 		return 0, usagef("request: missing action (%s)", actions)
 	}
 	action := p.pos[0]
-	needID := action == "note" || action == "done" || action == "show"
+	needID := action == "note" || action == "wait" || action == "done" || action == "show"
 	switch {
 	case action != "add" && action != "list" && !needID:
 		return 0, usagef("request: unknown action %q (%s)", action, actions)
@@ -112,6 +112,8 @@ func cliRequest(c Config, p parsedArgs, out io.Writer) (int, error) {
 			return 0, err
 		}
 		b, err = slotCall(c, "POST", path+"/notes", q)
+	case "wait":
+		b, err = slotCall(c, "POST", path+"/wait", wire.RequestWaitNew{Off: p.bool("--off")})
 	case "done":
 		q := wire.RequestDoneNew{Result: p.values["--result"]}
 		if strings.TrimSpace(q.Result) == "" {
@@ -186,6 +188,12 @@ func requestLine(r wire.Request) string {
 	}
 	if r.Remaining > 0 {
 		line += fmt.Sprintf(" [left %d]", r.Remaining)
+	}
+	if r.OwnerWait != nil {
+		line += " [대표 확인 대기]"
+	}
+	if r.Overdue {
+		line += " [기한 넘김]"
 	}
 	return line
 }

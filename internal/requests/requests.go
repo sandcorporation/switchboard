@@ -76,7 +76,8 @@ func decode(w http.ResponseWriter, r *http.Request, v interface{ Check() error }
 func stamp(t time.Time) string { return t.UTC().Format(time.RFC3339Nano) }
 
 // API serves /api/requests for a boss role (403 otherwise): POST "" adds a
-// request, POST {id}/notes adds the owner's later words, POST {id}/done marks
+// request, POST {id}/notes adds the owner's later words, POST {id}/wait sets
+// or ({"off":true}) clears the 「대표 확인 대기」 mark, POST {id}/done marks
 // it done with a result line (409 with the list while work is left under
 // it, #564); GET "" lists the requests the role may see
 // (?status=open|waiting|done|progress|checked), GET {id} reads one. A retry
@@ -142,6 +143,17 @@ func (s *Service) API(w http.ResponseWriter, r *http.Request, p identity.Princip
 		}
 		// Marking done again (after later news reopened it) starts a new check.
 		_, err = s.db.Exec(`UPDATE requests SET result=?,done_at=?,checked_at=NULL,checked_by='' WHERE id=?`, q.Result, now, id)
+	case "wait":
+		// The 「대표 확인 대기」 mark (#586): set or cleared, either is news.
+		var q wire.RequestWaitNew
+		if !decode(w, r, &q) {
+			return
+		}
+		if q.Off {
+			_, err = s.db.Exec(`UPDATE requests SET owner_wait_at=NULL,owner_wait_changed=? WHERE id=? AND owner_wait_at IS NOT NULL`, now, id)
+		} else {
+			_, err = s.db.Exec(`UPDATE requests SET owner_wait_at=?,owner_wait_changed=? WHERE id=? AND owner_wait_at IS NULL`, now, now, id)
+		}
 	default:
 		http.NotFound(w, r)
 		return
@@ -306,16 +318,22 @@ type row struct {
 	wire.Request
 	done, checked time.Time
 	latest        time.Time // the latest note or linked item
+	waitChanged   time.Time // when the waiting mark was last set or cleared
 }
 
-const requestCols = `id,author,title,text,created_at,result,COALESCE(done_at,''),COALESCE(checked_at,''),checked_by`
+const requestCols = `id,author,title,text,created_at,result,COALESCE(done_at,''),COALESCE(checked_at,''),checked_by,COALESCE(owner_wait_at,''),COALESCE(owner_wait_changed,'')`
 
 func scanRow(sc interface{ Scan(...any) error }) (*row, error) {
 	var rw row
-	var created, done, checked string
-	if err := sc.Scan(&rw.ID, &rw.Author, &rw.Title, &rw.Text, &created, &rw.Result, &done, &checked, &rw.CheckedBy); err != nil {
+	var created, done, checked, wait, waitChanged string
+	if err := sc.Scan(&rw.ID, &rw.Author, &rw.Title, &rw.Text, &created, &rw.Result, &done, &checked, &rw.CheckedBy, &wait, &waitChanged); err != nil {
 		return nil, err
 	}
+	if wait != "" {
+		t := parse(wait)
+		rw.OwnerWait = &t
+	}
+	rw.waitChanged = parse(waitChanged)
 	rw.CreatedAt = parse(created)
 	if done != "" {
 		rw.done = parse(done)
@@ -528,8 +546,9 @@ func summarize(rw *row, it *items) {
 		news(wire.SearchQuestion, q.ID, title, q.CreatedAt)
 	}
 	rw.Last = last
+	rw.QuietSince = quietSince(rw, it)
 	switch {
-	case rw.OpenQuestions > 0:
+	case rw.OpenQuestions > 0 || rw.OwnerWait != nil:
 		rw.Status = wire.RequestWaiting
 	case rw.DoneAt != nil && !rw.latest.After(rw.done) && rw.CheckedAt != nil:
 		rw.Status = wire.RequestChecked
@@ -576,8 +595,13 @@ func (s *Service) list(ctx context.Context, visible func(author string) bool, st
 	if err != nil {
 		return out, err
 	}
+	set, err := s.setting(ctx)
+	if err != nil {
+		return out, err
+	}
 	for _, rw := range all {
 		summarize(rw, its[rw.ID])
+		rw.Overdue = s.overdue(rw.Request, set)
 		rw.Remaining = openCount(its[rw.ID], open)
 		if status == "" || rw.Status == status || status == wire.RequestOpen && rw.Status != wire.RequestChecked {
 			out.Requests = append(out.Requests, rw.Request)
@@ -600,6 +624,11 @@ func (s *Service) Detail(id int64) (wire.RequestDetail, error) {
 	}
 	it := its[id]
 	summarize(rw, it)
+	set, err := s.setting(context.Background())
+	if err != nil {
+		return d, err
+	}
+	rw.Overdue = s.overdue(rw.Request, set)
 	if it == nil {
 		it = &items{}
 	}

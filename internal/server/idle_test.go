@@ -52,7 +52,7 @@ func TestDirectiveViewsAgree(t *testing.T) {
 	s.admin.ProxyToken = "proxy-secret"
 	slotDo(t, s, "register", ident("m", "/a"))
 	workerSession(t, s, "busy")
-	remindOn(s)
+	remindOn(t, s)
 	sweepOnce(t, s) // reminders on from here
 	d := apiMail(t, s, clock, "hq/boss", "/api/messages", map[string]any{"recipient": "team/worker", "subject": "build"})
 	readAs(t, s, "team/worker", d.ID)
@@ -113,7 +113,7 @@ func TestIdleOpenShowsInWaitAndTellsSender(t *testing.T) {
 	}
 	clock.add(time.Hour - time.Second)
 	if got := stalledIDs(t, s); len(got) != 0 {
-		t.Fatalf("stalled %v before SWITCHBOARD_REMIND_IDLE", got)
+		t.Fatalf("stalled %v before the idle threshold", got)
 	}
 	clock.add(time.Second)
 	r := mustProgress(t, s)
@@ -123,11 +123,11 @@ func TestIdleOpenShowsInWaitAndTellsSender(t *testing.T) {
 	}
 
 	// Reminders off: the 대기 row only. Switching on sends nothing at once,
-	// then one notice to the sender SWITCHBOARD_REMIND_IDLE later.
+	// then one notice to the sender the idle threshold later.
 	if n := sweepOnce(t, s).Remind; n != 0 {
 		t.Fatalf("off: sent %d", n)
 	}
-	remindOn(s)
+	remindOn(t, s)
 	if n := sweepOnce(t, s).Remind; n != 0 {
 		t.Fatalf("switch-on sent %d", n)
 	}
@@ -149,7 +149,7 @@ func TestIdleOpenShowsInWaitAndTellsSender(t *testing.T) {
 		t.Fatalf("notices %+v", notices)
 	}
 
-	// SWITCHBOARD_REMIND_IDLE_MAX=2: one more notice, a threshold later.
+	// an idle max of 2: one more notice, a threshold later.
 	s.presenceCfg.Remind.IdleMax = 2
 	sweepAt(t, s, clock, clock.now().Add(time.Hour))
 	workerSession(t, s, "idle")
@@ -194,7 +194,7 @@ func idleKeys(t *testing.T, s *Server) []string {
 }
 
 // Only the recipient's newest open directive counts, replied to or not, a
-// closed one never, and SWITCHBOARD_REMIND_IDLE=0 turns the check off.
+// closed one never, and an idle threshold of 0 turns the check off.
 func TestIdleOpenNewestDirectiveOnly(t *testing.T) {
 	t.Parallel()
 	s, clock := slotsWithRoles(t)

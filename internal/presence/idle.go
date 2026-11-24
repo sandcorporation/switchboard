@@ -17,13 +17,12 @@ import (
 // (the work the session was last given), when that directive is open, the
 // recipient is not a boss role, and the live session reading the mailbox
 // (slot 1 for <base>, slot N for <base>-N) has been idle, with no sub-agent
-// running, for SWITCHBOARD_REMIND_IDLE (default 1h, 0 off) since the latest
-// of the directive, its newest reply and the start of the idle stretch. The
-// 진행 view lists it under Stalled (대기 멈춤 rows); the reminder sweep, when
-// reminders are on, tells its sender up to SWITCHBOARD_REMIND_IDLE_MAX times
-// (default 1; idle-after:<id>, then idle-after:<id>:<n>), one threshold
-// apart, never earlier than SWITCHBOARD_REMIND_IDLE after the reminders were
-// switched on.
+// running, for defaultRemindIdle (1h) since the latest of the directive,
+// its newest reply and the start of the idle stretch. The 진행 view lists it
+// under Stalled (대기 멈춤 rows); the reminder sweep, while the mail reminder
+// time is on (#586), tells its sender up to defaultRemindIdleMax times
+// (idle-after:<id>, then idle-after:<id>:<n>), one threshold apart, never
+// earlier than the threshold after that time was set.
 
 const defaultRemindIdle = time.Hour
 

@@ -224,7 +224,37 @@ func Init(db *sql.DB) error {
 	if e = migrateNodeCredentials(db); e != nil {
 		return e
 	}
+	if e = migrateRemindSettings(db); e != nil {
+		return e
+	}
 	return migrateHourlyIndexes(db)
+}
+
+// migrateRemindSettings adds one reminder table for every kind (#586,
+// additive): remind_settings holds per kind (mail, left, request) the
+// reminder time in seconds (0 is off) and since (ms), when that value was
+// set. The left items' time already stored in left_remind moves over with
+// its since, so it keeps counting from when it was set; the other kinds'
+// rows are written by package remind on first use. requests gains the boss
+// role's 「대표 확인 대기」 mark (owner_wait_at, NULL when not marked) and
+// when it was last set or cleared (owner_wait_changed), which counts as news.
+func migrateRemindSettings(db *sql.DB) error {
+	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS remind_settings(kind TEXT PRIMARY KEY, after_s INTEGER NOT NULL, since INTEGER NOT NULL);
+INSERT OR IGNORE INTO remind_settings(kind,after_s,since) SELECT 'left',after_s,since FROM left_remind WHERE id=1`); err != nil {
+		return err
+	}
+	for _, c := range []string{"owner_wait_at", "owner_wait_changed"} {
+		has, err := HasColumn(db, "requests", c)
+		if err != nil {
+			return err
+		}
+		if !has {
+			if _, err = db.Exec(`ALTER TABLE requests ADD COLUMN ` + c + ` TEXT`); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 // migrateNodeCredentials adds nodes.credentials (#562): whether the node
@@ -1268,9 +1298,10 @@ func migrateHostingPermissions(db *sql.DB) error {
 }
 
 // migrateRemind adds messages.no_reply (1: sent with --no-reply, never an
-// open directive) and remind_state, whose one row records when directive
-// reminders were first switched on (presence.SweepReminders). The row is
-// written by the first sweep with SWITCHBOARD_REMIND=on, never here.
+// open directive) and remind_state, whose one row recorded when directive
+// reminders were first switched on (#214). Unused since #586, where
+// remind_settings holds the mail reminder time and its since; kept, as the
+// schema only grows.
 func migrateRemind(db *sql.DB) error {
 	has, err := HasColumn(db, "messages", "no_reply")
 	if err != nil {

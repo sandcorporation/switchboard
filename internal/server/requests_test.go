@@ -288,6 +288,17 @@ func TestRequestCLI(t *testing.T) {
 	if out := h.mustRun(nil, "request", "note", "1", "--text", "문서도"); out != "1" {
 		t.Fatalf("note printed %q", out)
 	}
+	// #586: request wait marks it waiting on the owner, --off clears it.
+	if out := h.mustRun(nil, "request", "wait", "1"); out != "1" {
+		t.Fatalf("wait printed %q", out)
+	}
+	if out := h.mustRun(nil, "request", "list"); !strings.Contains(out, " waiting ") || !strings.Contains(out, "[대표 확인 대기]") {
+		t.Fatalf("list after wait: %q", out)
+	}
+	h.mustRun(nil, "request", "wait", "1", "--off")
+	if out := h.mustRun(nil, "request", "list"); strings.Contains(out, "[대표 확인 대기]") {
+		t.Fatalf("list after wait --off: %q", out)
+	}
 	h.mustRun(nil, "send", "--to", "b", "--subject", "정리 맡김", "--body", "x", "--request-id", "1")
 	h.mustRun(nil, "report", "--title", "반쯤", "--body", "x", "--request-id", "#1")
 	file := filepath.Join(h.dir, "q.json")

@@ -13,7 +13,7 @@ import (
 // reports, which call Linkable (#501): it imports identity and wire only, so
 // none of them can form a cycle through it.
 func TestRequestsImportOnlyIdentityAndWire(t *testing.T) {
-	allowed := map[string]bool{"identity": true, "wire": true}
+	allowed := map[string]bool{"identity": true, "remind": true, "wire": true}
 	const prefix = "github.com/sandcorporation/switchboard/internal/"
 	files, err := filepath.Glob("*.go")
 	if err != nil {

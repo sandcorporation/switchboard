@@ -117,6 +117,22 @@ func InsertSystemMail(tx *sql.Tx, to, subject, body, task, priority, idem string
 	return err
 }
 
+// SendSystemOnce stores normal system mail to role to once per idem key and
+// wakes its readers, reporting whether this call stored it (#586: the
+// request reminders' sender, requests.SendSystem).
+func (s *Service) SendSystemOnce(ctx context.Context, to, subject, body, idem string, now time.Time) (bool, error) {
+	var stored bool
+	err := store.InTx(ctx, s.db, func(tx *sql.Tx) error {
+		var e error
+		stored, e = InsertSystemMailOnce(tx, to, subject, body, "", "normal", idem, now)
+		return e
+	})
+	if err == nil && stored {
+		s.hub.Publish(to)
+	}
+	return stored, err
+}
+
 // InsertSystemMailOnce is InsertSystemMail that also reports whether a row
 // was stored (false: the idem key was already used).
 func InsertSystemMailOnce(tx *sql.Tx, to, subject, body, task, priority, idem string, now time.Time) (bool, error) {
